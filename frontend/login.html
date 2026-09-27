@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Login – Sri Charan Constructions</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Barlow+Semi+Condensed:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="login-wrap">
+  <div class="login-card">
+    <div class="login-card-body">
+      <div class="login-logo">SCC</div>
+      <h2>Sri Charan Constructions</h2>
+      <p>Enter your PIN to continue</p>
+
+      <div class="form-group" style="margin-bottom:14px;">
+        <label>PIN</label>
+        <input type="password" id="pin-input" placeholder="••••" maxlength="10" autocomplete="off"
+               onkeydown="if(event.key==='Enter') doLogin()">
+      </div>
+
+      <button class="btn btn-primary" style="width:100%;justify-content:center;" onclick="doLogin()">
+        Login
+      </button>
+      <div class="login-error" id="login-error"></div>
+    </div>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script>
+  // If already logged in, redirect
+  (async () => {
+    if (sessionStorage.getItem('scc_token')) {
+      const ok = await Auth.verify();
+      if (ok) window.location.href = '/';
+    }
+  })();
+
+  async function doLogin() {
+    const pin = document.getElementById('pin-input').value.trim();
+    const errEl = document.getElementById('login-error');
+    errEl.textContent = '';
+    if (!pin) { errEl.textContent = 'Please enter your PIN.'; return; }
+
+    try {
+      await Auth.login(pin);
+      window.location.href = '/';
+    } catch (e) {
+      errEl.textContent = e.message || 'Login failed.';
+      document.getElementById('pin-input').value = '';
+    }
+  }
+</script>
+</body>
+</html>

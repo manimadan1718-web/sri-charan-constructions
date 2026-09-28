@@ -2,160 +2,119 @@ const express = require('express');
 const router = express.Router();
 const supabase = require('../config/supabase');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { logActivity, simpleDiff, simpleSnapshot } = require('../utils/activity');
 
 router.use(requireAuth);
 
-/* ══════════════════════════════ VEHICLES ══════════════════════════════════ */
+const clean = v => (typeof v === 'string' ? v.trim() : v);
 
-// GET /api/inventory/vehicles — any logged-in user (populates the dropdown)
-router.get('/vehicles', async (req, res) => {
-  try {
-    const { data, error } = await supabase
-      .from('vehicles')
-      .select('*')
-      .order('vehicle_no', { ascending: true });
-
-    if (error) throw error;
-    res.json({ success: true, data });
-  } catch (err) {
-    console.error('GET /inventory/vehicles:', err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// POST /api/inventory/vehicles — Admin only
-router.post('/vehicles', requireRole('admin'), async (req, res) => {
-  try {
-    const { vehicle_no, type } = req.body;
-    if (!vehicle_no) return res.status(400).json({ error: 'Vehicle / Machine No. is required.' });
-
-    const { data, error } = await supabase
-      .from('vehicles')
-      .insert({ vehicle_no, type })
-      .select()
-      .single();
-
-    if (error) {
-      if (error.code === '23505') return res.status(409).json({ error: 'That vehicle already exists.' });
-      throw error;
+/**
+ * Registers GET (any logged-in user — feeds the Data Entry dropdowns) plus
+ * POST / PUT / DELETE (Admin only) for one inventory table.
+ *
+ *   table       – Supabase table name
+ *   path        – URL segment under /api/inventory
+ *   label       – human name used in error messages
+ *   orderBy     – column used to sort the list
+ *   required    – the column that must be present when creating
+ *   fields      – all editable columns (besides `active`)
+ *   uniqueMsg   – 409 message when the table has a UNIQUE column (optional)
+ *   entity      – short name used in the activity log (vehicle / operator / site)
+ *   fieldLabels – human labels for `fields`, same order
+ */
+function crud({ table, path, label, orderBy, required, fields, uniqueMsg, entity, fieldLabels }) {
+  const spec = [...fields.map((f, i) => [f, fieldLabels[i]]), ['active', 'Status', 'bool']];
+  // GET — any logged-in user
+  router.get(`/${path}`, async (req, res) => {
+    try {
+      const { data, error } = await supabase.from(table).select('*').order(orderBy, { ascending: true });
+      if (error) throw error;
+      res.json({ success: true, data });
+    } catch (err) {
+      console.error(`GET /inventory/${path}:`, err.message);
+      res.status(500).json({ error: err.message });
     }
-    res.status(201).json({ success: true, data });
-  } catch (err) {
-    console.error('POST /inventory/vehicles:', err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
+  });
 
-// PUT /api/inventory/vehicles/:id — Admin only (e.g. toggle active)
-router.put('/vehicles/:id', requireRole('admin'), async (req, res) => {
-  try {
-    const { vehicle_no, type, active } = req.body;
-    const updates = {};
-    if (vehicle_no !== undefined) updates.vehicle_no = vehicle_no;
-    if (type !== undefined)       updates.type       = type;
-    if (active !== undefined)     updates.active     = active;
+  // POST — Admin only
+  router.post(`/${path}`, requireRole('admin'), async (req, res) => {
+    try {
+      const row = {};
+      fields.forEach(f => { if (req.body[f] !== undefined) row[f] = clean(req.body[f]) || null; });
+      if (!row[required]) return res.status(400).json({ error: `${label} ${required === 'vehicle_no' ? 'No.' : 'name'} is required.` });
 
-    const { data, error } = await supabase
-      .from('vehicles')
-      .update(updates)
-      .eq('id', req.params.id)
-      .select()
-      .maybeSingle();
+      const { data, error } = await supabase.from(table).insert(row).select().single();
+      if (error) {
+        if (error.code === '23505' && uniqueMsg) return res.status(409).json({ error: uniqueMsg });
+        throw error;
+      }
+      await logActivity(req, {
+        category: 'inventory', action: `${entity}_added`, entityType: entity, entityId: data.id,
+        entityLabel: data[required], changes: simpleSnapshot(data, spec, 'to'),
+      });
+      res.status(201).json({ success: true, data });
+    } catch (err) {
+      console.error(`POST /inventory/${path}:`, err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
 
-    if (error) throw error;
-    if (!data) return res.status(404).json({ error: 'Vehicle not found.' });
-    res.json({ success: true, data });
-  } catch (err) {
-    console.error('PUT /inventory/vehicles/:id:', err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
+  // PUT — Admin only (edit fields / toggle active)
+  router.put(`/${path}/:id`, requireRole('admin'), async (req, res) => {
+    try {
+      const updates = {};
+      fields.forEach(f => { if (req.body[f] !== undefined) updates[f] = clean(req.body[f]) || null; });
+      if (req.body.active !== undefined) updates.active = !!req.body.active;
+      if (updates[required] === null) return res.status(400).json({ error: `${label} cannot be empty.` });
+      if (!Object.keys(updates).length) return res.status(400).json({ error: 'Nothing to update.' });
 
-// DELETE /api/inventory/vehicles/:id — Admin only
-router.delete('/vehicles/:id', requireRole('admin'), async (req, res) => {
-  try {
-    const { error } = await supabase.from('vehicles').delete().eq('id', req.params.id);
-    if (error) throw error;
-    res.json({ success: true });
-  } catch (err) {
-    console.error('DELETE /inventory/vehicles/:id:', err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
+      const { data: before, error: getErr } = await supabase.from(table).select('*').eq('id', req.params.id).maybeSingle();
+      if (getErr) throw getErr;
+      if (!before) return res.status(404).json({ error: `${label} not found.` });
 
-/* ══════════════════════════════ OPERATORS ═════════════════════════════════ */
+      const { data, error } = await supabase.from(table).update(updates).eq('id', req.params.id).select().maybeSingle();
+      if (error) {
+        if (error.code === '23505' && uniqueMsg) return res.status(409).json({ error: uniqueMsg });
+        throw error;
+      }
+      if (!data) return res.status(404).json({ error: `${label} not found.` });
 
-// GET /api/inventory/operators — any logged-in user (populates the dropdown)
-router.get('/operators', async (req, res) => {
-  try {
-    const { data, error } = await supabase
-      .from('operators')
-      .select('*')
-      .order('name', { ascending: true });
+      const changes = simpleDiff(before, updates, spec);
+      if (changes.length) {
+        await logActivity(req, {
+          category: 'inventory', action: `${entity}_updated`, entityType: entity, entityId: data.id,
+          entityLabel: data[required], changes,
+        });
+      }
+      res.json({ success: true, data });
+    } catch (err) {
+      console.error(`PUT /inventory/${path}/:id:`, err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
 
-    if (error) throw error;
-    res.json({ success: true, data });
-  } catch (err) {
-    console.error('GET /inventory/operators:', err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
+  // DELETE — Admin only
+  router.delete(`/${path}/:id`, requireRole('admin'), async (req, res) => {
+    try {
+      const { data: before } = await supabase.from(table).select('*').eq('id', req.params.id).maybeSingle();
+      const { error } = await supabase.from(table).delete().eq('id', req.params.id);
+      if (error) throw error;
+      if (before) {
+        await logActivity(req, {
+          category: 'inventory', action: `${entity}_deleted`, entityType: entity, entityId: before.id,
+          entityLabel: before[required], changes: simpleSnapshot(before, spec, 'from'),
+        });
+      }
+      res.json({ success: true });
+    } catch (err) {
+      console.error(`DELETE /inventory/${path}/:id:`, err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+}
 
-// POST /api/inventory/operators — Admin only
-router.post('/operators', requireRole('admin'), async (req, res) => {
-  try {
-    const { name, phone } = req.body;
-    if (!name) return res.status(400).json({ error: 'Operator name is required.' });
-
-    const { data, error } = await supabase
-      .from('operators')
-      .insert({ name, phone })
-      .select()
-      .single();
-
-    if (error) throw error;
-    res.status(201).json({ success: true, data });
-  } catch (err) {
-    console.error('POST /inventory/operators:', err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// PUT /api/inventory/operators/:id — Admin only (e.g. toggle active)
-router.put('/operators/:id', requireRole('admin'), async (req, res) => {
-  try {
-    const { name, phone, active } = req.body;
-    const updates = {};
-    if (name !== undefined)   updates.name   = name;
-    if (phone !== undefined)  updates.phone  = phone;
-    if (active !== undefined) updates.active = active;
-
-    const { data, error } = await supabase
-      .from('operators')
-      .update(updates)
-      .eq('id', req.params.id)
-      .select()
-      .maybeSingle();
-
-    if (error) throw error;
-    if (!data) return res.status(404).json({ error: 'Operator not found.' });
-    res.json({ success: true, data });
-  } catch (err) {
-    console.error('PUT /inventory/operators/:id:', err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// DELETE /api/inventory/operators/:id — Admin only
-router.delete('/operators/:id', requireRole('admin'), async (req, res) => {
-  try {
-    const { error } = await supabase.from('operators').delete().eq('id', req.params.id);
-    if (error) throw error;
-    res.json({ success: true });
-  } catch (err) {
-    console.error('DELETE /inventory/operators/:id:', err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
+crud({ table: 'vehicles',  path: 'vehicles',  label: 'Vehicle',  orderBy: 'vehicle_no', required: 'vehicle_no', fields: ['vehicle_no', 'type'],  fieldLabels: ['Vehicle No.', 'Type'],  entity: 'vehicle',  uniqueMsg: 'That vehicle already exists.' });
+crud({ table: 'operators', path: 'operators', label: 'Operator', orderBy: 'name',       required: 'name',       fields: ['name', 'phone'],       fieldLabels: ['Name', 'Phone'],        entity: 'operator' });
+crud({ table: 'sites',     path: 'sites',     label: 'Site',     orderBy: 'name',       required: 'name',       fields: ['name', 'location'],    fieldLabels: ['Site Name', 'Location'], entity: 'site',     uniqueMsg: 'That site already exists.' });
 
 module.exports = router;

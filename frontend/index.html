@@ -3,33 +3,37 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/png" href="/img/favicon.png">
   <title>Sri Charan Constructions – Site Log</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Barlow+Semi+Condensed:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
 
-<!-- HEADER -->
+<!-- HEADER + TABS (sticky together) -->
+<div class="app-top">
 <header class="site-header">
-  <div class="logo-box">SCC</div>
-  <div>
-    <h1>Sri Charan Constructions</h1>
+  <div class="logo-box"><img src="/img/logo.png" alt="Sri Charan Constructions logo"></div>
+  <div class="brand">
+    <h1>SRI CHARAN CONSTRUCTIONS</h1>
     <p>Site Activity Log System</p>
   </div>
   <div class="header-right">
-    <span class="header-user" id="header-user"></span>
     <span class="header-date" id="header-date"></span>
-    <button class="btn btn-outline btn-sm" onclick="Auth.logout()">Logout</button>
+    <span class="header-user" id="header-user"></span>
+    <button class="btn btn-outline btn-sm logout-btn" onclick="Auth.logout()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>Logout</button>
   </div>
 </header>
 
 <!-- TABS -->
-<div class="tabs">
-  <div class="tab active" id="tab-entry"     data-roles="supervisor,admin" onclick="switchTab('entry')">📋 Data Entry</div>
-  <div class="tab"        id="tab-records"   data-roles="owner,admin"      onclick="switchTab('records')">📂 Records</div>
-  <div class="tab"        id="tab-summary"   data-roles="owner,admin"      onclick="switchTab('summary')">📊 Summary</div>
-  <div class="tab"        id="tab-inventory" data-roles="admin"            onclick="switchTab('inventory')">📦 Inventory</div>
-  <div class="tab"        id="tab-users"     data-roles="admin"            onclick="switchTab('users')">🧑‍🤝‍🧑 Users</div>
+<nav class="tabs">
+  <div class="tab active" id="tab-entry" data-roles="supervisor,admin" onclick="switchTab('entry')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg><span>Data Entry</span></div>
+  <div class="tab" id="tab-records" data-roles="owner,admin" onclick="switchTab('records')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><span>Records</span></div>
+  <div class="tab" id="tab-summary" data-roles="owner,admin" onclick="switchTab('summary')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg><span>Summary</span></div>
+  <div class="tab" id="tab-inventory" data-roles="admin" onclick="switchTab('inventory')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg><span>Inventory</span></div>
+  <div class="tab" id="tab-users" data-roles="admin" onclick="switchTab('users')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>Users</span></div>
+  <div class="tab" id="tab-logs" data-roles="owner,admin" onclick="switchTab('logs')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span>Activity Logs</span></div>
+</nav>
 </div>
 
 <main>
@@ -38,7 +42,7 @@
 <div class="section active" id="section-entry">
   <div class="card">
     <div class="card-header">
-      <div class="card-title">🚜 New Site Entry <span class="badge">Supervisor</span></div>
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1" y="3" width="15" height="13" rx="1"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></span> New Site Entry <span class="badge">Supervisor</span></div>
       <button class="btn btn-outline btn-sm" onclick="clearForm()">✕ Clear</button>
     </div>
 
@@ -48,23 +52,37 @@
         <input type="date" id="f-date">
       </div>
       <div class="form-group">
+        <label>Site</label>
+        <select id="f-site">
+          <option value="">Select site…</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Category *</label>
+        <select id="f-category" onchange="toggleCategoryFields('f')">
+          <option value="own">Own</option>
+          <option value="rental">Rental</option>
+        </select>
+      </div>
+      <div class="form-group">
         <label>Vehicle / Machine No. *</label>
         <select id="f-vehicle">
           <option value="">Select vehicle…</option>
         </select>
+        <input type="text" id="f-vehicle-text" placeholder="Rental vehicle / machine no." style="display:none;">
       </div>
       <div class="form-group">
         <label>Starting Reading / Time</label>
-        <input type="text" id="f-start" placeholder="e.g. 1250 km, 08:00 AM or 08:00">
+        <input type="text" id="f-start" placeholder="e.g. 08:00 AM or 1250">
       </div>
       <div class="form-group">
         <label>Closing Reading / Time</label>
-        <input type="text" id="f-close" placeholder="e.g. 1380 km, 06:00 PM or 18:00">
+        <input type="text" id="f-close" placeholder="e.g. 06:00 PM or 1380">
       </div>
       <div class="form-group">
         <label>Working Hours / Reading <span style="color:var(--orange);font-weight:400;">(auto-fills)</span></label>
-        <input type="text" id="f-hours" placeholder="Auto-calculated from Start & Close">
-        <span id="calc-hint" style="font-size:11px;color:var(--green);margin-top:3px;min-height:15px;display:block;"></span>
+        <input type="text" id="f-hours" placeholder="Auto-calculated">
+        <span id="calc-hint" class="calc-hint"></span>
       </div>
       <div class="form-group">
         <label>Diesel (Litres)</label>
@@ -79,8 +97,9 @@
         <select id="f-operator">
           <option value="">Select operator…</option>
         </select>
+        <input type="text" id="f-operator-text" placeholder="Driver name" style="display:none;">
       </div>
-      <div class="form-group full">
+      <div class="form-group span-2">
         <label>Remarks</label>
         <textarea id="f-remarks" placeholder="Any notes or observations..."></textarea>
       </div>
@@ -88,8 +107,8 @@
 
     <!-- Breakup -->
     <div class="breakup-section">
-      <div class="card-title" style="margin-bottom:12px;font-size:13px;">
-        📝 Work Breakup <span class="badge">Optional</span>
+      <div class="card-title" style="margin-bottom:14px;font-size:15px;">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span> Work Breakup <span class="badge">Optional</span>
       </div>
       <div id="breakup-rows">
         <div class="breakup-row">
@@ -111,14 +130,56 @@
 <div class="section" id="section-records">
   <div class="card">
     <div class="card-header">
-      <div class="card-title">📂 All Records</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-        <input type="date" id="filter-date-from" title="From date" onchange="loadRecords()" style="width:150px;">
-        <input type="date" id="filter-date-to" title="To date" onchange="loadRecords()" style="width:150px;">
-        <input type="text" id="filter-vehicle" placeholder="Search vehicle…" oninput="loadRecords()" style="width:160px;">
-        <button class="btn btn-outline btn-sm" onclick="clearFilters()">Clear</button>
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span> All Records</div>
+      <div class="rec-actions">
+        <button class="btn btn-outline btn-sm" onclick="clearFilters()">✕ Clear filters</button>
         <button class="btn btn-outline btn-sm" onclick="exportCSV()">⬇ Export CSV</button>
         <button class="btn btn-outline btn-sm" onclick="window.print()">🖨 Print</button>
+      </div>
+    </div>
+
+    <!-- Search / filters — vehicle and site lists come from Inventory -->
+    <div class="rec-filters">
+      <div class="rec-filters-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        Search &amp; filter
+        <span class="rec-count" id="records-count"></span>
+      </div>
+      <div class="rec-filters-grid">
+        <div class="filter-field">
+          <label for="filter-date-from">From date</label>
+          <input type="date" id="filter-date-from" onchange="loadRecords()">
+        </div>
+        <div class="filter-field">
+          <label for="filter-date-to">To date</label>
+          <input type="date" id="filter-date-to" onchange="loadRecords()">
+        </div>
+        <div class="filter-field">
+          <label for="filter-category">Category</label>
+          <select id="filter-category" onchange="loadRecords()">
+            <option value="">All categories</option>
+            <option value="own">Own</option>
+            <option value="rental">Rental</option>
+          </select>
+        </div>
+        <div class="filter-field">
+          <label for="filter-type">Type</label>
+          <select id="filter-type" onchange="loadRecords()">
+            <option value="">All types</option>
+          </select>
+        </div>
+        <div class="filter-field">
+          <label for="filter-vehicle">Vehicle / Machine No.</label>
+          <select id="filter-vehicle" onchange="loadRecords()">
+            <option value="">All vehicles</option>
+          </select>
+        </div>
+        <div class="filter-field">
+          <label for="filter-site">Site</label>
+          <select id="filter-site" onchange="loadRecords()">
+            <option value="">All sites</option>
+          </select>
+        </div>
       </div>
     </div>
 
@@ -128,11 +189,11 @@
       <table>
         <thead>
           <tr>
-            <th>#</th><th>Date</th><th>Vehicle No.</th>
+            <th>#</th><th>Date</th><th>Site</th><th>Category</th><th>Vehicle No.</th>
             <th>Start</th><th>Close</th><th>Working Hrs</th>
             <th>Diesel (L)</th><th>Loads</th><th>Operator</th>
             <th>Remarks</th><th>Breakup</th>
-            <th class="admin-only-col">Edit</th><th class="admin-only-col">Delete</th>
+            <th class="hist-col">History</th><th class="admin-only-col edit-col">Edit</th><th class="admin-only-col del-col">Delete</th>
           </tr>
         </thead>
         <tbody id="records-body"></tbody>
@@ -147,7 +208,7 @@
   <!-- Auto Stats -->
   <div class="card">
     <div class="card-header">
-      <div class="card-title">📊 Auto Summary</div>
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></span> Auto Summary</div>
       <select id="sum-month" onchange="loadSummary()" style="font-size:12px;padding:6px 10px;width:180px;">
         <option value="">All Time</option>
       </select>
@@ -162,7 +223,7 @@
 
   <!-- Per-Vehicle Breakdown -->
   <div class="card">
-    <div class="card-title" style="margin-bottom:14px;">🚚 Per-Vehicle Breakdown</div>
+    <div class="card-title" style="margin-bottom:14px;"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1" y="3" width="15" height="13" rx="1"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></span> Per-Vehicle Breakdown</div>
     <div class="table-wrap">
       <table>
         <thead>
@@ -174,9 +235,9 @@
   </div>
 
   <!-- Manual Summary -->
-  <div class="card" style="background:var(--orange-light);border-color:var(--orange-mid);">
+  <div class="card">
     <div class="card-header">
-      <div class="card-title">✏️ Manual Summary Entry</div>
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span> Manual Summary Entry</div>
     </div>
     <div class="form-grid">
       <div class="form-group">
@@ -207,7 +268,7 @@
 
   <!-- Saved Summaries -->
   <div class="card">
-    <div class="card-title" style="margin-bottom:14px;">📋 Saved Manual Summaries</div>
+    <div class="card-title" style="margin-bottom:14px;"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></span> Saved Manual Summaries</div>
     <div class="table-wrap">
       <table>
         <thead>
@@ -225,7 +286,7 @@
 
   <div class="card">
     <div class="card-header">
-      <div class="card-title">🚜 Vehicles / Machines <span class="badge">Admin</span></div>
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1" y="3" width="15" height="13" rx="1"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></span> Vehicles / Machines <span class="badge">Admin</span></div>
     </div>
     <div class="form-grid">
       <div class="form-group">
@@ -251,7 +312,33 @@
 
   <div class="card">
     <div class="card-header">
-      <div class="card-title">👷 Operators / Drivers <span class="badge">Admin</span></div>
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></span> Sites <span class="badge">Admin</span></div>
+    </div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Site Name *</label>
+        <input type="text" id="inv-site-name" placeholder="e.g. VK Hill Phase 2">
+      </div>
+      <div class="form-group">
+        <label>Location</label>
+        <input type="text" id="inv-site-location" placeholder="Optional">
+      </div>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="addSite()">＋ Add Site</button>
+    </div>
+
+    <div class="table-wrap" style="margin-top:18px;">
+      <table>
+        <thead><tr><th>Site Name</th><th>Location</th><th>Active</th><th>Delete</th></tr></thead>
+        <tbody id="sites-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span> Operators / Drivers <span class="badge">Admin</span></div>
     </div>
     <div class="form-grid">
       <div class="form-group">
@@ -282,7 +369,7 @@
 
   <div class="card">
     <div class="card-header">
-      <div class="card-title">🧑‍🤝‍🧑 Create User <span class="badge">Admin</span></div>
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg></span> Create User <span class="badge">Admin</span></div>
     </div>
     <div class="form-grid">
       <div class="form-group">
@@ -291,7 +378,7 @@
       </div>
       <div class="form-group">
         <label>PIN *</label>
-        <input type="text" id="u-pin" placeholder="e.g. 4821" maxlength="10">
+        <input type="password" id="u-pin" placeholder="4–10 characters" maxlength="10" autocomplete="new-password">
       </div>
       <div class="form-group">
         <label>Role *</label>
@@ -308,7 +395,7 @@
   </div>
 
   <div class="card">
-    <div class="card-title" style="margin-bottom:14px;">📋 All Users</div>
+    <div class="card-title" style="margin-bottom:14px;"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></span> All Users</div>
     <div class="table-wrap">
       <table>
         <thead><tr><th>Name</th><th>PIN</th><th>Role</th><th>Active</th><th>Delete</th></tr></thead>
@@ -318,13 +405,51 @@
   </div>
 
 </div><!-- /users -->
+
+<!-- ═══════════════════════════════ ACTIVITY LOGS (Owner + Admin) ═════════════ -->
+<div class="section" id="section-logs">
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span> Activity Logs <span class="badge">Audit trail</span></div>
+      <button class="btn btn-outline btn-sm" onclick="loadLogs(true)">↻ Refresh</button>
+    </div>
+
+    <div class="log-filters">
+      <select id="log-category" onchange="loadLogs(true)" title="Type of activity">
+        <option value="">All activity</option>
+        <option value="auth">Login &amp; logout</option>
+        <option value="entry">Data entries</option>
+        <option value="summary">Summaries</option>
+        <option value="inventory">Inventory</option>
+        <option value="user">Users</option>
+      </select>
+      <input type="date" id="log-from" onchange="loadLogs(true)" title="From date">
+      <input type="date" id="log-to" onchange="loadLogs(true)" title="To date">
+      <input type="text" id="log-q" placeholder="Search person, vehicle, reason…" oninput="loadLogsDebounced()">
+      <button class="btn btn-outline btn-sm" onclick="clearLogFilters()">Clear</button>
+    </div>
+
+    <div class="table-wrap">
+      <table class="log-table">
+        <thead>
+          <tr><th>When</th><th>Who</th><th>Activity</th><th>Details</th><th>IP / Device</th></tr>
+        </thead>
+        <tbody id="logs-body"></tbody>
+      </table>
+    </div>
+    <div class="log-more">
+      <span id="logs-count"></span>
+      <button class="btn btn-outline btn-sm" id="logs-more-btn" style="display:none;" onclick="loadLogs(false)">Load more</button>
+    </div>
+  </div>
+</div><!-- /logs -->
 </main>
 
 <!-- ═══════════════════════════════ EDIT ENTRY MODAL (Admin) ══════════════════ -->
 <div class="modal-overlay" id="edit-modal-overlay">
   <div class="modal-card">
     <div class="card-header">
-      <div class="card-title">✏️ Edit Entry</div>
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span> Edit Entry</div>
       <button class="btn btn-outline btn-sm" onclick="closeEditModal()">✕ Close</button>
     </div>
 
@@ -335,10 +460,24 @@
         <input type="date" id="e-date">
       </div>
       <div class="form-group">
+        <label>Site</label>
+        <select id="e-site">
+          <option value="">Select site…</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Category *</label>
+        <select id="e-category" onchange="toggleCategoryFields('e')">
+          <option value="own">Own</option>
+          <option value="rental">Rental</option>
+        </select>
+      </div>
+      <div class="form-group">
         <label>Vehicle / Machine No. *</label>
         <select id="e-vehicle">
           <option value="">Select vehicle…</option>
         </select>
+        <input type="text" id="e-vehicle-text" placeholder="Rental vehicle / machine no." style="display:none;">
       </div>
       <div class="form-group">
         <label>Starting Reading / Time</label>
@@ -365,6 +504,7 @@
         <select id="e-operator">
           <option value="">Select operator…</option>
         </select>
+        <input type="text" id="e-operator-text" placeholder="Driver name" style="display:none;">
       </div>
       <div class="form-group full">
         <label>Remarks</label>
@@ -373,8 +513,8 @@
     </div>
 
     <div class="breakup-section">
-      <div class="card-title" style="margin-bottom:12px;font-size:13px;">
-        📝 Work Breakup <span class="badge">Optional</span>
+      <div class="card-title" style="margin-bottom:14px;font-size:15px;">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span> Work Breakup <span class="badge">Optional</span>
       </div>
       <div id="e-breakup-rows"></div>
       <button class="add-breakup-btn" onclick="addEditBreakup()">＋ Add Row</button>
@@ -383,6 +523,38 @@
     <div class="btn-group">
       <button class="btn btn-primary" onclick="submitEditEntry()">💾 Save Changes</button>
       <button class="btn btn-outline" onclick="closeEditModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ ENTRY HISTORY ══════════════════════════════ -->
+<div class="modal-overlay" id="history-modal-overlay" onclick="if(event.target===this) closeHistory()">
+  <div class="modal-card modal-narrow" role="dialog" aria-modal="true" aria-labelledby="history-title">
+    <div class="card-header">
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span> <span id="history-title">Entry History</span></div>
+      <button class="btn btn-outline btn-sm" onclick="closeHistory()">✕ Close</button>
+    </div>
+    <div class="history-entry" id="history-entry"></div>
+    <div id="history-body"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ REASON FOR CHANGES ═════════════════════════ -->
+<div class="modal-overlay modal-top" id="reason-modal-overlay">
+  <div class="modal-card modal-small" role="dialog" aria-modal="true" aria-labelledby="reason-title">
+    <div class="card-header">
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span> <span id="reason-title">Reason for Changes</span></div>
+    </div>
+    <p class="reason-intro" id="reason-intro"></p>
+    <div id="reason-changes"></div>
+    <div class="form-group" style="margin-top:16px;">
+      <label for="reason-text">Reason <span style="color:var(--brick);">*</span> <span class="reason-hint">(minimum 10 characters)</span></label>
+      <textarea id="reason-text" maxlength="500" placeholder="e.g. Diesel quantity corrected as per fuel slip"></textarea>
+      <div class="reason-meta"><span id="reason-error" role="alert"></span><span id="reason-count">0 / 10 minimum</span></div>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-primary" id="reason-confirm" disabled>Confirm &amp; Save</button>
+      <button class="btn btn-outline" id="reason-cancel">Cancel</button>
     </div>
   </div>
 </div>

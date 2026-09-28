@@ -1,24 +1,46 @@
 require('dotenv').config();
 const jwt = require('jsonwebtoken');
+const supabase = require('../config/supabase');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
 /**
  * Requires a valid Bearer token. On success, attaches req.user = { id, name, role }.
+ *
+ * The user is re-checked in the database on every request so that
+ * deactivating/deleting a user or changing their role takes effect immediately
+ * instead of waiting for their 12-hour token to expire.
  */
-function requireAuth(req, res, next) {
+async function requireAuth(req, res, next) {
   const authHeader = req.headers['authorization'];
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Unauthorized. Please log in.' });
   }
 
-  const token = authHeader.split(' ')[1];
+  let payload;
   try {
-    const payload = jwt.verify(token, JWT_SECRET);
-    req.user = { id: payload.id, name: payload.name, role: payload.role };
-    next();
+    payload = jwt.verify(authHeader.split(' ')[1], JWT_SECRET);
   } catch {
     return res.status(401).json({ error: 'Invalid or expired session. Please log in again.' });
+  }
+
+  try {
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('id, name, role, active')
+      .eq('id', payload.id)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!user || user.active === false) {
+      return res.status(401).json({ error: 'This account is no longer active. Please log in again.' });
+    }
+
+    req.user = { id: user.id, name: user.name, role: user.role };
+    next();
+  } catch (err) {
+    console.error('requireAuth:', err.message);
+    res.status(500).json({ error: 'Could not verify your session. Please try again.' });
   }
 }
 

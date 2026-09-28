@@ -3,28 +3,56 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/png" href="/img/favicon.png">
   <title>Login – Sri Charan Constructions</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Barlow+Semi+Condensed:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
-<div class="login-wrap">
-  <div class="login-card">
-    <div class="login-card-body">
-      <div class="login-logo">SCC</div>
-      <h2>Sri Charan Constructions</h2>
-      <p>Enter your PIN to continue</p>
+<div class="login-wrap" id="login-wrap">
 
-      <div class="form-group" style="margin-bottom:14px;">
-        <label>PIN</label>
-        <input type="password" id="pin-input" placeholder="••••" maxlength="10" autocomplete="off"
-               onkeydown="if(event.key==='Enter') doLogin()">
+  <!-- Background: parallax layer > slow zoom layer, then shade, dust and vignette -->
+  <div class="login-bg" id="login-bg"><div class="login-bg-img"></div></div>
+  <div class="login-shade"></div>
+  <div class="login-dust" id="login-dust" aria-hidden="true"></div>
+
+  <!-- 3D stage -->
+  <div class="login-stage" id="login-stage">
+    <div class="login-card" id="login-card">
+      <div class="login-glare"></div>
+
+      <div class="login-card-body">
+        <div class="login-logo">
+          <div class="login-coin"><img src="/img/logo.png" alt="Sri Charan Constructions logo"></div>
+        </div>
+
+        <h2>SRI CHARAN CONSTRUCTIONS</h2>
+        <div class="login-tagline">Site Activity Log System</div>
+        <div class="login-divider"></div>
+
+        <div class="form-group login-field">
+          <label for="pin-input">Enter your PIN</label>
+          <div class="pin-wrap">
+            <input type="password" id="pin-input" placeholder="••••" maxlength="10"
+                   autocomplete="off" inputmode="numeric"
+                   onkeydown="if(event.key==='Enter') doLogin()">
+            <button type="button" class="pin-toggle" id="pin-toggle" aria-label="Show PIN" title="Show / hide PIN">
+              <svg id="eye-open" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>
+              <svg id="eye-shut" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 19c-7 0-11-7-11-7a19.8 19.8 0 0 1 5.06-5.94"/><path d="M9.9 4.24A10.9 10.9 0 0 1 12 5c7 0 11 7 11 7a19.7 19.7 0 0 1-3.16 4.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <button class="btn btn-primary login-btn" id="login-btn" onclick="doLogin()">
+          <span class="login-btn-text">Login</span>
+        </button>
+        <div class="login-error" id="login-error" role="alert"></div>
+
+        <div class="login-foot">
+          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          Secure access · Authorised personnel only
+        </div>
       </div>
-
-      <button class="btn btn-primary" style="width:100%;justify-content:center;" onclick="doLogin()">
-        Login
-      </button>
-      <div class="login-error" id="login-error"></div>
     </div>
   </div>
 </div>
@@ -39,20 +67,112 @@
     }
   })();
 
-  async function doLogin() {
-    const pin = document.getElementById('pin-input').value.trim();
-    const errEl = document.getElementById('login-error');
-    errEl.textContent = '';
-    if (!pin) { errEl.textContent = 'Please enter your PIN.'; return; }
+  const stage   = document.getElementById('login-stage');
+  const card    = document.getElementById('login-card');
+  const wrap    = document.getElementById('login-wrap');
+  const pinEl   = document.getElementById('pin-input');
+  const btn     = document.getElementById('login-btn');
+  const errEl   = document.getElementById('login-error');
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const canHover = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 
+  /* ── Login ─────────────────────────────────────────────────────────────── */
+  let busy = false;
+
+  function setBusy(on) {
+    busy = on;
+    btn.disabled = on;
+    btn.querySelector('.login-btn-text').textContent = on ? 'Signing in…' : 'Login';
+    btn.classList.toggle('is-busy', on);
+  }
+
+  function showError(msg) {
+    errEl.textContent = msg;
+    pinEl.classList.add('is-error');
+    card.classList.remove('shake');
+    void card.offsetWidth;            // restart the animation
+    card.classList.add('shake');
+    pinEl.value = '';
+    pinEl.focus({ preventScroll: true });
+  }
+
+  pinEl.addEventListener('input', () => { pinEl.classList.remove('is-error'); });
+  card.addEventListener('animationend', e => { if (e.animationName === 'shake') card.classList.remove('shake'); });
+
+  async function doLogin() {
+    if (busy) return;
+    const pin = pinEl.value.trim();
+    errEl.textContent = '';
+    if (!pin) { showError('Please enter your PIN.'); return; }
+
+    setBusy(true);
     try {
       await Auth.login(pin);
-      window.location.href = '/';
+      // Success: play the exit animation, then go to the app.
+      stage.classList.add('leaving');
+      wrap.classList.add('leaving');
+      setTimeout(() => { window.location.href = '/'; }, reduced ? 0 : 480);
     } catch (e) {
-      errEl.textContent = e.message || 'Login failed.';
-      document.getElementById('pin-input').value = '';
+      setBusy(false);
+      showError(e.message || 'Login failed.');
     }
   }
+
+  /* ── Show / hide PIN ───────────────────────────────────────────────────── */
+  document.getElementById('pin-toggle').addEventListener('click', () => {
+    const show = pinEl.type === 'password';
+    pinEl.type = show ? 'text' : 'password';
+    document.getElementById('eye-open').style.display = show ? 'none' : '';
+    document.getElementById('eye-shut').style.display = show ? '' : 'none';
+    document.getElementById('pin-toggle').setAttribute('aria-label', show ? 'Hide PIN' : 'Show PIN');
+    pinEl.focus();
+  });
+
+  /* ── 3D tilt + parallax (mouse only; phones get a gentle idle sway) ───── */
+  if (!reduced && canHover) {
+    let tx = 0, ty = 0, cx = 0, cy = 0;   // target / current, range -1..1
+    let gx = 50, gy = 30;                 // glare position in %
+    document.addEventListener('mousemove', e => {
+      tx = (e.clientX / window.innerWidth  - 0.5) * 2;
+      ty = (e.clientY / window.innerHeight - 0.5) * 2;
+      const r = card.getBoundingClientRect();
+      gx = Math.max(0, Math.min(100, ((e.clientX - r.left) / r.width)  * 100));
+      gy = Math.max(0, Math.min(100, ((e.clientY - r.top)  / r.height) * 100));
+    });
+    document.addEventListener('mouseleave', () => { tx = 0; ty = 0; gx = 50; gy = 30; });
+
+    (function frame() {
+      cx += (tx - cx) * 0.08;
+      cy += (ty - cy) * 0.08;
+      wrap.style.setProperty('--ry', (cx * 9).toFixed(2) + 'deg');
+      wrap.style.setProperty('--rx', (-cy * 7).toFixed(2) + 'deg');
+      wrap.style.setProperty('--bx', (-cx * 22).toFixed(1) + 'px');
+      wrap.style.setProperty('--by', (-cy * 14).toFixed(1) + 'px');
+      wrap.style.setProperty('--gx', gx.toFixed(1) + '%');
+      wrap.style.setProperty('--gy', gy.toFixed(1) + '%');
+      requestAnimationFrame(frame);
+    })();
+  } else if (!reduced) {
+    card.classList.add('idle-sway');
+  }
+
+  /* ── Floating dust specks ──────────────────────────────────────────────── */
+  if (!reduced) {
+    const dust = document.getElementById('login-dust');
+    for (let i = 0; i < 22; i++) {
+      const s = document.createElement('i');
+      const size = 2 + Math.random() * 4;
+      s.style.cssText =
+        `left:${Math.random() * 100}%;width:${size}px;height:${size}px;` +
+        `animation-duration:${9 + Math.random() * 12}s;animation-delay:${-Math.random() * 20}s;` +
+        `--drift:${(Math.random() * 80 - 40).toFixed(0)}px;`;
+      dust.appendChild(s);
+    }
+  }
+
+  // Desktop: focus the PIN box once the entrance animation has settled.
+  // Phones: don't — it would pop the keyboard up over the page before it's even seen.
+  if (canHover) setTimeout(() => pinEl.focus({ preventScroll: true }), reduced ? 0 : 700);
 </script>
 </body>
 </html>

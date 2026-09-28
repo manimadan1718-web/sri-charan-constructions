@@ -5,8 +5,9 @@ const ROLE_TABS = {
   summary:   ['owner', 'admin'],
   inventory: ['admin'],
   users:     ['admin'],
+  logs:      ['owner', 'admin'],
 };
-const TAB_ORDER = ['entry', 'records', 'summary', 'inventory', 'users'];
+const TAB_ORDER = ['entry', 'records', 'summary', 'inventory', 'users', 'logs'];
 
 /* ── Boot ────────────────────────────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', async () => {
@@ -16,12 +17,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     return;
   }
   const ok = await Auth.verify();
-  if (!ok) return; // api.js will redirect
+  if (!ok) {
+    // A 401 is redirected to the login page by api.js. Anything else
+    // (server down, network error) would otherwise leave a blank page.
+    if (sessionStorage.getItem('scc_token')) {
+      showToast('Cannot reach the server. Please refresh in a moment.', true);
+    }
+    return;
+  }
 
   const user = Auth.currentUser();
   if (!user) { Auth.logout(); return; }
 
   applyRoleUI(user.role);
+  initReasonModal();
 
   document.getElementById('header-user').textContent = `${user.name} / ${capitalize(user.role)}`;
   document.getElementById('f-date').value = today();
@@ -31,6 +40,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   await loadDropdownData();
   setupAutoCalculate();
+  toggleCategoryFields('f');
 
   const firstTab = TAB_ORDER.find(t => ROLE_TABS[t].includes(user.role)) || 'entry';
   switchTab(firstTab);
@@ -48,7 +58,36 @@ function applyRoleUI(role) {
 }
 
 /* ── Helpers ─────────────────────────────────────────────────────────────────── */
-function today() { return new Date().toISOString().split('T')[0]; }
+// Local calendar date as YYYY-MM-DD. (toISOString() is UTC, which gives
+// *yesterday's* date in India before 5:30 AM.)
+function today() {
+  const d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+// Everything that comes from the database or a user is escaped before being
+// put into innerHTML, otherwise a remark like <img onerror=...> would run.
+function esc(v) {
+  return String(v ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// Select a value even if it isn't in the dropdown (e.g. the vehicle/site/operator
+// was later marked inactive). Without this the select silently resets to blank
+// and saving the edit would wipe that field.
+function setSelectValue(id, value) {
+  const sel = document.getElementById(id);
+  if (!sel) return;
+  if (value && ![...sel.options].some(o => o.value === value)) {
+    const opt = document.createElement('option');
+    opt.value = value;
+    opt.textContent = value;
+    sel.appendChild(opt);
+  }
+  sel.value = value || '';
+}
 
 // Keep the last loaded records in memory so the Edit modal can look them up
 // without an extra round-trip to the server.
@@ -57,13 +96,21 @@ let currentRecords = [];
 /* ── Vehicle / Operator dropdowns (sourced from Inventory) ───────────────────── */
 async function loadDropdownData() {
   try {
-    const [vRes, oRes] = await Promise.all([Inventory.getVehicles(), Inventory.getOperators()]);
+    const [vRes, oRes, sRes] = await Promise.all([Inventory.getVehicles(), Inventory.getOperators(), Inventory.getSites()]);
     const vehicles  = (vRes && vRes.data) || [];
     const operators = (oRes && oRes.data) || [];
+    const sites     = (sRes && sRes.data) || [];
     populateSelect('f-vehicle',  vehicles,  'vehicle_no', 'Select vehicle…');
     populateSelect('f-operator', operators, 'name',       'Select operator…');
+    populateSelect('f-site',     sites,     'name',       'Select site…');
     populateSelect('e-vehicle',  vehicles,  'vehicle_no', 'Select vehicle…');
     populateSelect('e-operator', operators, 'name',       'Select operator…');
+    populateSelect('e-site',     sites,     'name',       'Select site…');
+    // Records filters: everything in the inventory — including inactive items,
+    // because old records can still belong to them.
+    populateFilterSelect('filter-vehicle', vehicles, 'vehicle_no', 'All vehicles');
+    populateFilterSelect('filter-site',    sites,    'name',       'All sites');
+    populateFilterSelect('filter-type',    distinctTypes(vehicles), 'type', 'All types');
   } catch {
     /* dropdowns stay empty if this role can't reach inventory (shouldn't happen) */
   }
@@ -83,6 +130,99 @@ function populateSelect(id, items, field, placeholder) {
   if (cur) sel.value = cur;
 }
 
+// Types typed as "Tipper" and "tipper" are the same type — list each once.
+function distinctTypes(vehicles) {
+  const seen = new Map();
+  vehicles.forEach(v => {
+    const t = (v.type || '').trim();
+    if (t && !seen.has(t.toLowerCase())) seen.set(t.toLowerCase(), t);
+  });
+  return [...seen.values()].sort((x, y) => x.localeCompare(y)).map(type => ({ type }));
+}
+
+// The dropdowns list what is in Inventory. Records can also hold values that are NOT
+// in Inventory (rental vehicles are typed in by hand; a site may have been removed).
+// Those are discovered from the records themselves and added, so nothing is unfindable.
+const filterLists  = {};                                          // id → { items, field, placeholder }
+const extraFilterValues = { 'filter-vehicle': new Set(), 'filter-site': new Set() };
+
+function populateFilterSelect(id, items, field, placeholder) {
+  filterLists[id] = { items, field, placeholder };
+  renderFilterSelect(id);
+}
+
+function renderFilterSelect(id) {
+  const sel = $(id);
+  const cfg = filterLists[id];
+  if (!sel || !cfg) return;
+  const cur = sel.value;
+  sel.innerHTML = '';
+  sel.appendChild(new Option(cfg.placeholder, ''));
+  const inInventory = new Set();
+  cfg.items.forEach(i => {
+    inInventory.add(i[cfg.field]);
+    const inactive = i.active === false;
+    sel.appendChild(new Option(inactive ? `${i[cfg.field]} (inactive)` : i[cfg.field], i[cfg.field]));
+  });
+  [...(extraFilterValues[id] || [])].filter(v => !inInventory.has(v)).sort()
+    .forEach(v => sel.appendChild(new Option(`${v} (not in inventory)`, v)));
+  // keep the current choice if it still exists
+  sel.value = [...sel.options].some(o => o.value === cur) ? cur : '';
+}
+
+function rememberRecordValues(records) {
+  records.forEach(r => {
+    if (r.vehicle_no) extraFilterValues['filter-vehicle'].add(r.vehicle_no);
+    if (r.site)       extraFilterValues['filter-site'].add(r.site);
+  });
+  renderFilterSelect('filter-vehicle');
+  renderFilterSelect('filter-site');
+}
+
+const FILTER_IDS = ['filter-date-from', 'filter-date-to', 'filter-category', 'filter-vehicle', 'filter-site', 'filter-type'];
+function syncFilterHighlights() {
+  FILTER_IDS.forEach(id => {
+    const el = $(id);
+    if (el && el.closest('.filter-field')) el.closest('.filter-field').classList.toggle('is-active', !!el.value);
+  });
+}
+
+/* ── Own vs Rental: swap the Vehicle/Operator dropdowns for free-text fields ─── */
+function toggleCategoryFields(prefix) {
+  const category      = document.getElementById(prefix + '-category').value;
+  const vehicleSelect  = document.getElementById(prefix + '-vehicle');
+  const vehicleText    = document.getElementById(prefix + '-vehicle-text');
+  const operatorSelect = document.getElementById(prefix + '-operator');
+  const operatorText   = document.getElementById(prefix + '-operator-text');
+  const isRental = category === 'rental';
+
+  vehicleSelect.style.display  = isRental ? 'none' : '';
+  vehicleText.style.display    = isRental ? '' : 'none';
+  operatorSelect.style.display = isRental ? 'none' : '';
+  operatorText.style.display   = isRental ? '' : 'none';
+
+  // Clear whichever pair just became hidden, so a stale value can't get submitted.
+  if (isRental) {
+    vehicleSelect.value  = '';
+    operatorSelect.value = '';
+  } else {
+    vehicleText.value  = '';
+    operatorText.value = '';
+  }
+}
+
+function getVehicleValue(prefix) {
+  const category = document.getElementById(prefix + '-category').value;
+  const el = document.getElementById(prefix + (category === 'rental' ? '-vehicle-text' : '-vehicle'));
+  return el.value.trim();
+}
+
+function getOperatorValue(prefix) {
+  const category = document.getElementById(prefix + '-category').value;
+  const el = document.getElementById(prefix + (category === 'rental' ? '-operator-text' : '-operator'));
+  return el.value.trim();
+}
+
 /* ── Auto-calculate Working Hours / Reading ──────────────────────────────────── */
 function setupAutoCalculate() {
   const startEl = document.getElementById('f-start');
@@ -95,8 +235,10 @@ function setupAutoCalculate() {
   // if the ENTIRE string is a number — e.g. "1250" or "1250.5".
   // Anything containing letters or a colon (":") is treated as a time instead,
   // so "8:30" is never misread as the number 8.
-  function isPureNumber(str) {
-    return /^\d+(\.\d+)?$/.test(str);
+  // An optional unit (km, hrs...) after the number is fine: "1250 km".
+  function parseReading(str) {
+    const m = str.match(/^(\d+(?:\.\d+)?)\s*([a-zA-Z]*)$/);
+    return m ? { num: parseFloat(m[1]), unit: m[2].toLowerCase() } : null;
   }
 
   // Handle 12-hour: 8:00 AM, 06:00 PM, 6:30PM   —   or 24-hour: 08:00, 18:45
@@ -140,13 +282,17 @@ function setupAutoCalculate() {
       return;
     }
 
-    // ── Try numeric (odometer/reading) — only if BOTH are pure numbers ──────
-    if (isPureNumber(s) && isPureNumber(c)) {
-      const sNum = parseFloat(s);
-      const cNum = parseFloat(c);
+    // ── Try numeric (odometer/reading) — only if BOTH are numbers with the same unit ──
+    const sRead = parseReading(s);
+    const cRead = parseReading(c);
+    if (sRead && cRead && sRead.unit === cRead.unit) {
+      const sNum = sRead.num;
+      const cNum = cRead.num;
       const diff = cNum - sNum;
       if (diff >= 0) {
-        hoursEl.value = diff % 1 === 0 ? diff.toString() : diff.toFixed(1);
+        const unit = sRead.unit ? ' ' + sRead.unit : '';
+        // round to 2 dp to avoid floating-point noise like 130.10000000000002
+        hoursEl.value = (Math.round(diff * 100) / 100).toString() + unit;
         if (hintEl) hintEl.textContent = `✅ Auto-calculated: ${cNum} − ${sNum} = ${hoursEl.value}`;
         hoursEl.style.borderColor = 'var(--green)';
       } else {
@@ -205,6 +351,7 @@ function switchTab(name) {
   if (name === 'summary')   { loadSummary(); populateMonthFilter(); }
   if (name === 'inventory') loadInventory();
   if (name === 'users')     loadUsers();
+  if (name === 'logs')      loadLogs(true);
 }
 
 /* ── Breakup rows (New Entry form) ───────────────────────────────────────────── */
@@ -245,26 +392,30 @@ function clearBreakup() {
 
 /* ── Form ────────────────────────────────────────────────────────────────────── */
 function clearForm() {
-  ['f-vehicle','f-start','f-close','f-hours','f-diesel','f-loads','f-operator','f-remarks']
+  ['f-vehicle','f-vehicle-text','f-start','f-close','f-hours','f-diesel','f-loads','f-operator','f-operator-text','f-remarks','f-site']
     .forEach(id => document.getElementById(id).value = '');
   document.getElementById('f-date').value = today();
+  document.getElementById('f-category').value = 'own';
+  toggleCategoryFields('f');
   clearBreakup();
   resetCalcHint();
 }
 
 async function saveEntry() {
   const date       = document.getElementById('f-date').value;
-  const vehicle_no = document.getElementById('f-vehicle').value.trim();
+  const vehicle_no = getVehicleValue('f');
   if (!date || !vehicle_no) { showToast('Date and Vehicle No. are required.', true); return; }
 
   const payload = {
     date, vehicle_no,
+    site: document.getElementById('f-site').value.trim(),
+    category: document.getElementById('f-category').value,
     start_reading: document.getElementById('f-start').value.trim(),
     close_reading: document.getElementById('f-close').value.trim(),
     working_hours: document.getElementById('f-hours').value.trim(),
     diesel:  parseFloat(document.getElementById('f-diesel').value) || 0,
     loads:   parseInt(document.getElementById('f-loads').value)    || 0,
-    operator: document.getElementById('f-operator').value.trim(),
+    operator: getOperatorValue('f'),
     remarks:  document.getElementById('f-remarks').value.trim(),
     breakup_rows: getBreakupData(),
   };
@@ -279,7 +430,17 @@ async function saveEntry() {
 }
 
 /* ── Records ─────────────────────────────────────────────────────────────────── */
+let recordsRequestSeq = 0;
+let recordsDebounce = null;
+
+// Used by the text filters (vehicle / site) so we don't fire a request per keystroke.
+function loadRecordsDebounced() {
+  clearTimeout(recordsDebounce);
+  recordsDebounce = setTimeout(loadRecords, 300);
+}
+
 async function loadRecords() {
+  const seq = ++recordsRequestSeq;
   const loading = document.getElementById('records-loading');
   const table   = document.getElementById('records-table');
   loading.style.display = 'block';
@@ -288,16 +449,31 @@ async function loadRecords() {
   const filters = {};
   const fFrom = document.getElementById('filter-date-from').value;
   const fTo   = document.getElementById('filter-date-to').value;
-  const fVeh  = document.getElementById('filter-vehicle').value.trim();
-  if (fFrom) filters.date_from = fFrom;
-  if (fTo)   filters.date_to   = fTo;
-  if (fVeh)  filters.vehicle   = fVeh;
+  const fVeh  = document.getElementById('filter-vehicle').value;
+  const fSite = document.getElementById('filter-site').value;
+  const fCat  = document.getElementById('filter-category').value;
+  const fType = document.getElementById('filter-type').value;
+  if (fType) filters.type       = fType;       // vehicle type from Inventory (Tipper, JCB…)
+  if (fFrom) filters.date_from  = fFrom;
+  if (fTo)   filters.date_to    = fTo;
+  if (fVeh)  filters.vehicle_no = fVeh;      // exact — the value comes from the dropdown
+  if (fSite) filters.site_name  = fSite;
+  if (fCat)  filters.category   = fCat;
 
   try {
     const res = await Entries.getAll(filters);
+    if (seq !== recordsRequestSeq) return; // a newer request superseded this one
     currentRecords = res.data || [];
+    // With no filter on, this is the complete list — learn any vehicles / sites that aren't in Inventory.
+    if (!Object.keys(filters).length) rememberRecordValues(currentRecords);
+    syncFilterHighlights();
+    const n = currentRecords.length;
+    document.getElementById('records-count').textContent =
+      `${n} record${n === 1 ? '' : 's'}${Object.keys(filters).length ? ' match your filters' : ''}`;
     renderRecordsTable(currentRecords);
+    loadHistoryCounts(seq);
   } catch (e) {
+    if (seq !== recordsRequestSeq) return;
     showToast('Failed to load records.', true);
   }
 
@@ -311,7 +487,7 @@ function renderRecordsTable(entries) {
   tbody.innerHTML = '';
 
   if (!entries.length) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="${isAdmin ? 13 : 11}">No records found.</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="${isAdmin ? 16 : 14}">No records found.</td></tr>`;
     return;
   }
 
@@ -324,17 +500,20 @@ function renderRecordsTable(entries) {
     tr.innerHTML = `
       <td>${i + 1}</td>
       <td>${fmtDate(e.date)}</td>
-      <td><strong>${e.vehicle_no}</strong></td>
-      <td>${e.start_reading || '–'}</td>
-      <td>${e.close_reading || '–'}</td>
-      <td>${e.working_hours || '–'}</td>
-      <td>${e.diesel ?? 0}</td>
-      <td>${e.loads ?? 0}</td>
-      <td>${e.operator || '–'}</td>
-      <td style="max-width:160px;white-space:normal;">${e.remarks || '–'}</td>
-      <td style="max-width:180px;white-space:normal;font-size:12px;color:var(--mid);">${breakupText}</td>
-      ${isAdmin ? `<td><button class="btn btn-outline btn-sm" onclick="openEditModal('${e.id}')">✏️</button></td>
-      <td><button class="btn btn-danger btn-sm" onclick="deleteEntry('${e.id}')">🗑</button></td>` : ''}`;
+      <td>${esc(e.site) || '–'}</td>
+      <td>${e.category === 'rental' ? '<span class="pill pill-rental">Rental</span>' : '<span class="pill pill-own">Own</span>'}</td>
+      <td><strong>${esc(e.vehicle_no)}</strong></td>
+      <td>${esc(e.start_reading) || '–'}</td>
+      <td>${esc(e.close_reading) || '–'}</td>
+      <td>${esc(e.working_hours) || '–'}</td>
+      <td>${esc(e.diesel ?? 0)}</td>
+      <td>${esc(e.loads ?? 0)}</td>
+      <td>${esc(e.operator) || '–'}</td>
+      <td style="max-width:160px;white-space:normal;">${esc(e.remarks) || '–'}</td>
+      <td style="max-width:180px;white-space:normal;font-size:12px;color:var(--mid);">${esc(breakupText)}</td>
+      <td class="hist-col"><button class="btn btn-outline btn-sm hist-btn" data-id="${esc(e.id)}" onclick="openHistory(this.dataset.id)" title="View history">${CLOCK_SVG}<span class="hist-count"></span></button></td>
+      ${isAdmin ? `<td class="edit-col"><button class="btn btn-outline btn-sm" onclick="openEditModal('${esc(e.id)}')">✏️</button></td>
+      <td class="del-col"><button class="btn btn-danger btn-sm" onclick="deleteEntry('${esc(e.id)}')">🗑</button></td>` : ''}`;
     tbody.appendChild(tr);
   });
 }
@@ -343,23 +522,38 @@ function clearFilters() {
   document.getElementById('filter-date-from').value = '';
   document.getElementById('filter-date-to').value   = '';
   document.getElementById('filter-vehicle').value   = '';
+  document.getElementById('filter-site').value      = '';
+  document.getElementById('filter-category').value  = '';
+  document.getElementById('filter-type').value      = '';
   loadRecords();
 }
 
 async function deleteEntry(id) {
-  if (!confirm('Delete this entry? This cannot be undone.')) return;
+  const entry = findRecordById(id);
+  const what  = entry ? `${entry.vehicle_no} · ${fmtDate(entry.date)}` : 'this entry';
+  const reason = await askReason({
+    title: 'Reason for Deletion',
+    intro: `You are deleting <strong>${esc(what)}</strong>. This cannot be undone, but the deletion and a copy of the entry are kept in the Activity Logs.`,
+    confirmLabel: 'Delete Entry',
+    danger: true,
+  });
+  if (!reason) return;
   try {
-    await Entries.delete(id);
+    await Entries.delete(id, reason);
     showToast('Entry deleted.');
     loadRecords();
   } catch (e) {
-    showToast('Delete failed.', true);
+    showToast('❌ ' + (e.message || 'Delete failed.'), true);
   }
 }
 
 /* ── Export CSV ──────────────────────────────────────────────────────────────── */
 function csvEscape(val) {
-  const s = (val === null || val === undefined) ? '' : String(val);
+  let s = (val === null || val === undefined) ? '' : String(val);
+  // Text starting with = + - @ is executed as a formula by Excel/Sheets
+  // (CSV injection). Prefix it with a quote so it stays plain text.
+  // Real numbers are left alone so negative values still export as numbers.
+  if (typeof val === 'string' && /^[=+\-@\t\r]/.test(s)) s = "'" + s;
   if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
   return s;
 }
@@ -367,13 +561,14 @@ function csvEscape(val) {
 function exportCSV() {
   if (!currentRecords.length) { showToast('No records to export.', true); return; }
 
-  const headers = ['Date','Vehicle No.','Start','Close','Working Hrs','Diesel (L)','Loads','Operator','Remarks','Breakup'];
+  const headers = ['Date','Site','Category','Vehicle No.','Start','Close','Working Hrs','Diesel (L)','Loads','Operator','Remarks','Breakup'];
   const rows = currentRecords.map(e => {
     const breakupText = (e.breakup_rows || [])
       .map(b => `${b.description || ''}: ${b.quantity || ''}`)
       .join(' | ');
     return [
-      fmtDate(e.date), e.vehicle_no, e.start_reading || '', e.close_reading || '',
+      fmtDate(e.date), e.site || '', e.category === 'rental' ? 'Rental' : 'Own', e.vehicle_no,
+      e.start_reading || '', e.close_reading || '',
       e.working_hours || '', e.diesel ?? 0, e.loads ?? 0, e.operator || '', e.remarks || '', breakupText
     ];
   });
@@ -401,13 +596,21 @@ function openEditModal(id) {
 
   document.getElementById('e-id').value       = entry.id;
   document.getElementById('e-date').value     = entry.date || '';
-  document.getElementById('e-vehicle').value  = entry.vehicle_no || '';
+  setSelectValue('e-site', entry.site || '');
+  document.getElementById('e-category').value = entry.category === 'rental' ? 'rental' : 'own';
+  toggleCategoryFields('e');
+  if (entry.category === 'rental') {
+    document.getElementById('e-vehicle-text').value  = entry.vehicle_no || '';
+    document.getElementById('e-operator-text').value = entry.operator || '';
+  } else {
+    setSelectValue('e-vehicle',  entry.vehicle_no || '');
+    setSelectValue('e-operator', entry.operator || '');
+  }
   document.getElementById('e-start').value    = entry.start_reading || '';
   document.getElementById('e-close').value    = entry.close_reading || '';
   document.getElementById('e-hours').value    = entry.working_hours || '';
   document.getElementById('e-diesel').value   = entry.diesel ?? '';
   document.getElementById('e-loads').value    = entry.loads ?? '';
-  document.getElementById('e-operator').value = entry.operator || '';
   document.getElementById('e-remarks').value  = entry.remarks || '';
 
   const buContainer = document.getElementById('e-breakup-rows');
@@ -426,8 +629,8 @@ function addEditBreakup(desc = '', qty = '') {
   const row = document.createElement('div');
   row.className = 'breakup-row';
   row.innerHTML = `
-    <input type="text" placeholder="Description" class="bu-desc" value="${(desc || '').replace(/"/g, '&quot;')}">
-    <input type="text" placeholder="Qty / Hours" class="bu-qty" style="max-width:150px;" value="${(qty || '').replace(/"/g, '&quot;')}">
+    <input type="text" placeholder="Description" class="bu-desc" value="${esc(desc)}">
+    <input type="text" placeholder="Qty / Hours" class="bu-qty" style="max-width:150px;" value="${esc(qty)}">
     <button class="remove-breakup-btn" onclick="removeEditBreakup(this)">×</button>`;
   document.getElementById('e-breakup-rows').appendChild(row);
 }
@@ -451,20 +654,40 @@ function getEditBreakupData() {
 async function submitEditEntry() {
   const id         = document.getElementById('e-id').value;
   const date       = document.getElementById('e-date').value;
-  const vehicle_no = document.getElementById('e-vehicle').value.trim();
+  const vehicle_no = getVehicleValue('e');
   if (!date || !vehicle_no) { showToast('Date and Vehicle No. are required.', true); return; }
 
   const payload = {
     date, vehicle_no,
+    site: document.getElementById('e-site').value.trim(),
+    category: document.getElementById('e-category').value,
     start_reading: document.getElementById('e-start').value.trim(),
     close_reading: document.getElementById('e-close').value.trim(),
     working_hours: document.getElementById('e-hours').value.trim(),
     diesel:  parseFloat(document.getElementById('e-diesel').value) || 0,
     loads:   parseInt(document.getElementById('e-loads').value)    || 0,
-    operator: document.getElementById('e-operator').value.trim(),
+    operator: getOperatorValue('e'),
     remarks:  document.getElementById('e-remarks').value.trim(),
     breakup_rows: getEditBreakupData(),
   };
+
+  // Work out what actually changed. Nothing changed → nothing to save (or explain).
+  const original = findRecordById(id);
+  const changes  = original ? diffEntry(original, payload) : [];
+  if (original && !changes.length) {
+    showToast('No changes were made.');
+    return;
+  }
+
+  // Every change must be explained: popup asks for a reason of 10+ characters.
+  const reason = await askReason({
+    title: 'Reason for Changes',
+    intro: 'Please explain why this entry is being changed. It is saved in the entry\'s history.',
+    confirmLabel: 'Confirm & Save',
+    changes,
+  });
+  if (!reason) return;
+  payload.reason = reason;
 
   try {
     await Entries.update(id, payload);
@@ -523,7 +746,7 @@ function renderVehicleBreakdown(entries) {
     const v = byVehicle[vehicle];
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><strong>${vehicle}</strong></td>
+      <td><strong>${esc(vehicle)}</strong></td>
       <td>${v.entries}</td>
       <td>${v.diesel.toFixed(2)}</td>
       <td>${v.loads}</td>`;
@@ -541,12 +764,12 @@ function renderSummariesTable(list) {
   list.forEach(s => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><strong>${s.period || '–'}</strong></td>
-      <td>${s.total_diesel ?? 0} L</td>
-      <td>${s.total_hours || '–'}</td>
-      <td>${s.total_loads ?? 0}</td>
-      <td style="max-width:200px;white-space:normal;font-size:12px;">${s.notes || '–'}</td>
-      <td><button class="btn btn-danger btn-sm" onclick="deleteSummary('${s.id}')">🗑</button></td>`;
+      <td><strong>${esc(s.period) || '–'}</strong></td>
+      <td>${esc(s.total_diesel ?? 0)} L</td>
+      <td>${esc(s.total_hours) || '–'}</td>
+      <td>${esc(s.total_loads ?? 0)}</td>
+      <td style="max-width:200px;white-space:normal;font-size:12px;">${esc(s.notes) || '–'}</td>
+      <td><button class="btn btn-danger btn-sm" onclick="deleteSummary('${esc(s.id)}')">🗑</button></td>`;
     tbody.appendChild(tr);
   });
 }
@@ -620,6 +843,11 @@ async function loadInventory() {
     const res = await Inventory.getOperators();
     renderOperatorsTable(res.data || []);
   } catch { showToast('Failed to load operators.', true); }
+
+  try {
+    const res = await Inventory.getSites();
+    renderSitesTable(res.data || []);
+  } catch { showToast('Failed to load sites.', true); }
 }
 
 function renderVehiclesTable(list) {
@@ -632,14 +860,14 @@ function renderVehiclesTable(list) {
   list.forEach(v => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><strong>${v.vehicle_no}</strong></td>
-      <td>${v.type || '–'}</td>
+      <td><strong>${esc(v.vehicle_no)}</strong></td>
+      <td>${esc(v.type) || '–'}</td>
       <td>
-        <button class="btn ${v.active ? 'btn-green' : 'btn-outline'} btn-sm" onclick="toggleVehicleActive('${v.id}', ${v.active})">
+        <button class="btn ${v.active ? 'btn-green' : 'btn-outline'} btn-sm" onclick="toggleVehicleActive('${esc(v.id)}', ${!!v.active})">
           ${v.active ? 'Active' : 'Inactive'}
         </button>
       </td>
-      <td><button class="btn btn-danger btn-sm" onclick="deleteVehicle('${v.id}')">🗑</button></td>`;
+      <td><button class="btn btn-danger btn-sm" onclick="deleteVehicle('${esc(v.id)}')">🗑</button></td>`;
     tbody.appendChild(tr);
   });
 }
@@ -654,14 +882,14 @@ function renderOperatorsTable(list) {
   list.forEach(o => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><strong>${o.name}</strong></td>
-      <td>${o.phone || '–'}</td>
+      <td><strong>${esc(o.name)}</strong></td>
+      <td>${esc(o.phone) || '–'}</td>
       <td>
-        <button class="btn ${o.active ? 'btn-green' : 'btn-outline'} btn-sm" onclick="toggleOperatorActive('${o.id}', ${o.active})">
+        <button class="btn ${o.active ? 'btn-green' : 'btn-outline'} btn-sm" onclick="toggleOperatorActive('${esc(o.id)}', ${!!o.active})">
           ${o.active ? 'Active' : 'Inactive'}
         </button>
       </td>
-      <td><button class="btn btn-danger btn-sm" onclick="deleteOperator('${o.id}')">🗑</button></td>`;
+      <td><button class="btn btn-danger btn-sm" onclick="deleteOperator('${esc(o.id)}')">🗑</button></td>`;
     tbody.appendChild(tr);
   });
 }
@@ -744,6 +972,68 @@ async function deleteOperator(id) {
   }
 }
 
+/* ── Sites (Inventory, Admin) ────────────────────────────────────────────── */
+function renderSitesTable(list) {
+  const tbody = document.getElementById('sites-body');
+  tbody.innerHTML = '';
+  if (!list.length) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="4">No sites yet. Add one above.</td></tr>';
+    return;
+  }
+  list.forEach(s => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><strong>${esc(s.name)}</strong></td>
+      <td>${esc(s.location) || '–'}</td>
+      <td>
+        <button class="btn ${s.active ? 'btn-green' : 'btn-outline'} btn-sm" onclick="toggleSiteActive('${esc(s.id)}', ${!!s.active})">
+          ${s.active ? 'Active' : 'Inactive'}
+        </button>
+      </td>
+      <td><button class="btn btn-danger btn-sm" onclick="deleteSite('${esc(s.id)}')">🗑</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+async function addSite() {
+  const name     = document.getElementById('inv-site-name').value.trim();
+  const location = document.getElementById('inv-site-location').value.trim();
+  if (!name) { showToast('Site name is required.', true); return; }
+
+  try {
+    await Inventory.addSite({ name, location });
+    showToast('✅ Site added!');
+    document.getElementById('inv-site-name').value = '';
+    document.getElementById('inv-site-location').value = '';
+    loadInventory();
+    loadDropdownData();
+  } catch (e) {
+    showToast('❌ ' + (e.message || 'Could not add site.'), true);
+  }
+}
+
+async function toggleSiteActive(id, currentActive) {
+  try {
+    await Inventory.updateSite(id, { active: !currentActive });
+    loadInventory();
+    loadDropdownData();
+  } catch (e) {
+    showToast('❌ ' + (e.message || 'Update failed.'), true);
+  }
+}
+
+async function deleteSite(id) {
+  if (!confirm('Remove this site from inventory?')) return;
+  try {
+    await Inventory.deleteSite(id);
+    showToast('Site removed.');
+    loadInventory();
+    loadDropdownData();
+  } catch (e) {
+    showToast('Delete failed.', true);
+  }
+}
+
 /* ── Users (Admin) ────────────────────────────────────────────────────────── */
 async function loadUsers() {
   try {
@@ -768,10 +1058,12 @@ function renderUsersTable(list) {
     const isSelf = me && u.id === me.id;
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><strong>${u.name}</strong>${isSelf ? ' <span class="badge">You</span>' : ''}</td>
-      <td>${u.pin}</td>
+      <td><strong>${esc(u.name)}</strong>${isSelf ? ' <span class="badge">You</span>' : ''}</td>
       <td>
-        <select onchange="updateUserRole('${u.id}', this.value)" ${isSelf ? 'disabled title="You cannot change your own role"' : ''} style="width:auto;padding:6px 8px;">
+        <button class="btn btn-outline btn-sm" data-id="${esc(u.id)}" data-name="${esc(u.name)}" onclick="resetUserPin(this)">🔑 Reset PIN</button>
+      </td>
+      <td>
+        <select onchange="updateUserRole('${esc(u.id)}', this.value)" ${isSelf ? 'disabled title="You cannot change your own role"' : ''} style="width:auto;padding:6px 8px;">
           <option value="supervisor" ${u.role === 'supervisor' ? 'selected' : ''}>Supervisor</option>
           <option value="owner" ${u.role === 'owner' ? 'selected' : ''}>Owner</option>
           <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
@@ -779,13 +1071,13 @@ function renderUsersTable(list) {
       </td>
       <td>
         <button class="btn ${u.active ? 'btn-green' : 'btn-outline'} btn-sm"
-          onclick="toggleUserActive('${u.id}', ${u.active})"
+          onclick="toggleUserActive('${esc(u.id)}', ${!!u.active})"
           ${isSelf ? 'disabled title="You cannot deactivate your own account"' : ''}>
           ${u.active ? 'Active' : 'Inactive'}
         </button>
       </td>
       <td>
-        <button class="btn btn-danger btn-sm" onclick="deleteUser('${u.id}')" ${isSelf ? 'disabled title="You cannot delete your own account"' : ''}>🗑</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteUser('${esc(u.id)}')" ${isSelf ? 'disabled title="You cannot delete your own account"' : ''}>🗑</button>
       </td>`;
     tbody.appendChild(tr);
   });
@@ -805,6 +1097,18 @@ async function createUser() {
     loadUsers();
   } catch (e) {
     showToast('❌ ' + (e.message || 'Could not create user.'), true);
+  }
+}
+
+async function resetUserPin(btn) {
+  const { id, name } = btn.dataset;
+  const pin = (prompt(`New PIN for ${name} (4–10 characters, no spaces):`) || '').trim();
+  if (!pin) return;
+  try {
+    await Users.update(id, { pin });
+    showToast('✅ PIN updated.');
+  } catch (e) {
+    showToast('❌ ' + (e.message || 'Could not update PIN.'), true);
   }
 }
 
@@ -837,4 +1141,338 @@ async function deleteUser(id) {
   } catch (e) {
     showToast('❌ ' + (e.message || 'Delete failed.'), true);
   }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Change detection  (mirrors the server, which is the final judge)
+   ═══════════════════════════════════════════════════════════════════════════════ */
+const ENTRY_FIELDS = [
+  ['date',          'Date',        'date'],
+  ['site',          'Site',        'text'],
+  ['category',      'Category',    'cat'],
+  ['vehicle_no',    'Vehicle',     'text'],
+  ['start_reading', 'Start',       'text'],
+  ['close_reading', 'Close',       'text'],
+  ['working_hours', 'Working Hrs', 'text'],
+  ['diesel',        'Diesel (L)',  'num'],
+  ['loads',         'Loads',       'num'],
+  ['operator',      'Operator',    'text'],
+  ['remarks',       'Remarks',     'text'],
+];
+const _n = v => (v === null || v === undefined ? '' : String(v).trim());
+
+function fieldValue(kind, v) {
+  const t = _n(v);
+  if (kind === 'cat')  return t === 'rental' ? 'Rental' : 'Own';
+  if (t === '')        return null;
+  if (kind === 'date') return fmtDate(t);
+  if (kind === 'num')  return Number.isFinite(Number(t)) ? String(Number(t)) : t;
+  return t;
+}
+function breakupPlain(rows) {
+  return (rows || []).filter(r => _n(r.description) || _n(r.quantity))
+    .map(r => `${_n(r.description)}: ${_n(r.quantity)}`).join(' | ') || null;
+}
+function breakupKey(rows) {   // order-insensitive
+  return (rows || []).filter(r => _n(r.description) || _n(r.quantity))
+    .map(r => `${_n(r.description)}\u0001${_n(r.quantity)}`).sort().join('\u0002');
+}
+function diffEntry(before, after) {
+  const out = [];
+  ENTRY_FIELDS.forEach(([col, label, kind]) => {
+    const a = fieldValue(kind, before[col]);
+    const b = fieldValue(kind, after[col]);
+    if (a !== b) out.push({ field: label, from: a, to: b });
+  });
+  if (breakupKey(before.breakup_rows) !== breakupKey(after.breakup_rows)) {
+    out.push({ field: 'Work Breakup', from: breakupPlain(before.breakup_rows), to: breakupPlain(after.breakup_rows) });
+  }
+  return out;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   "Reason" popup — edits and deletes must be explained (10+ characters)
+   ═══════════════════════════════════════════════════════════════════════════════ */
+const MIN_REASON = 10;
+let reasonResolve = null;
+
+const $ = id => document.getElementById(id);
+
+function reasonLen() { return $('reason-text').value.trim().length; }
+
+function updateReasonUI() {
+  const n = reasonLen();
+  const valid = n >= MIN_REASON;
+  $('reason-confirm').disabled = !valid;
+  const c = $('reason-count');
+  c.textContent = valid ? `${n} characters ✓` : `${n} / ${MIN_REASON} minimum`;
+  c.classList.toggle('is-ok', valid);
+  if (valid) $('reason-error').textContent = '';
+}
+
+function finishReason(value) {
+  $('reason-modal-overlay').classList.remove('open');
+  const done = reasonResolve;
+  reasonResolve = null;
+  if (done) done(value);
+}
+
+function initReasonModal() {
+  const box = $('reason-text');
+  box.addEventListener('input', updateReasonUI);
+  box.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $('reason-confirm').click(); }
+  });
+  $('reason-cancel').addEventListener('click', () => finishReason(null));
+  $('reason-confirm').addEventListener('click', () => {
+    const text = box.value.trim();
+    if (text.length < MIN_REASON) {
+      $('reason-error').textContent = `Please write at least ${MIN_REASON} characters.`;
+      box.focus();
+      return;
+    }
+    finishReason(text);
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    if ($('reason-modal-overlay').classList.contains('open')) finishReason(null);
+    else if ($('history-modal-overlay').classList.contains('open')) closeHistory();
+  });
+}
+
+/**
+ * Opens the popup and resolves with the reason text, or null if cancelled.
+ *   changes: [{field, from, to}]  — shown so the person can double-check what they're saving
+ */
+function askReason({ title, intro, confirmLabel, danger = false, changes = [] }) {
+  return new Promise(resolve => {
+    if (reasonResolve) reasonResolve(null);       // never leave an earlier popup hanging
+    reasonResolve = resolve;
+
+    $('reason-title').textContent = title;
+    $('reason-intro').innerHTML   = intro || '';
+    $('reason-changes').innerHTML = changes.length ? changeListHtml(changes) : '';
+    $('reason-changes').style.display = changes.length ? '' : 'none';
+    const btn = $('reason-confirm');
+    btn.textContent = confirmLabel;
+    btn.classList.toggle('btn-danger-solid', danger);
+    btn.classList.toggle('btn-primary', !danger);
+    $('reason-modal-overlay').classList.toggle('is-danger', danger);
+    $('reason-text').value = '';
+    $('reason-error').textContent = '';
+    updateReasonUI();
+    $('reason-modal-overlay').classList.add('open');
+    setTimeout(() => $('reason-text').focus(), 60);
+  });
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Shared log rendering
+   ═══════════════════════════════════════════════════════════════════════════════ */
+const CLOCK_SVG = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+
+function fmtDateTime(iso) {
+  if (!iso) return '–';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '–';
+  return d.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
+}
+
+const NOUNS = { entry: 'Entry', summary: 'Summary', vehicle: 'Vehicle', operator: 'Operator', site: 'Site', user: 'User' };
+const SPECIAL_ACTIONS = {
+  login:         { label: 'Login',          cls: 'pill-green'  },
+  login_failed:  { label: 'Failed login',   cls: 'pill-red'    },
+  login_blocked: { label: 'Login blocked',  cls: 'pill-red'    },
+  logout:        { label: 'Logout',         cls: 'pill-gray'   },
+  entry_updated: { label: 'Entry edited',   cls: 'pill-orange' },
+};
+function actionMeta(action) {
+  if (SPECIAL_ACTIONS[action]) return SPECIAL_ACTIONS[action];
+  const m = /^([a-z]+)_(added|created|updated|deleted)$/.exec(action || '');
+  if (m) {
+    return {
+      label: `${NOUNS[m[1]] || capitalize(m[1])} ${m[2]}`,
+      cls: m[2] === 'deleted' ? 'pill-red' : m[2] === 'updated' ? 'pill-orange' : 'pill-sky',
+    };
+  }
+  return { label: capitalize(String(action || 'activity').replace(/_/g, ' ')), cls: 'pill-gray' };
+}
+
+function deviceLabel(ua) {
+  if (!ua) return '';
+  const b = /Edg\//.test(ua) ? 'Edge' : /OPR\//.test(ua) ? 'Opera' : /Chrome\//.test(ua) ? 'Chrome'
+          : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'Browser';
+  const o = /Windows/.test(ua) ? 'Windows' : /Android/.test(ua) ? 'Android' : /iPhone|iPad/.test(ua) ? 'iOS'
+          : /Mac OS X/.test(ua) ? 'macOS' : /Linux/.test(ua) ? 'Linux' : '';
+  return o ? `${b} · ${o}` : b;
+}
+
+const dash = v => (v === null || v === undefined || v === '' ? '<span class="chg-none">—</span>' : esc(v));
+
+/** "Diesel (L):  42 → 45" lines */
+function changeListHtml(changes) {
+  return '<div class="chg-list">' + changes.map(c => `
+    <div class="chg">
+      <span class="chg-field">${esc(c.field)}</span>
+      <span class="chg-from">${dash(c.from)}</span>
+      <span class="chg-arrow">→</span>
+      <span class="chg-to">${dash(c.to)}</span>
+    </div>`).join('') + '</div>';
+}
+
+/** A snapshot ("created" / "deleted") lists values; an edit shows before → after. */
+function logChangesHtml(l) {
+  const ch = Array.isArray(l.changes) ? l.changes : [];
+  if (!ch.length) return '';
+  const isEdit = /_updated$/.test(l.action);
+  if (isEdit) return changeListHtml(ch);
+  const rows = ch.map(c => `<div class="snap"><span class="snap-f">${esc(c.field)}</span><span class="snap-v">${esc(c.to !== null && c.to !== undefined ? c.to : c.from)}</span></div>`).join('');
+  return `<details class="log-snap"><summary>${ch.length} field${ch.length === 1 ? '' : 's'}</summary>${rows}</details>`;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Per-entry history (Records tab → clock button)
+   ═══════════════════════════════════════════════════════════════════════════════ */
+async function loadHistoryCounts(seq) {
+  const ids = currentRecords.map(r => r.id);
+  if (!ids.length) return;
+  try {
+    const res = await Logs.entryCounts(ids);
+    if (seq !== recordsRequestSeq) return;            // a newer load replaced this table
+    const counts = (res && res.counts) || {};
+    document.querySelectorAll('#records-body .hist-btn').forEach(btn => {
+      const n = counts[btn.dataset.id] || 0;
+      const badge = btn.querySelector('.hist-count');
+      badge.textContent = n ? n : '';
+      btn.classList.toggle('has-edits', n > 0);
+      btn.title = n ? `Edited ${n} time${n === 1 ? '' : 's'} — view history` : 'View history';
+    });
+  } catch { /* non-critical: the buttons still work without the counts */ }
+}
+
+function closeHistory() { $('history-modal-overlay').classList.remove('open'); }
+
+async function openHistory(id) {
+  const entry = findRecordById(id);
+  $('history-entry').innerHTML = entry
+    ? `<strong>${esc(entry.vehicle_no)}</strong><span>${fmtDate(entry.date)}</span>${entry.site ? `<span>${esc(entry.site)}</span>` : ''}`
+    : '';
+  const body = $('history-body');
+  body.innerHTML = '<div class="loading"><span class="spinner"></span>Loading history…</div>';
+  $('history-modal-overlay').classList.add('open');
+
+  try {
+    const res = await Logs.forEntry(id);
+    body.innerHTML = timelineHtml(res.data || []);
+  } catch (e) {
+    body.innerHTML = `<div class="log-empty">${esc(e.message || 'Could not load the history.')}</div>`;
+  }
+}
+
+function timelineHtml(logs) {
+  if (!logs.length) {
+    return '<div class="log-empty">No history yet for this entry.<br><small>Entries saved before activity logging was switched on have no history.</small></div>';
+  }
+  const verb = { entry_created: 'Created', entry_updated: 'Edited', entry_deleted: 'Deleted' };
+  const dot  = { entry_created: 'dot-sky', entry_updated: 'dot-orange', entry_deleted: 'dot-red' };
+  return '<ol class="timeline">' + logs.map(l => `
+    <li class="tl-item">
+      <span class="tl-dot ${dot[l.action] || ''}"></span>
+      <div class="tl-head">
+        <span class="tl-title">${verb[l.action] || esc(actionMeta(l.action).label)}</span>
+        <span class="tl-by">by <strong>${esc(l.user_name || 'Unknown')}</strong>${l.user_role ? ` <span class="pill pill-gray">${esc(l.user_role)}</span>` : ''}</span>
+        <span class="tl-time">${fmtDateTime(l.created_at)}</span>
+      </div>
+      ${l.reason ? `<div class="tl-reason"><span>Reason</span>${esc(l.reason)}</div>` : ''}
+      ${logChangesHtml(l)}
+    </li>`).join('') + '</ol>';
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Activity Logs tab (Owner + Admin)
+   ═══════════════════════════════════════════════════════════════════════════════ */
+const LOGS_PAGE = 50;
+let logsShown = 0, logsTotal = 0, logsSeq = 0, logsDebounce = null;
+
+function loadLogsDebounced() {
+  clearTimeout(logsDebounce);
+  logsDebounce = setTimeout(() => loadLogs(true), 350);
+}
+
+function clearLogFilters() {
+  ['log-category', 'log-from', 'log-to', 'log-q'].forEach(id => { $(id).value = ''; });
+  loadLogs(true);
+}
+
+// A date picked in the browser means that day in the viewer's own time zone.
+const dayStart = d => (d ? new Date(`${d}T00:00:00`).toISOString() : '');
+const dayEnd   = d => (d ? new Date(`${d}T23:59:59.999`).toISOString() : '');
+
+async function loadLogs(reset = true) {
+  const seq = ++logsSeq;
+  const body = $('logs-body');
+  const moreBtn = $('logs-more-btn');
+  if (reset) {
+    logsShown = 0;
+    body.innerHTML = '<tr class="empty-row"><td colspan="5"><span class="spinner"></span>Loading…</td></tr>';
+    moreBtn.style.display = 'none';
+  } else {
+    moreBtn.disabled = true;
+  }
+
+  try {
+    const res = await Logs.list({
+      limit: LOGS_PAGE, offset: logsShown,
+      category: $('log-category').value,
+      q: $('log-q').value.trim(),
+      from: dayStart($('log-from').value),
+      to:   dayEnd($('log-to').value),
+    });
+    if (seq !== logsSeq) return;
+
+    const rows = res.data || [];
+    logsTotal = res.total ?? rows.length;
+    if (reset) body.innerHTML = '';
+    if (!rows.length && reset) {
+      body.innerHTML = '<tr class="empty-row"><td colspan="5">No activity found for these filters.</td></tr>';
+    }
+    rows.forEach(l => body.insertAdjacentHTML('beforeend', logRowHtml(l)));
+    logsShown += rows.length;
+
+    $('logs-count').textContent = logsTotal ? `Showing ${logsShown} of ${logsTotal}` : '';
+    moreBtn.style.display = logsShown < logsTotal ? '' : 'none';
+  } catch (e) {
+    if (seq !== logsSeq) return;
+    const setup = e.data && e.data.setup_required;
+    body.innerHTML = `<tr class="empty-row"><td colspan="5">${setup
+      ? '⚠️ The activity log table has not been created yet.<br><small>Open Supabase → SQL Editor and run <strong>run-in-supabase-logs.sql</strong>, then reload this page.</small>'
+      : esc(e.message || 'Could not load the activity logs.')}</td></tr>`;
+    $('logs-count').textContent = '';
+    moreBtn.style.display = 'none';
+  } finally {
+    moreBtn.disabled = false;
+  }
+}
+
+function logRowHtml(l) {
+  const meta = actionMeta(l.action);
+  const who  = l.user_name
+    ? `<strong>${esc(l.user_name)}</strong>${l.user_role ? ` <span class="pill pill-gray">${esc(l.user_role)}</span>` : ''}`
+    : '<span class="chg-none">Not signed in</span>';
+  const details =
+    (l.entity_label ? `<div class="log-label">${esc(l.entity_label)}</div>` : '') +
+    (l.reason ? `<div class="tl-reason"><span>Reason</span>${esc(l.reason)}</div>` : '') +
+    logChangesHtml(l);
+  return `<tr>
+    <td class="log-time">${fmtDateTime(l.created_at)}</td>
+    <td>${who}</td>
+    <td><span class="pill ${meta.cls}">${esc(meta.label)}</span></td>
+    <td class="log-details">${details || '<span class="chg-none">—</span>'}</td>
+    <td class="log-device">${esc(l.ip || '–')}${l.user_agent ? `<br><span title="${esc(l.user_agent)}">${esc(deviceLabel(l.user_agent))}</span>` : ''}</td>
+  </tr>`;
 }

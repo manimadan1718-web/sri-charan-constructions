@@ -1,0 +1,26 @@
+{
+  "id": "/",
+  "name": "Sri Charan Constructions — Site Log",
+  "short_name": "SCC Site Log",
+  "description": "Daily vehicle and machinery activity log for Sri Charan Constructions site staff.",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait-primary",
+  "background_color": "#F3F5F9",
+  "theme_color": "#1B2433",
+  "lang": "en-IN",
+  "dir": "ltr",
+  "categories": ["business", "productivity", "utilities"],
+  "icons": [
+    { "src": "/img/icon-192.png",          "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/img/icon-512.png",          "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/img/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "screenshots": [
+    { "src": "/img/screenshot-narrow-1.png", "sizes": "720x1280", "type": "image/png", "form_factor": "narrow",  "label": "Add a site entry" },
+    { "src": "/img/screenshot-narrow-2.png", "sizes": "720x1280", "type": "image/png", "form_factor": "narrow",  "label": "Browse records" },
+    { "src": "/img/screenshot-wide-1.png",   "sizes": "1280x800", "type": "image/png", "form_factor": "wide",    "label": "Records on a larger screen" }
+  ]
+}

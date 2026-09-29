@@ -66,6 +66,10 @@ app.use('/api/', limiter);
 
 // ── Serve Frontend ───────────────────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, '../frontend')));
+// Explicit route as a safety net: some static-file configs ignore dotfiles/dot-folders
+// by default, and .well-known/assetlinks.json must always be reachable for the
+// Android app (Play Store) to verify this domain and hide its browser address bar.
+app.use('/.well-known', express.static(path.join(__dirname, '../frontend/.well-known'), { dotfiles: 'allow' }));
 
 // ── API Routes ───────────────────────────────────────────────────────────────
 app.use('/api/auth',      authRouter);

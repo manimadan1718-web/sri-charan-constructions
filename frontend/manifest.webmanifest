@@ -1,7 +1,7 @@
 {
   "id": "/",
   "name": "Sri Charan Constructions — Site Log",
-  "short_name": "SCC Site Log",
+  "short_name": "SCC",
   "description": "Daily vehicle and machinery activity log for Sri Charan Constructions site staff.",
   "start_url": "/?source=pwa",
   "scope": "/",

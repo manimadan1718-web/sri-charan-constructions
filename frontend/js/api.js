@@ -220,3 +220,20 @@ const Logs = {
     return apiFetch('/logs/entry-counts', { method: 'POST', body: JSON.stringify({ ids }) });
   },
 };
+
+// ── Photo proof for the Starting / Closing reading ─────────────────────────────
+const Uploads = {
+  // Sends the (already shrunk) photo as raw bytes. Returns { path } — a "pending" photo that is
+  // attached for good when the entry is saved.
+  reading(blob) {
+    return apiFetch('/uploads/reading', { method: 'POST', headers: { 'Content-Type': blob.type || 'image/jpeg' }, body: blob });
+  },
+  // A link that opens a saved photo for 10 minutes (Owner / Admin).
+  signedUrl(path) {
+    return apiFetch(`/uploads/reading/url?path=${encodeURIComponent(path)}`);
+  },
+  // Throws away a photo that was uploaded but never saved with an entry.
+  discard(path) {
+    return apiFetch('/uploads/reading', { method: 'DELETE', body: JSON.stringify({ path }) });
+  },
+};

@@ -141,6 +141,14 @@ INSERT INTO users (name, pin, role)
 SELECT 'Admin', '${seedPinHash}', 'admin'
 WHERE NOT EXISTS (SELECT 1 FROM users WHERE role = 'admin');
 
+-- 11. Photo proof for the Starting / Closing reading (shown in Records).
+-- Only the file's path is stored here; the picture itself lives in a PRIVATE storage bucket.
+ALTER TABLE entries ADD COLUMN IF NOT EXISTS start_photo TEXT;
+ALTER TABLE entries ADD COLUMN IF NOT EXISTS close_photo TEXT;
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('reading-photos', 'reading-photos', false)
+ON CONFLICT (id) DO NOTHING;
+
 -- Make Supabase's API notice the new columns immediately.
 NOTIFY pgrst, 'reload schema';
 `;

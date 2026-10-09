@@ -81,10 +81,12 @@
       <div class="form-group">
         <label>Starting Reading / Time</label>
         <input type="text" id="f-start" placeholder="e.g. 08:00 AM or 1250">
+        <div class="photo-field" data-key="f-start" data-label="Starting reading photo"></div>
       </div>
       <div class="form-group">
         <label>Closing Reading / Time</label>
         <input type="text" id="f-close" placeholder="e.g. 06:00 PM or 1380">
+        <div class="photo-field" data-key="f-close" data-label="Closing reading photo"></div>
       </div>
       <div class="form-group">
         <label>Working Hours / Reading <span style="color:var(--orange);font-weight:400;">(auto-fills)</span></label>
@@ -489,10 +491,12 @@
       <div class="form-group">
         <label>Starting Reading / Time</label>
         <input type="text" id="e-start">
+        <div class="photo-field" data-key="e-start" data-label="Starting reading photo"></div>
       </div>
       <div class="form-group">
         <label>Closing Reading / Time</label>
         <input type="text" id="e-close">
+        <div class="photo-field" data-key="e-close" data-label="Closing reading photo"></div>
       </div>
       <div class="form-group">
         <label>Working Hours / Reading</label>
@@ -562,6 +566,23 @@
     <div class="btn-group">
       <button class="btn btn-primary" id="reason-confirm" disabled>Confirm &amp; Save</button>
       <button class="btn btn-outline" id="reason-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ READING PHOTO VIEWER ═══════════════════════ -->
+<div class="modal-overlay modal-top photo-viewer" id="photo-modal-overlay" onclick="if(event.target===this) closePhotoViewer()">
+  <div class="modal-card photo-card" role="dialog" aria-modal="true" aria-labelledby="photo-title">
+    <div class="card-header">
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></span> <span id="photo-title">Reading photo</span></div>
+      <div class="photo-actions">
+        <a class="btn btn-outline btn-sm" id="photo-open" target="_blank" rel="noopener" hidden>Open full size ↗</a>
+        <button class="btn btn-outline btn-sm" onclick="closePhotoViewer()">✕ Close</button>
+      </div>
+    </div>
+    <div class="photo-stage">
+      <img id="photo-img" alt="" hidden>
+      <div class="photo-msg" id="photo-msg" role="status"></div>
     </div>
   </div>
 </div>

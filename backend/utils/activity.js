@@ -80,11 +80,14 @@ const ENTRY_FIELDS = [
   ['loads',         'Loads',        'num'],
   ['operator',      'Operator',     'text'],
   ['remarks',       'Remarks',      'text'],
+  ['start_photo',   'Start photo',  'photo'],
+  ['close_photo',   'Close photo',  'photo'],
 ];
 
 function fmtValue(kind, v) {
   const s = norm(v);
   if (kind === 'cat')  return s === 'rental' ? 'Rental' : 'Own';
+  if (kind === 'photo') return s ? 'Attached' : null;
   if (s === '')        return null;
   if (kind === 'date') return fmtDateDMY(s);
   if (kind === 'num')  return Number.isFinite(Number(s)) ? String(Number(s)) : s;
@@ -104,6 +107,15 @@ const breakupKey = rows =>
 function entryDiff(before, afterFields, afterRows) {
   const out = [];
   for (const [col, label, kind] of ENTRY_FIELDS) {
+    if (kind === 'photo') {
+      // A photo that isn't mentioned in the new values is simply untouched.
+      if (!(col in afterFields)) continue;
+      const was = norm(before[col]);
+      const now = norm(afterFields[col]);
+      // Compare the stored paths, so swapping one photo for another counts as a change.
+      if (was !== now) out.push({ field: label, from: was ? 'Attached' : null, to: now ? (was ? 'Replaced' : 'Attached') : null });
+      continue;
+    }
     const a = fmtValue(kind, before[col]);
     const b = fmtValue(kind, afterFields[col]);
     if (a !== b) out.push({ field: label, from: a, to: b });

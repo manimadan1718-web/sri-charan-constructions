@@ -22,6 +22,8 @@ const authRouter      = require('./routes/auth');
 const usersRouter     = require('./routes/users');
 const inventoryRouter = require('./routes/inventory');
 const logsRouter      = require('./routes/logs');
+const uploadsRouter   = require('./routes/uploads');
+const { ensureBucket } = require('./utils/photos');
 const { checkLogsTable } = require('./utils/activity');
 
 const app = express();
@@ -78,6 +80,7 @@ app.use('/api/summaries', summariesRouter);
 app.use('/api/users',     usersRouter);
 app.use('/api/inventory', inventoryRouter);
 app.use('/api/logs',      logsRouter);
+app.use('/api/uploads',   uploadsRouter);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -100,7 +103,10 @@ app.get('*', (req, res) => {
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
   if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'Invalid JSON in request body.' });
-  if (err.type === 'entity.too.large')    return res.status(413).json({ error: 'Request is too large.' });
+  if (err.type === 'entity.too.large') {
+    const isPhoto = String(req.originalUrl || '').startsWith('/api/uploads');
+    return res.status(413).json({ error: isPhoto ? 'That photo is too large. Please choose a smaller one.' : 'Request is too large.' });
+  }
   console.error('Unhandled error:', err.message);
   res.status(err.status || 500).json({ error: 'Something went wrong on the server.' });
 });
@@ -111,4 +117,5 @@ app.listen(PORT, () => {
   console.log(`✅  Server running at http://localhost:${PORT}`);
   console.log(`📋  Environment: ${process.env.NODE_ENV || 'development'}\n`);
   checkLogsTable();   // warns if the activity_logs table hasn't been created yet
+  ensureBucket();     // creates the private photo bucket on first start if it doesn't exist
 });

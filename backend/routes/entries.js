@@ -5,6 +5,7 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const {
   logActivity, cleanReason, reasonError, entryDiff, entrySnapshot, entryLabel,
 } = require('../utils/activity');
+const photos = require('../utils/photos');
 
 router.use(requireAuth);
 
@@ -63,7 +64,38 @@ function parseEntryBody(body) {
     .map(r => ({ description: str(r && r.description) || '', quantity: str(r && r.quantity) || '' }))
     .filter(r => r.description || r.quantity);
 
-  return { fields, rows };
+  // Photo proof (start / close reading). A photo is only ever a path our own upload route handed out.
+  //   key missing        → "leave as it is"
+  //   null / ''          → "remove the photo"
+  //   valid path string  → "attach this photo"
+  const photoInput = {};
+  for (const col of photos.PHOTO_COLUMNS) {
+    if (!(col in b)) continue;
+    const v = b[col];
+    if (v === null || v === '') { photoInput[col] = null; continue; }
+    // Either a freshly uploaded photo (pending/…) or, when editing, the entry's own saved photo (readings/…).
+    if (!photos.isPendingPath(v) && !photos.isReadingPath(v)) return { error: 'One of the attached photos is not valid. Please attach it again.' };
+    photoInput[col] = v;
+  }
+
+  return { fields, rows, photoInput };
+}
+
+/** Checks that each photo path being attached really exists in storage. Returns an error message or null. */
+async function checkPhotosExist(paths) {
+  for (const p of paths) {
+    // eslint-disable-next-line no-await-in-loop
+    if (!(await photos.photoExists(p))) return 'An attached photo could not be found. Please attach it again.';
+  }
+  return null;
+}
+
+/** Sends the "database needs its one-time update" message instead of a raw database error. */
+function sendSaveError(res, err) {
+  if (photos.isMissingPhotoColumn(err)) {
+    return res.status(503).json({ error: photos.PHOTO_SETUP_MESSAGE, setup_required: true });
+  }
+  return res.status(500).json({ error: err.message });
 }
 
 // ── GET /api/entries  (Owner + Admin — "Records" & "Summary" reports) ───────
@@ -153,6 +185,25 @@ router.post('/', requireRole('supervisor', 'admin'), async (req, res) => {
     const parsed = parseEntryBody(req.body);
     if (parsed.error) return res.status(400).json({ error: parsed.error });
 
+    // Only photos that are actually attached are sent to the database (so entries without
+    // photos keep working even before the one-time database update has been run).
+    // Each new photo waits in pending/ and is moved to readings/ once the entry is saved.
+    const toPromote = [];
+    for (const [col, v] of Object.entries(parsed.photoInput)) {
+      if (v === null) continue;
+      if (!photos.isPendingPath(v)) return res.status(400).json({ error: 'One of the attached photos is not valid. Please attach it again.' });
+      const to = photos.toFinalPath(v);
+      parsed.fields[col] = to;
+      toPromote.push({ from: v, to });
+    }
+    if (new Set(toPromote.map(x => x.from)).size !== toPromote.length) {
+      return res.status(400).json({ error: 'The same photo cannot be used twice. Please attach a separate photo for each reading.' });
+    }
+    if (toPromote.length) {
+      const missing = await checkPhotosExist(toPromote.map(x => x.from));
+      if (missing) return res.status(400).json({ error: missing });
+    }
+
     const { data: entry, error: entryErr } = await supabase
       .from('entries')
       .insert(parsed.fields)
@@ -169,6 +220,10 @@ router.post('/', requireRole('supervisor', 'admin'), async (req, res) => {
       if (buErr) throw buErr;
     }
 
+    // Last step: file the photos under readings/. If this fails the entry is removed again (below)
+    // and the photos are put back, so the person can just press Save again.
+    if (toPromote.length) await photos.promoteAll(toPromote);
+
     await logActivity(req, {
       category: 'entry', action: 'entry_created', entityType: 'entry', entityId: entry.id,
       entityLabel: entryLabel(parsed.fields),
@@ -180,7 +235,7 @@ router.post('/', requireRole('supervisor', 'admin'), async (req, res) => {
     console.error('POST /entries:', err.message);
     // Don't leave a half-saved entry (entry without its breakup rows) behind.
     if (createdId) await supabase.from('entries').delete().eq('id', createdId);
-    res.status(500).json({ error: err.message });
+    sendSaveError(res, err);
   }
 });
 
@@ -206,6 +261,27 @@ router.put('/:id', requireRole('admin'), async (req, res) => {
     if (!original) return res.status(404).json({ error: 'Entry not found.' });
     snapshot = original;
 
+    // Photos: a freshly uploaded one (pending/…) replaces or attaches; null removes (only if there is one);
+    // a key that is missing — or the entry's own saved photo sent again — leaves the photo exactly as it is.
+    // Any other saved photo (e.g. one that belongs to a different entry) is refused.
+    const toPromote = [];
+    for (const [col, v] of Object.entries(parsed.photoInput)) {
+      if (v === null) {
+        if (original[col]) parsed.fields[col] = null;
+      } else if (photos.isPendingPath(v)) {
+        const to = photos.toFinalPath(v);
+        parsed.fields[col] = to;
+        toPromote.push({ from: v, to });
+      } else if (v === original[col]) {
+        parsed.fields[col] = v;
+      } else {
+        return res.status(400).json({ error: 'One of the attached photos is not valid. Please attach it again.' });
+      }
+    }
+    if (new Set(toPromote.map(x => x.from)).size !== toPromote.length) {
+      return res.status(400).json({ error: 'The same photo cannot be used twice. Please attach a separate photo for each reading.' });
+    }
+
     const changes = entryDiff(original, parsed.fields, parsed.rows);
     if (!changes.length) {
       // Nothing actually differs — don't touch the record or ask for a reason.
@@ -216,6 +292,11 @@ router.put('/:id', requireRole('admin'), async (req, res) => {
     const rErr = reasonError(req.body.reason, 'change an entry');
     if (rErr) return res.status(400).json({ error: rErr });
     const reason = cleanReason(req.body.reason);
+
+    if (toPromote.length) {
+      const missing = await checkPhotosExist(toPromote.map(x => x.from));
+      if (missing) return res.status(400).json({ error: missing });
+    }
 
     const { data: entry, error: entryErr } = await supabase
       .from('entries')
@@ -238,6 +319,9 @@ router.put('/:id', requireRole('admin'), async (req, res) => {
         .insert(parsed.rows.map(r => ({ entry_id: id, ...r })));
       if (buErr) throw buErr;
     }
+
+    // Last step: file new photos under readings/. If it fails, the catch block below restores the old entry.
+    if (toPromote.length) await photos.promoteAll(toPromote);
 
     await logActivity(req, {
       category: 'entry', action: 'entry_updated', entityType: 'entry', entityId: id,
@@ -263,7 +347,7 @@ router.put('/:id', requireRole('admin'), async (req, res) => {
         console.error('PUT /entries/:id rollback failed:', rbErr.message);
       }
     }
-    res.status(500).json({ error: err.message });
+    sendSaveError(res, err);
   }
 });
 

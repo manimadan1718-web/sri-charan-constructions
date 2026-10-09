@@ -783,6 +783,82 @@ tbody tr:hover td      { background: #FFFAF4; }
 .is-danger .modal-card { border-top-color: var(--brick); }
 .is-danger .ic { background: var(--brick-tint); color: var(--brick); }
 
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Photo proof (Starting / Closing reading)
+   ═══════════════════════════════════════════════════════════════════════════════ */
+.photo-field { margin-top: 2px; }
+.photo-field [hidden], .photo-viewer [hidden] { display: none !important; }
+
+.photo-add {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 13px;
+  background: var(--hazard-tint); color: var(--hazard-deep);
+  border: 1.5px dashed var(--hazard-mid); border-radius: 9px;
+  font-family: var(--font-body); font-size: 12.5px; font-weight: 600;
+  cursor: pointer;
+  transition: background-color .15s, border-color .15s;
+}
+.photo-add:hover { background: #FFE9D2; border-color: var(--hazard); }
+
+.photo-chip {
+  display: flex; align-items: center; gap: 9px;
+  padding: 6px 8px 6px 6px;
+  background: #fff; border: 1px solid var(--line); border-radius: 11px;
+}
+.photo-thumb {
+  width: 42px; height: 42px; flex-shrink: 0; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--paper); color: var(--hazard);
+  border: 1px solid var(--line); border-radius: 9px; overflow: hidden;
+  cursor: zoom-in;
+}
+.photo-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.photo-status { flex: 1; min-width: 0; font-size: 12px; font-weight: 600; color: var(--moss); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.photo-chip.is-busy .photo-status { color: var(--steel); }
+.photo-chip.is-busy .photo-status::before {
+  content: ''; display: inline-block; width: 11px; height: 11px; margin-right: 7px; vertical-align: -1px;
+  border: 2px solid var(--line); border-top-color: var(--hazard); border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+.photo-replace, .photo-x {
+  background: none; border: 0; cursor: pointer; border-radius: 7px;
+  font-family: var(--font-body); transition: background-color .15s, color .15s;
+}
+.photo-replace { padding: 5px 8px; font-size: 12px; font-weight: 600; color: var(--hazard-deep); }
+.photo-replace:hover:not(:disabled) { background: var(--hazard-tint); }
+.photo-x { width: 28px; height: 28px; font-size: 13px; color: var(--steel-light); }
+.photo-x:hover:not(:disabled) { background: var(--brick-tint); color: var(--brick); }
+.photo-replace:disabled, .photo-x:disabled { opacity: .45; cursor: not-allowed; }
+.photo-err { margin-top: 5px; font-size: 12px; font-weight: 600; line-height: 1.4; color: var(--brick); }
+.photo-err:empty { display: none; }
+
+/* Camera button next to a reading in the Records table */
+.reading-cell { display: inline-flex; align-items: center; }
+.photo-view {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; margin-left: 7px; padding: 0;
+  background: var(--hazard-tint); color: var(--hazard-deep);
+  border: 0; border-radius: 7px; cursor: pointer;
+  transition: background-color .15s;
+}
+.photo-view:hover { background: var(--hazard-mid); }
+
+/* Full-size photo viewer */
+.photo-viewer { z-index: 700; }
+.photo-card { max-width: 860px; padding: 20px 22px 22px; }
+.photo-card .card-header { margin-bottom: 14px; padding-bottom: 12px; }
+.photo-actions { display: flex; gap: 8px; }
+.photo-stage {
+  position: relative; min-height: 200px;
+  display: flex; align-items: center; justify-content: center;
+  background: #0F1520; border-radius: 12px; overflow: hidden;
+}
+.photo-stage img { max-width: 100%; max-height: 72vh; display: block; }
+.photo-msg { color: #CBD5E1; font-size: 13px; padding: 44px 24px; text-align: center; line-height: 1.5; }
+.photo-msg:empty { display: none; }
+
+@media print { .photo-field, .photo-view { display: none !important; } }
+
 /* ── Edit Entry Modal ────────────────────────────────────────────────────────── */
 .modal-overlay {
   display: none;

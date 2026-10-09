@@ -31,6 +31,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   applyRoleUI(user.role);
   initReasonModal();
+  initPhotoFields();
 
   document.getElementById('header-user').textContent = `${user.name} / ${capitalize(user.role)}`;
   document.getElementById('f-date').value = today();
@@ -399,15 +400,19 @@ function clearForm() {
   toggleCategoryFields('f');
   clearBreakup();
   resetCalcHint();
+  releasePhotos('f', true);   // photos that were never saved are thrown away
 }
 
 async function saveEntry() {
   const date       = document.getElementById('f-date').value;
   const vehicle_no = getVehicleValue('f');
   if (!date || !vehicle_no) { showToast('Date and Vehicle No. are required.', true); return; }
+  if (photosBusy('f')) { showToast('Please wait — the photo is still uploading.', true); return; }
 
   const payload = {
     date, vehicle_no,
+    start_photo: photoPath('f-start'),
+    close_photo: photoPath('f-close'),
     site: document.getElementById('f-site').value.trim(),
     category: document.getElementById('f-category').value,
     start_reading: document.getElementById('f-start').value.trim(),
@@ -423,6 +428,7 @@ async function saveEntry() {
   try {
     await Entries.create(payload);
     showToast('✅ Entry saved successfully!');
+    releasePhotos('f', false);   // the photos now belong to the entry — keep them
     clearForm();
   } catch (e) {
     showToast('❌ ' + (e.message || 'Save failed.'), true);
@@ -503,8 +509,8 @@ function renderRecordsTable(entries) {
       <td>${esc(e.site) || '–'}</td>
       <td>${e.category === 'rental' ? '<span class="pill pill-rental">Rental</span>' : '<span class="pill pill-own">Own</span>'}</td>
       <td><strong>${esc(e.vehicle_no)}</strong></td>
-      <td>${esc(e.start_reading) || '–'}</td>
-      <td>${esc(e.close_reading) || '–'}</td>
+      <td><span class="reading-cell">${esc(e.start_reading) || '–'}${photoChipHtml(e.start_photo, `Starting reading · ${e.vehicle_no} · ${fmtDate(e.date)}`)}</span></td>
+      <td><span class="reading-cell">${esc(e.close_reading) || '–'}${photoChipHtml(e.close_photo, `Closing reading · ${e.vehicle_no} · ${fmtDate(e.date)}`)}</span></td>
       <td>${esc(e.working_hours) || '–'}</td>
       <td>${esc(e.diesel ?? 0)}</td>
       <td>${esc(e.loads ?? 0)}</td>
@@ -561,14 +567,14 @@ function csvEscape(val) {
 function exportCSV() {
   if (!currentRecords.length) { showToast('No records to export.', true); return; }
 
-  const headers = ['Date','Site','Category','Vehicle No.','Start','Close','Working Hrs','Diesel (L)','Loads','Operator','Remarks','Breakup'];
+  const headers = ['Date','Site','Category','Vehicle No.','Start','Start Photo','Close','Close Photo','Working Hrs','Diesel (L)','Loads','Operator','Remarks','Breakup'];
   const rows = currentRecords.map(e => {
     const breakupText = (e.breakup_rows || [])
       .map(b => `${b.description || ''}: ${b.quantity || ''}`)
       .join(' | ');
     return [
       fmtDate(e.date), e.site || '', e.category === 'rental' ? 'Rental' : 'Own', e.vehicle_no,
-      e.start_reading || '', e.close_reading || '',
+      e.start_reading || '', e.start_photo ? 'Yes' : 'No', e.close_reading || '', e.close_photo ? 'Yes' : 'No',
       e.working_hours || '', e.diesel ?? 0, e.loads ?? 0, e.operator || '', e.remarks || '', breakupText
     ];
   });
@@ -612,6 +618,9 @@ function openEditModal(id) {
   document.getElementById('e-diesel').value   = entry.diesel ?? '';
   document.getElementById('e-loads').value    = entry.loads ?? '';
   document.getElementById('e-remarks').value  = entry.remarks || '';
+  releasePhotos('e', true);
+  setExistingPhoto('e-start', entry.start_photo || null);
+  setExistingPhoto('e-close', entry.close_photo || null);
 
   const buContainer = document.getElementById('e-breakup-rows');
   buContainer.innerHTML = '';
@@ -623,6 +632,7 @@ function openEditModal(id) {
 
 function closeEditModal() {
   document.getElementById('edit-modal-overlay').classList.remove('open');
+  releasePhotos('e', true);   // a photo that was picked but never saved is thrown away
 }
 
 function addEditBreakup(desc = '', qty = '') {
@@ -656,9 +666,12 @@ async function submitEditEntry() {
   const date       = document.getElementById('e-date').value;
   const vehicle_no = getVehicleValue('e');
   if (!date || !vehicle_no) { showToast('Date and Vehicle No. are required.', true); return; }
+  if (photosBusy('e')) { showToast('Please wait — the photo is still uploading.', true); return; }
 
   const payload = {
     date, vehicle_no,
+    start_photo: photoPath('e-start'),
+    close_photo: photoPath('e-close'),
     site: document.getElementById('e-site').value.trim(),
     category: document.getElementById('e-category').value,
     start_reading: document.getElementById('e-start').value.trim(),
@@ -692,6 +705,7 @@ async function submitEditEntry() {
   try {
     await Entries.update(id, payload);
     showToast('✅ Entry updated successfully!');
+    releasePhotos('e', false);   // saved — keep the photos
     closeEditModal();
     loadRecords();
   } catch (e) {
@@ -1159,6 +1173,8 @@ const ENTRY_FIELDS = [
   ['loads',         'Loads',       'num'],
   ['operator',      'Operator',    'text'],
   ['remarks',       'Remarks',     'text'],
+  ['start_photo',   'Start photo', 'photo'],
+  ['close_photo',   'Close photo', 'photo'],
 ];
 const _n = v => (v === null || v === undefined ? '' : String(v).trim());
 
@@ -1181,6 +1197,13 @@ function breakupKey(rows) {   // order-insensitive
 function diffEntry(before, after) {
   const out = [];
   ENTRY_FIELDS.forEach(([col, label, kind]) => {
+    if (kind === 'photo') {
+      if (!(col in after)) return;
+      const was = _n(before[col]);
+      const now = _n(after[col]);       // a new upload has a different path, so a swap counts as a change
+      if (was !== now) out.push({ field: label, from: was ? 'Attached' : null, to: now ? (was ? 'Replaced' : 'Attached') : null });
+      return;
+    }
     const a = fieldValue(kind, before[col]);
     const b = fieldValue(kind, after[col]);
     if (a !== b) out.push({ field: label, from: a, to: b });
@@ -1237,7 +1260,8 @@ function initReasonModal() {
   });
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
-    if ($('reason-modal-overlay').classList.contains('open')) finishReason(null);
+    if ($('photo-modal-overlay').classList.contains('open')) closePhotoViewer();
+    else if ($('reason-modal-overlay').classList.contains('open')) finishReason(null);
     else if ($('history-modal-overlay').classList.contains('open')) closeHistory();
   });
 }
@@ -1475,4 +1499,261 @@ function logRowHtml(l) {
     <td class="log-details">${details || '<span class="chg-none">—</span>'}</td>
     <td class="log-device">${esc(l.ip || '–')}${l.user_agent ? `<br><span title="${esc(l.user_agent)}">${esc(deviceLabel(l.user_agent))}</span>` : ''}</td>
   </tr>`;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Photo proof for the Starting / Closing reading
+   ───────────────────────────────────────────────────────────────────────────────
+   • The photo is shrunk in the browser first (≈150 KB instead of 3–8 MB) so it uploads
+     quickly on site mobile data and doesn't fill the storage.
+   • It uploads as soon as it is picked, so a problem shows up right at the field —
+     not after pressing Save. Until the entry is saved it is only a "pending" upload;
+     removing it or clearing the form discards it.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+const PHOTO_MAX_EDGE  = 1280;                 // longest side, in pixels — plenty to read a dial or odometer
+const PHOTO_QUALITY   = 0.72;
+const PHOTO_MAX_INPUT = 30 * 1024 * 1024;     // refuse absurdly large originals before even trying
+const PHOTO_GROUPS    = { f: ['f-start', 'f-close'], e: ['e-start', 'e-close'] };
+
+const CAMERA_SVG = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>';
+
+// key → { saved: path already stored with the entry (edit only), path: what will be saved,
+//         preview: local thumbnail URL, busy, fresh: [pending uploads not yet saved], error }
+const photoState = {};
+const blankPhoto = () => ({ saved: null, path: null, preview: null, busy: false, fresh: [], error: '' });
+function ps(key) { return photoState[key] || (photoState[key] = blankPhoto()); }
+const photoBox = key => document.querySelector(`.photo-field[data-key="${key}"]`);
+
+function photoFieldHtml() {
+  return `
+    <input type="file" class="photo-file" accept="image/*" hidden>
+    <button type="button" class="photo-add">${CAMERA_SVG}<span>Add photo proof</span></button>
+    <div class="photo-chip" hidden>
+      <button type="button" class="photo-thumb" title="View photo" aria-label="View photo">
+        <img alt="" hidden><span class="photo-icon">${CAMERA_SVG}</span>
+      </button>
+      <span class="photo-status"></span>
+      <button type="button" class="photo-replace">Replace</button>
+      <button type="button" class="photo-x" title="Remove photo" aria-label="Remove photo">✕</button>
+    </div>
+    <div class="photo-err" role="alert"></div>`;
+}
+
+function initPhotoFields() {
+  document.querySelectorAll('.photo-field[data-key]').forEach(box => {
+    const key = box.dataset.key;
+    box.innerHTML = photoFieldHtml();
+    const file = box.querySelector('.photo-file');
+    box.querySelector('.photo-add').addEventListener('click', () => file.click());
+    box.querySelector('.photo-replace').addEventListener('click', () => file.click());
+    box.querySelector('.photo-thumb').addEventListener('click', () => viewFieldPhoto(key));
+    box.querySelector('.photo-x').addEventListener('click', () => removePhoto(key));
+    file.addEventListener('change', () => {
+      const f = file.files && file.files[0];
+      file.value = '';                       // so picking the same photo again still fires "change"
+      if (f) onPhotoChosen(key, f);
+    });
+    renderPhoto(key);
+  });
+
+  // Camera buttons in the Records table
+  const body = document.getElementById('records-body');
+  if (body) body.addEventListener('click', ev => {
+    const b = ev.target.closest('.photo-view');
+    if (b) viewSavedPhoto(b.dataset.path, b.dataset.title);
+  });
+}
+
+function renderPhoto(key) {
+  const box = photoBox(key);
+  if (!box) return;
+  const st = ps(key);
+  const has = !!st.path || st.busy;
+  box.querySelector('.photo-add').hidden = has;
+  const chip = box.querySelector('.photo-chip');
+  chip.hidden = !has;
+  chip.classList.toggle('is-busy', st.busy);
+
+  const img = chip.querySelector('img'), icon = chip.querySelector('.photo-icon');
+  if (st.preview) { img.src = st.preview; img.hidden = false; icon.hidden = true; }
+  else            { img.removeAttribute('src'); img.hidden = true; icon.hidden = false; }
+
+  chip.querySelector('.photo-status').textContent =
+    st.busy ? 'Uploading…' : (st.path && st.path === st.saved ? 'On file' : 'Attached ✓');
+  chip.querySelector('.photo-replace').disabled = st.busy;
+  chip.querySelector('.photo-x').disabled = st.busy;
+  box.querySelector('.photo-err').textContent = st.error || '';
+}
+
+const photoPath  = key => ps(key).path || null;
+const photosBusy = group => (PHOTO_GROUPS[group] || []).some(k => ps(k).busy);
+
+function discardPendingPhoto(path) {
+  Uploads.discard(path).catch(() => {});     // a leftover file is harmless — never bother the person
+}
+
+/** Shows a photo that is already saved with an entry (edit dialog). */
+function setExistingPhoto(key, path) {
+  photoState[key] = { ...blankPhoto(), saved: path, path };
+  renderPhoto(key);
+}
+
+/** Clears a group of photo fields. discard=true also throws away uploads that were never saved. */
+function releasePhotos(group, discard) {
+  (PHOTO_GROUPS[group] || []).forEach(key => {
+    const st = ps(key);
+    if (discard) st.fresh.forEach(discardPendingPhoto);
+    if (st.preview) URL.revokeObjectURL(st.preview);
+    photoState[key] = blankPhoto();
+    renderPhoto(key);
+  });
+}
+
+function removePhoto(key) {
+  const st = ps(key);
+  if (st.busy) return;
+  if (st.path && st.fresh.includes(st.path)) {
+    discardPendingPhoto(st.path);
+    st.fresh = st.fresh.filter(p => p !== st.path);
+  }
+  if (st.preview) URL.revokeObjectURL(st.preview);
+  st.path = null; st.preview = null; st.error = '';
+  renderPhoto(key);
+}
+
+/** Shrinks a photo to a JPEG no wider/taller than PHOTO_MAX_EDGE. */
+async function compressImage(file) {
+  const src = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const i = new Image();
+      i.onload = () => resolve(i);
+      i.onerror = () => reject(new Error('unsupported-image'));
+      i.src = src;
+    });
+    const w = img.naturalWidth, h = img.naturalHeight;
+    if (!w || !h) throw new Error('unsupported-image');
+    const scale = Math.min(1, PHOTO_MAX_EDGE / Math.max(w, h));
+    const cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = cw; canvas.height = ch;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff';                  // PNG transparency would otherwise turn black
+    ctx.fillRect(0, 0, cw, ch);
+    ctx.drawImage(img, 0, 0, cw, ch);       // browsers apply the phone's rotation here
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', PHOTO_QUALITY));
+    if (!blob) throw new Error('unsupported-image');
+    return blob;
+  } finally {
+    URL.revokeObjectURL(src);
+  }
+}
+
+function photoErrorText(e) {
+  if (e && e.message === 'unsupported-image') return 'That file could not be read as a photo. Please choose a JPG or PNG picture.';
+  return (e && e.message) || 'The photo could not be uploaded. Please try again.';
+}
+
+async function onPhotoChosen(key, file) {
+  const st = ps(key);
+  if (st.busy) return;
+  st.error = '';
+  if (file.size > PHOTO_MAX_INPUT) { st.error = 'That photo is too large. Please choose a smaller one.'; renderPhoto(key); return; }
+
+  const prev = { path: st.path, preview: st.preview };
+  st.busy = true;
+  renderPhoto(key);
+  let newPreview = null;
+  try {
+    const blob = await compressImage(file);
+    newPreview = URL.createObjectURL(blob);
+    st.preview = newPreview;
+    renderPhoto(key);                        // show the thumbnail while it uploads
+    const res = await Uploads.reading(blob);
+
+    // The form/dialog may have been cleared or closed while uploading — then this photo isn't wanted.
+    if (photoState[key] !== st) { discardPendingPhoto(res.path); URL.revokeObjectURL(newPreview); return; }
+
+    if (prev.path && st.fresh.includes(prev.path)) {       // the earlier unsaved upload is replaced
+      discardPendingPhoto(prev.path);
+      st.fresh = st.fresh.filter(p => p !== prev.path);
+    }
+    if (prev.preview) URL.revokeObjectURL(prev.preview);
+    st.path = res.path;
+    st.fresh.push(res.path);
+  } catch (e) {
+    if (photoState[key] !== st) { if (newPreview) URL.revokeObjectURL(newPreview); return; }
+    if (newPreview) URL.revokeObjectURL(newPreview);
+    st.preview = prev.preview;               // back to how it was
+    st.error = photoErrorText(e);
+  } finally {
+    if (photoState[key] === st) { st.busy = false; renderPhoto(key); }
+  }
+}
+
+/* ── Viewing photos ─────────────────────────────────────────────────────────── */
+let photoViewerSeq = 0;
+
+function photoChipHtml(path, title) {
+  if (!path) return '';
+  return `<button type="button" class="photo-view" data-path="${esc(path)}" data-title="${esc(title)}" title="View photo proof" aria-label="View photo proof">${CAMERA_SVG}</button>`;
+}
+
+function openPhotoViewer(title) {
+  document.getElementById('photo-title').textContent = title || 'Reading photo';
+  const img = document.getElementById('photo-img');
+  img.hidden = true; img.removeAttribute('src');
+  document.getElementById('photo-open').hidden = true;
+  document.getElementById('photo-msg').textContent = '';
+  document.getElementById('photo-modal-overlay').classList.add('open');
+}
+
+function setPhotoViewerMessage(text) {
+  const img = document.getElementById('photo-img');
+  img.hidden = true; img.removeAttribute('src');
+  document.getElementById('photo-open').hidden = true;
+  document.getElementById('photo-msg').textContent = text;
+}
+
+function setPhotoViewerImage(url, canOpenFull) {
+  const img = document.getElementById('photo-img');
+  const msg = document.getElementById('photo-msg');
+  const link = document.getElementById('photo-open');
+  msg.textContent = '';
+  img.onload  = () => { img.hidden = false; msg.textContent = ''; };
+  img.onerror = () => setPhotoViewerMessage('The photo could not be loaded. The link may have expired — close this and open it again.');
+  img.src = url;
+  if (canOpenFull) { link.href = url; link.hidden = false; }
+}
+
+function closePhotoViewer() {
+  photoViewerSeq++;                          // ignore any link that is still being fetched
+  const img = document.getElementById('photo-img');
+  img.onload = img.onerror = null;
+  img.removeAttribute('src');
+  document.getElementById('photo-modal-overlay').classList.remove('open');
+}
+
+/** Opens a photo that is saved with an entry. The server hands out a link that works for 10 minutes. */
+async function viewSavedPhoto(path, title) {
+  const seq = ++photoViewerSeq;
+  openPhotoViewer(title);
+  setPhotoViewerMessage('Loading photo…');
+  try {
+    const res = await Uploads.signedUrl(path);
+    if (seq !== photoViewerSeq) return;
+    setPhotoViewerImage(res.url, true);
+  } catch (e) {
+    if (seq !== photoViewerSeq) return;
+    setPhotoViewerMessage((e && e.message) || 'That photo could not be opened.');
+  }
+}
+
+function viewFieldPhoto(key) {
+  const st = ps(key);
+  const box = photoBox(key);
+  const title = (box && box.dataset.label) || 'Reading photo';
+  if (st.preview) { photoViewerSeq++; openPhotoViewer(title); setPhotoViewerImage(st.preview, false); }
+  else if (st.path) viewSavedPhoto(st.path, title);
 }

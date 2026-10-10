@@ -1,6 +1,7 @@
 require('dotenv').config();
 const jwt = require('jsonwebtoken');
 const supabase = require('../config/supabase');
+const { logActivity } = require('../utils/activity');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -19,7 +20,8 @@ async function requireAuth(req, res, next) {
 
   let payload;
   try {
-    payload = jwt.verify(authHeader.split(' ')[1], JWT_SECRET);
+    // Only HS256 is accepted — a token claiming another algorithm (or "none") is refused outright.
+    payload = jwt.verify(authHeader.split(' ')[1], JWT_SECRET, { algorithms: ['HS256'] });
   } catch {
     return res.status(401).json({ error: 'Invalid or expired session. Please log in again.' });
   }
@@ -49,8 +51,14 @@ async function requireAuth(req, res, next) {
  * e.g. requireRole('admin')  or  requireRole('owner', 'admin')
  */
 function requireRole(...roles) {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     if (!req.user || !roles.includes(req.user.role)) {
+      // The screens never offer an action a person may not do, so a refused request means someone
+      // is poking at the API directly. Record it.
+      await logActivity(req, {
+        category: 'auth', action: 'access_denied',
+        entityLabel: `${req.method} ${String(req.originalUrl || '').split('?')[0]}`.slice(0, 150),
+      });
       return res.status(403).json({ error: 'You do not have permission to do this.' });
     }
     next();

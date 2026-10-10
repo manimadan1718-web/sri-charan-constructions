@@ -44,8 +44,8 @@ Download from https://nodejs.org (LTS version)
 3. Go to **Project Settings → API**
 4. Copy:
    - **Project URL** → `SUPABASE_URL`
-   - **anon / public key** → `SUPABASE_ANON_KEY`
-   - **service_role key** → `SUPABASE_SERVICE_KEY`
+   - **service_role (secret) key** → `SUPABASE_SERVICE_KEY`  — the server uses ONLY this key.
+     The public *anon* key is **not** needed anywhere, so do not put it in `.env` or on the host.
 
 ### 3. Create the database tables
 ```bash
@@ -108,9 +108,14 @@ pm2 save
 
 ## 🔒 Security Notes
 
-- Change `SUPERVISOR_PIN` in `.env` to something strong before deploying
-- Never commit your `.env` file (it's in `.gitignore`)
-- For multi-user support, upgrade auth to JWT tokens
+- Change `SUPERVISOR_PIN` (the first Admin's PIN) to something strong BEFORE running `npm run setup-db`,
+  then change it again from the Users screen. Obvious PINs (1234, 0000, …) are refused by the app.
+- `JWT_SECRET` must be a long random value (64+ characters). Generate one with:
+  `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`
+- `SUPABASE_SERVICE_KEY` must be the secret **service_role** key. The server warns at start-up if it looks like a public key.
+- Never commit your `.env` file (it's in `.gitignore`). If a key was ever committed or shared, rotate it in Supabase.
+- After deploying, run `run-in-supabase-2-database-security.sql` once so the database cannot be reached
+  with the public key (see the file for the two checks to run afterwards).
 
 ---
 
@@ -124,3 +129,17 @@ pm2 save
 - ✅ PIN-based login
 - ✅ Print-friendly view
 - ✅ Mobile responsive
+
+---
+
+## 🧾 Activity Logs (audit trail)
+
+Every important action is recorded in the `activity_logs` table: logins (including failed and blocked
+attempts), logouts, data-entry create / edit / delete, summaries, inventory and user changes.
+
+- **Edits and deletes need a reason** (10+ characters). The popup shows exactly what changed; the server enforces the rule too.
+- **Records → clock button** shows the full history of one entry (who, when, why, before → after).
+- **Activity Logs tab** (Owner + Admin, read-only) lists everything, with filters and search.
+- PINs are never written to the log. Log rows cannot be edited or deleted through the app.
+
+**One-time setup:** run `run-in-supabase-logs.sql` in Supabase → SQL Editor. (`npm run setup-db` also prints it.)

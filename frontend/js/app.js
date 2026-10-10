@@ -33,6 +33,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   initReasonModal();
   initPhotoFields();
   initExportMenu();
+  initReportMenus();
+  initLogSelection();
 
   document.getElementById('header-user').textContent = `${user.name} / ${capitalize(user.role)}`;
   document.getElementById('f-date').value = today();
@@ -721,10 +723,6 @@ async function loadSummary() {
     renderVehicleBreakdown(res.data || []);
   } catch { /* non-critical */ }
 
-  try {
-    const res = await Summaries.getAll();
-    renderSummariesTable(res.data || []);
-  } catch { /* non-critical */ }
 }
 
 function renderVehicleBreakdown(entries) {
@@ -757,60 +755,6 @@ function renderVehicleBreakdown(entries) {
   });
 }
 
-function renderSummariesTable(list) {
-  const tbody = document.getElementById('summaries-body');
-  tbody.innerHTML = '';
-  if (!list.length) {
-    tbody.innerHTML = '<tr class="empty-row"><td colspan="6">No manual summaries yet.</td></tr>';
-    return;
-  }
-  list.forEach(s => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td><strong>${esc(s.period) || '–'}</strong></td>
-      <td>${esc(s.total_diesel ?? 0)} L</td>
-      <td>${esc(s.total_hours) || '–'}</td>
-      <td>${esc(s.total_loads ?? 0)}</td>
-      <td style="max-width:200px;white-space:normal;font-size:12px;">${esc(s.notes) || '–'}</td>
-      <td><button class="btn btn-danger btn-sm" onclick="deleteSummary('${esc(s.id)}')">🗑</button></td>`;
-    tbody.appendChild(tr);
-  });
-}
-
-async function saveSummary() {
-  const period = document.getElementById('ms-period').value.trim();
-  if (!period) { showToast('Period is required.', true); return; }
-
-  const payload = {
-    period,
-    total_diesel: parseFloat(document.getElementById('ms-diesel').value) || 0,
-    total_hours:  document.getElementById('ms-hours').value.trim(),
-    total_loads:  parseInt(document.getElementById('ms-loads').value)    || 0,
-    notes:        document.getElementById('ms-notes').value.trim(),
-  };
-
-  try {
-    await Summaries.create(payload);
-    showToast('✅ Summary saved!');
-    ['ms-period','ms-diesel','ms-hours','ms-loads','ms-notes']
-      .forEach(id => document.getElementById(id).value = '');
-    loadSummary();
-  } catch (e) {
-    showToast('❌ ' + (e.message || 'Save failed.'), true);
-  }
-}
-
-async function deleteSummary(id) {
-  if (!confirm('Delete this summary?')) return;
-  try {
-    await Summaries.delete(id);
-    showToast('Summary deleted.');
-    loadSummary();
-  } catch (e) {
-    showToast('Delete failed.', true);
-  }
-}
-
 /* ── Month filter dropdown ───────────────────────────────────────────────────── */
 async function populateMonthFilter() {
   try {
@@ -835,42 +779,61 @@ async function populateMonthFilter() {
   } catch { /* non-critical */ }
 }
 
-/* ── Inventory (Admin) ─────────────────────────────────────────────────────── */
-async function loadInventory() {
-  try {
-    const res = await Inventory.getVehicles();
-    renderVehiclesTable(res.data || []);
-  } catch { showToast('Failed to load vehicles.', true); }
+/* ── Inventory (Admin) — Vehicles / Sites / Operators as three sub-sections ───────────── */
+const INV = {
+  vehicles:  { title: 'Edit vehicle',  l1: 'Vehicle / Machine No. *', k1: 'vehicle_no', l2: 'Type',     k2: 'type',     noun: 'vehicle',  hint: 'Records that were already saved keep the number they were saved with.',
+               update: (id, b) => Inventory.updateVehicle(id, b),  remove: id => Inventory.deleteVehicle(id),  empty: 'No vehicles yet. Add one above.' },
+  sites:     { title: 'Edit site',     l1: 'Site Name *',             k1: 'name',       l2: 'Location', k2: 'location', noun: 'site',     hint: 'Records that were already saved keep the site name they were saved with.',
+               update: (id, b) => Inventory.updateSite(id, b),     remove: id => Inventory.deleteSite(id),     empty: 'No sites yet. Add one above.' },
+  operators: { title: 'Edit operator', l1: 'Name *',                  k1: 'name',       l2: 'Phone',    k2: 'phone',    noun: 'operator', hint: 'Records that were already saved keep the name they were saved with.',
+               update: (id, b) => Inventory.updateOperator(id, b), remove: id => Inventory.deleteOperator(id), empty: 'No operators yet. Add one above.' },
+};
+const invLists = { vehicles: [], sites: [], operators: [] };
+let invTab = 'vehicles';
+let invEditing = null;     // { type, id }
 
-  try {
-    const res = await Inventory.getOperators();
-    renderOperatorsTable(res.data || []);
-  } catch { showToast('Failed to load operators.', true); }
-
-  try {
-    const res = await Inventory.getSites();
-    renderSitesTable(res.data || []);
-  } catch { showToast('Failed to load sites.', true); }
+function showInvTab(name) {
+  if (!INV[name]) return;
+  invTab = name;
+  Object.keys(INV).forEach(k => {
+    const on = k === name;
+    const tab = document.getElementById(`invtab-${k}`);
+    tab.classList.toggle('active', on);
+    tab.setAttribute('aria-selected', String(on));
+    document.getElementById(`inv-panel-${k}`).hidden = !on;
+  });
 }
+
+async function loadInventory() {
+  const [v, o, st] = await Promise.all([
+    Inventory.getVehicles().catch(() => null),
+    Inventory.getOperators().catch(() => null),
+    Inventory.getSites().catch(() => null),
+  ]);
+  if (v)  { invLists.vehicles  = v.data  || []; renderVehiclesTable(invLists.vehicles); }  else showToast('Failed to load vehicles.', true);
+  if (o)  { invLists.operators = o.data  || []; renderOperatorsTable(invLists.operators); } else showToast('Failed to load operators.', true);
+  if (st) { invLists.sites     = st.data || []; renderSitesTable(invLists.sites); }         else showToast('Failed to load sites.', true);
+  Object.keys(INV).forEach(k => { document.getElementById(`inv-count-${k}`).textContent = invLists[k].length; });
+  showInvTab(invTab);
+}
+
+const statusBtn = (active, fn, id) => `
+      <button class="btn ${active ? 'btn-green' : 'btn-outline'} btn-sm" onclick="${fn}('${esc(id)}', ${!!active})">${active ? 'Active' : 'Inactive'}</button>`;
+const editBtn = (type, id, label) =>
+  `<button class="btn btn-outline btn-sm" onclick="openInvEdit('${type}', '${esc(id)}')" aria-label="Edit ${esc(label)}">✏️ Edit</button>`;
 
 function renderVehiclesTable(list) {
   const tbody = document.getElementById('vehicles-body');
   tbody.innerHTML = '';
-  if (!list.length) {
-    tbody.innerHTML = '<tr class="empty-row"><td colspan="4">No vehicles yet. Add one above.</td></tr>';
-    return;
-  }
+  if (!list.length) { tbody.innerHTML = `<tr class="empty-row"><td colspan="5">${INV.vehicles.empty}</td></tr>`; return; }
   list.forEach(v => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td><strong>${esc(v.vehicle_no)}</strong></td>
       <td>${esc(v.type) || '–'}</td>
-      <td>
-        <button class="btn ${v.active ? 'btn-green' : 'btn-outline'} btn-sm" onclick="toggleVehicleActive('${esc(v.id)}', ${!!v.active})">
-          ${v.active ? 'Active' : 'Inactive'}
-        </button>
-      </td>
-      <td><button class="btn btn-danger btn-sm" onclick="deleteVehicle('${esc(v.id)}')">🗑</button></td>`;
+      <td>${statusBtn(v.active, 'toggleVehicleActive', v.id)}</td>
+      <td>${editBtn('vehicles', v.id, v.vehicle_no)}</td>
+      <td><button class="btn btn-danger btn-sm" onclick="deleteVehicle('${esc(v.id)}')" aria-label="Delete ${esc(v.vehicle_no)}">🗑</button></td>`;
     tbody.appendChild(tr);
   });
 }
@@ -878,21 +841,31 @@ function renderVehiclesTable(list) {
 function renderOperatorsTable(list) {
   const tbody = document.getElementById('operators-body');
   tbody.innerHTML = '';
-  if (!list.length) {
-    tbody.innerHTML = '<tr class="empty-row"><td colspan="4">No operators yet. Add one above.</td></tr>';
-    return;
-  }
+  if (!list.length) { tbody.innerHTML = `<tr class="empty-row"><td colspan="5">${INV.operators.empty}</td></tr>`; return; }
   list.forEach(o => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td><strong>${esc(o.name)}</strong></td>
       <td>${esc(o.phone) || '–'}</td>
-      <td>
-        <button class="btn ${o.active ? 'btn-green' : 'btn-outline'} btn-sm" onclick="toggleOperatorActive('${esc(o.id)}', ${!!o.active})">
-          ${o.active ? 'Active' : 'Inactive'}
-        </button>
-      </td>
-      <td><button class="btn btn-danger btn-sm" onclick="deleteOperator('${esc(o.id)}')">🗑</button></td>`;
+      <td>${statusBtn(o.active, 'toggleOperatorActive', o.id)}</td>
+      <td>${editBtn('operators', o.id, o.name)}</td>
+      <td><button class="btn btn-danger btn-sm" onclick="deleteOperator('${esc(o.id)}')" aria-label="Delete ${esc(o.name)}">🗑</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderSitesTable(list) {
+  const tbody = document.getElementById('sites-body');
+  tbody.innerHTML = '';
+  if (!list.length) { tbody.innerHTML = `<tr class="empty-row"><td colspan="5">${INV.sites.empty}</td></tr>`; return; }
+  list.forEach(st => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><strong>${esc(st.name)}</strong></td>
+      <td>${esc(st.location) || '–'}</td>
+      <td>${statusBtn(st.active, 'toggleSiteActive', st.id)}</td>
+      <td>${editBtn('sites', st.id, st.name)}</td>
+      <td><button class="btn btn-danger btn-sm" onclick="deleteSite('${esc(st.id)}')" aria-label="Delete ${esc(st.name)}">🗑</button></td>`;
     tbody.appendChild(tr);
   });
 }
@@ -901,7 +874,6 @@ async function addVehicle() {
   const vehicle_no = document.getElementById('inv-vehicle-no').value.trim();
   const type       = document.getElementById('inv-vehicle-type').value.trim();
   if (!vehicle_no) { showToast('Vehicle / Machine No. is required.', true); return; }
-
   try {
     await Inventory.addVehicle({ vehicle_no, type });
     showToast('✅ Vehicle added!');
@@ -915,32 +887,20 @@ async function addVehicle() {
 }
 
 async function toggleVehicleActive(id, currentActive) {
-  try {
-    await Inventory.updateVehicle(id, { active: !currentActive });
-    loadInventory();
-    loadDropdownData();
-  } catch (e) {
-    showToast('❌ ' + (e.message || 'Update failed.'), true);
-  }
+  try { await Inventory.updateVehicle(id, { active: !currentActive }); loadInventory(); loadDropdownData(); }
+  catch (e) { showToast('❌ ' + (e.message || 'Update failed.'), true); }
 }
 
 async function deleteVehicle(id) {
   if (!confirm('Remove this vehicle from inventory?')) return;
-  try {
-    await Inventory.deleteVehicle(id);
-    showToast('Vehicle removed.');
-    loadInventory();
-    loadDropdownData();
-  } catch (e) {
-    showToast('Delete failed.', true);
-  }
+  try { await Inventory.deleteVehicle(id); showToast('Vehicle removed.'); loadInventory(); loadDropdownData(); }
+  catch { showToast('Delete failed.', true); }
 }
 
 async function addOperator() {
   const name  = document.getElementById('inv-operator-name').value.trim();
   const phone = document.getElementById('inv-operator-phone').value.trim();
   if (!name) { showToast('Operator name is required.', true); return; }
-
   try {
     await Inventory.addOperator({ name, phone });
     showToast('✅ Operator added!');
@@ -954,55 +914,20 @@ async function addOperator() {
 }
 
 async function toggleOperatorActive(id, currentActive) {
-  try {
-    await Inventory.updateOperator(id, { active: !currentActive });
-    loadInventory();
-    loadDropdownData();
-  } catch (e) {
-    showToast('❌ ' + (e.message || 'Update failed.'), true);
-  }
+  try { await Inventory.updateOperator(id, { active: !currentActive }); loadInventory(); loadDropdownData(); }
+  catch (e) { showToast('❌ ' + (e.message || 'Update failed.'), true); }
 }
 
 async function deleteOperator(id) {
   if (!confirm('Remove this operator from inventory?')) return;
-  try {
-    await Inventory.deleteOperator(id);
-    showToast('Operator removed.');
-    loadInventory();
-    loadDropdownData();
-  } catch (e) {
-    showToast('Delete failed.', true);
-  }
-}
-
-/* ── Sites (Inventory, Admin) ────────────────────────────────────────────── */
-function renderSitesTable(list) {
-  const tbody = document.getElementById('sites-body');
-  tbody.innerHTML = '';
-  if (!list.length) {
-    tbody.innerHTML = '<tr class="empty-row"><td colspan="4">No sites yet. Add one above.</td></tr>';
-    return;
-  }
-  list.forEach(s => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td><strong>${esc(s.name)}</strong></td>
-      <td>${esc(s.location) || '–'}</td>
-      <td>
-        <button class="btn ${s.active ? 'btn-green' : 'btn-outline'} btn-sm" onclick="toggleSiteActive('${esc(s.id)}', ${!!s.active})">
-          ${s.active ? 'Active' : 'Inactive'}
-        </button>
-      </td>
-      <td><button class="btn btn-danger btn-sm" onclick="deleteSite('${esc(s.id)}')">🗑</button></td>`;
-    tbody.appendChild(tr);
-  });
+  try { await Inventory.deleteOperator(id); showToast('Operator removed.'); loadInventory(); loadDropdownData(); }
+  catch { showToast('Delete failed.', true); }
 }
 
 async function addSite() {
   const name     = document.getElementById('inv-site-name').value.trim();
   const location = document.getElementById('inv-site-location').value.trim();
   if (!name) { showToast('Site name is required.', true); return; }
-
   try {
     await Inventory.addSite({ name, location });
     showToast('✅ Site added!');
@@ -1016,36 +941,79 @@ async function addSite() {
 }
 
 async function toggleSiteActive(id, currentActive) {
-  try {
-    await Inventory.updateSite(id, { active: !currentActive });
-    loadInventory();
-    loadDropdownData();
-  } catch (e) {
-    showToast('❌ ' + (e.message || 'Update failed.'), true);
-  }
+  try { await Inventory.updateSite(id, { active: !currentActive }); loadInventory(); loadDropdownData(); }
+  catch (e) { showToast('❌ ' + (e.message || 'Update failed.'), true); }
 }
 
 async function deleteSite(id) {
   if (!confirm('Remove this site from inventory?')) return;
+  try { await Inventory.deleteSite(id); showToast('Site removed.'); loadInventory(); loadDropdownData(); }
+  catch { showToast('Delete failed.', true); }
+}
+
+/* Edit a vehicle / site / operator in a small dialog */
+function openInvEdit(type, id) {
+  const def = INV[type];
+  const item = (invLists[type] || []).find(x => String(x.id) === String(id));
+  if (!def || !item) return;
+  invEditing = { type, id, before: { v1: item[def.k1] || '', v2: item[def.k2] || '' } };
+  document.getElementById('inv-edit-title').textContent = def.title;
+  document.getElementById('inv-edit-l1').textContent = def.l1;
+  document.getElementById('inv-edit-l2').textContent = def.l2;
+  document.getElementById('inv-edit-f1').value = item[def.k1] || '';
+  document.getElementById('inv-edit-f2').value = item[def.k2] || '';
+  document.getElementById('inv-edit-hint').textContent = def.hint;
+  document.getElementById('inv-edit-error').textContent = '';
+  document.getElementById('inv-edit-overlay').classList.add('open');
+  setTimeout(() => document.getElementById('inv-edit-f1').focus(), 50);
+}
+
+function closeInvEdit() {
+  document.getElementById('inv-edit-overlay').classList.remove('open');
+  invEditing = null;
+}
+
+async function saveInvEdit() {
+  if (!invEditing) return;
+  const def = INV[invEditing.type];
+  const v1 = document.getElementById('inv-edit-f1').value.trim();
+  const v2 = document.getElementById('inv-edit-f2').value.trim();
+  const err = document.getElementById('inv-edit-error');
+  err.textContent = '';
+  if (!v1) { err.textContent = `${def.l1.replace(' *', '')} cannot be empty.`; return; }
+  if (v1 === invEditing.before.v1 && v2 === invEditing.before.v2) { showToast('No changes were made.'); closeInvEdit(); return; }
+
+  const btn = document.getElementById('inv-edit-save');
+  btn.disabled = true;
   try {
-    await Inventory.deleteSite(id);
-    showToast('Site removed.');
+    await def.update(invEditing.id, { [def.k1]: v1, [def.k2]: v2 });
+    showToast(`✅ ${capitalize(def.noun)} updated.`);
+    closeInvEdit();
     loadInventory();
     loadDropdownData();
   } catch (e) {
-    showToast('Delete failed.', true);
+    err.textContent = e.message || 'Could not save the changes.';
+  } finally {
+    btn.disabled = false;
   }
 }
 
+
 /* ── Users (Admin) ────────────────────────────────────────────────────────── */
+let usersList = [];
+let userEditingId = null;
+
 async function loadUsers() {
   try {
     const res = await Users.getAll();
-    renderUsersTable(res.data || []);
+    usersList = res.data || [];
+    renderUsersTable(usersList);
   } catch (e) {
     showToast('Failed to load users.', true);
   }
 }
+
+const ROLE_PILL = { admin: 'pill-orange', owner: 'pill-sky', supervisor: 'pill-gray' };
 
 function renderUsersTable(list) {
   const tbody = document.getElementById('users-body');
@@ -1062,25 +1030,11 @@ function renderUsersTable(list) {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td><strong>${esc(u.name)}</strong>${isSelf ? ' <span class="badge">You</span>' : ''}</td>
+      <td><span class="pill ${ROLE_PILL[u.role] || 'pill-gray'}">${esc(capitalize(u.role))}</span></td>
+      <td><span class="pill ${u.active ? 'pill-green' : 'pill-gray'}">${u.active ? 'Active' : 'Inactive'}</span></td>
+      <td><button class="btn btn-outline btn-sm" onclick="openUserEdit('${esc(u.id)}')" aria-label="Edit ${esc(u.name)}">✏️ Edit</button></td>
       <td>
-        <button class="btn btn-outline btn-sm" data-id="${esc(u.id)}" data-name="${esc(u.name)}" onclick="resetUserPin(this)">🔑 Reset PIN</button>
-      </td>
-      <td>
-        <select onchange="updateUserRole('${esc(u.id)}', this.value)" ${isSelf ? 'disabled title="You cannot change your own role"' : ''} style="width:auto;padding:6px 8px;">
-          <option value="supervisor" ${u.role === 'supervisor' ? 'selected' : ''}>Supervisor</option>
-          <option value="owner" ${u.role === 'owner' ? 'selected' : ''}>Owner</option>
-          <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
-        </select>
-      </td>
-      <td>
-        <button class="btn ${u.active ? 'btn-green' : 'btn-outline'} btn-sm"
-          onclick="toggleUserActive('${esc(u.id)}', ${!!u.active})"
-          ${isSelf ? 'disabled title="You cannot deactivate your own account"' : ''}>
-          ${u.active ? 'Active' : 'Inactive'}
-        </button>
-      </td>
-      <td>
-        <button class="btn btn-danger btn-sm" onclick="deleteUser('${esc(u.id)}')" ${isSelf ? 'disabled title="You cannot delete your own account"' : ''}>🗑</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteUser('${esc(u.id)}')" aria-label="Delete ${esc(u.name)}" ${isSelf ? 'disabled title="You cannot delete your own account"' : ''}>🗑</button>
       </td>`;
     tbody.appendChild(tr);
   });
@@ -1103,46 +1057,201 @@ async function createUser() {
   }
 }
 
-async function resetUserPin(btn) {
-  const { id, name } = btn.dataset;
-  const pin = (prompt(`New PIN for ${name} (4–10 characters, no spaces):`) || '').trim();
-  if (!pin) return;
-  try {
-    await Users.update(id, { pin });
-    showToast('✅ PIN updated.');
-  } catch (e) {
-    showToast('❌ ' + (e.message || 'Could not update PIN.'), true);
-  }
+function openUserEdit(id) {
+  const u = usersList.find(x => String(x.id) === String(id));
+  if (!u) return;
+  const me = Auth.currentUser();
+  const isSelf = !!(me && u.id === me.id);
+  userEditingId = u.id;
+  document.getElementById('user-edit-title').textContent = `Edit ${u.name}`;
+  document.getElementById('ue-name').value = u.name;
+  document.getElementById('ue-role').value = u.role;
+  document.getElementById('ue-active').value = String(!!u.active);
+  document.getElementById('ue-pin').value = '';
+  document.getElementById('ue-role').disabled = isSelf;       // the server refuses these too
+  document.getElementById('ue-active').disabled = isSelf;
+  document.getElementById('ue-self-note').hidden = !isSelf;
+  document.getElementById('ue-error').textContent = '';
+  document.getElementById('user-edit-overlay').classList.add('open');
+  setTimeout(() => document.getElementById('ue-name').focus(), 50);
 }
 
-async function updateUserRole(id, role) {
-  try {
-    await Users.update(id, { role });
-    showToast('✅ Role updated.');
-    loadUsers();
-  } catch (e) {
-    showToast('❌ ' + (e.message || 'Update failed.'), true);
-    loadUsers();
-  }
+function closeUserEdit() {
+  document.getElementById('user-edit-overlay').classList.remove('open');
+  document.getElementById('ue-pin').value = '';
+  userEditingId = null;
 }
 
-async function toggleUserActive(id, currentActive) {
+async function saveUserEdit() {
+  if (!userEditingId) return;
+  const u = usersList.find(x => String(x.id) === String(userEditingId));
+  const err = document.getElementById('ue-error');
+  err.textContent = '';
+  const name = document.getElementById('ue-name').value.trim();
+  const pin  = document.getElementById('ue-pin').value.trim();
+  if (!name) { err.textContent = 'Name cannot be empty.'; return; }
+
+  const payload = { name, role: document.getElementById('ue-role').value, active: document.getElementById('ue-active').value === 'true' };
+  if (pin) payload.pin = pin;
+
+  const btn = document.getElementById('ue-save');
+  btn.disabled = true;
   try {
-    await Users.update(id, { active: !currentActive });
+    const res = await Users.update(userEditingId, payload);
+    closeUserEdit();
+    showToast(res.unchanged ? 'No changes were made.' : '✅ User updated.');
     loadUsers();
   } catch (e) {
-    showToast('❌ ' + (e.message || 'Update failed.'), true);
+    err.textContent = e.message || 'Could not save the changes.';
+  } finally {
+    btn.disabled = false;
   }
 }
 
 async function deleteUser(id) {
-  if (!confirm('Delete this user? They will no longer be able to log in.')) return;
+  const u = usersList.find(x => String(x.id) === String(id));
+  const ok = await askDanger({
+    title: `Delete ${u ? u.name : 'this user'}?`,
+    message: 'They will no longer be able to log in and will disappear from this list. Their record is kept in the downloadable Users report, marked as deleted.',
+    confirmLabel: 'Delete user',
+  });
+  if (!ok) return;
   try {
     await Users.delete(id);
     showToast('User deleted.');
     loadUsers();
   } catch (e) {
     showToast('❌ ' + (e.message || 'Delete failed.'), true);
+  }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Confirm-a-delete dialog (optionally makes the person type DELETE first)
+   ═══════════════════════════════════════════════════════════════════════════════ */
+function askDanger({ title, message, confirmLabel = 'Delete', typeToConfirm = false }) {
+  return new Promise(resolve => {
+    const overlay = document.getElementById('danger-overlay');
+    const ok = document.getElementById('danger-ok');
+    const cancel = document.getElementById('danger-cancel');
+    const input = document.getElementById('danger-type');
+    const wrap = document.getElementById('danger-type-wrap');
+    document.getElementById('danger-title').textContent = title;
+    document.getElementById('danger-msg').textContent = message;
+    ok.textContent = confirmLabel;
+    wrap.hidden = !typeToConfirm;
+    input.value = '';
+    ok.disabled = !!typeToConfirm;
+
+    const done = result => {
+      overlay.classList.remove('open');
+      ok.removeEventListener('click', onOk);
+      cancel.removeEventListener('click', onCancel);
+      input.removeEventListener('input', onInput);
+      document.removeEventListener('keydown', onKey, true);
+      overlay.removeEventListener('mousedown', onBackdrop);
+      resolve(result);
+    };
+    const onOk = () => { if (!ok.disabled) done(true); };
+    const onCancel = () => done(false);
+    const onInput = () => { ok.disabled = input.value.trim().toUpperCase() !== 'DELETE'; };
+    const onKey = ev => {
+      if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); done(false); }
+      else if (ev.key === 'Enter' && !ok.disabled && document.activeElement !== cancel) { ev.preventDefault(); done(true); }
+    };
+    const onBackdrop = ev => { if (ev.target === overlay) done(false); };
+
+    ok.addEventListener('click', onOk);
+    cancel.addEventListener('click', onCancel);
+    input.addEventListener('input', onInput);
+    document.addEventListener('keydown', onKey, true);
+    overlay.addEventListener('mousedown', onBackdrop);
+    overlay.classList.add('open');
+    setTimeout(() => (typeToConfirm ? input : cancel).focus(), 50);     // the safe choice is focused first
+  });
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Excel / PDF download menus (Inventory lists, Users, Activity Logs)
+   ═══════════════════════════════════════════════════════════════════════════════ */
+const RM_LABELS = { xlsx: 'Excel', pdf: 'PDF' };
+let rmBusy = false;
+
+const rmItems = menu => [...menu.querySelectorAll('[role="menuitem"]')];
+
+function closeRm(menu, returnFocus) {
+  const pop = menu.querySelector('.export-pop');
+  if (!pop || pop.hidden) return;
+  pop.hidden = true;
+  const btn = menu.querySelector('.rm-btn');
+  btn.setAttribute('aria-expanded', 'false');
+  if (returnFocus) btn.focus();
+}
+function closeAllRm() { document.querySelectorAll('.rm').forEach(m => closeRm(m, false)); }
+
+function openRm(menu) {
+  if (rmBusy) return;
+  closeAllRm();
+  if (menu.querySelector('#log-note-xlsx')) updateLogExportNotes();
+  menu.querySelector('.export-pop').hidden = false;
+  menu.querySelector('.rm-btn').setAttribute('aria-expanded', 'true');
+  const first = rmItems(menu)[0];
+  if (first) first.focus();
+}
+
+function initReportMenus() {
+  document.addEventListener('click', ev => {
+    const toggle = ev.target.closest('.rm-btn');
+    if (toggle) {
+      const menu = toggle.closest('.rm');
+      if (menu.querySelector('.export-pop').hidden) openRm(menu); else closeRm(menu, false);
+      return;
+    }
+    const item = ev.target.closest('.rm [data-rm-kind]');
+    if (item) { closeAllRm(); runTableReport(item.dataset.rmKind, item.dataset.rmFormat, item); return; }
+    if (!ev.target.closest('.rm')) closeAllRm();
+  });
+  document.addEventListener('keydown', ev => {
+    const menu = ev.target.closest && ev.target.closest('.rm');
+    if (!menu || menu.querySelector('.export-pop').hidden) return;
+    const items = rmItems(menu);
+    const i = items.indexOf(document.activeElement);
+    if (ev.key === 'Escape')         { ev.preventDefault(); closeRm(menu, true); }
+    else if (ev.key === 'ArrowDown') { ev.preventDefault(); items[(i + 1) % items.length].focus(); }
+    else if (ev.key === 'ArrowUp')   { ev.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
+    else if (ev.key === 'Tab')       { closeRm(menu, false); }
+  });
+}
+
+/** kind = 'inventory:vehicles' | 'inventory:sites' | 'inventory:operators' | 'users' | 'logs' */
+async function runTableReport(kind, format, itemEl) {
+  if (rmBusy) return;
+  const [group, type] = kind.split(':');
+  const label = RM_LABELS[format] || 'report';
+  let call, name;
+  if (group === 'inventory')  { call = () => Reports.inventory({ type, format }); name = type; }
+  else if (group === 'users') { call = () => Reports.users({ format }); name = 'users'; }
+  else if (group === 'logs')  { call = () => Reports.logs(logsReportBody(format)); name = 'activity-logs'; }
+  else return;
+
+  const menu = itemEl.closest('.rm');
+  const btn = menu.querySelector('.rm-btn');
+  rmBusy = true;
+  btn.disabled = true;
+  btn.classList.add('is-busy');
+  menu.querySelector('.rm-label').textContent = `Preparing ${label}…`;
+  try {
+    const blob = await call();
+    saveBlob(blob, `SCC-${name}-${today()}.${format}`);
+    showToast(`✅ ${label} report downloaded.`);
+  } catch (e) {
+    showToast('❌ ' + (e.message || 'The report could not be prepared.'), true);
+  } finally {
+    rmBusy = false;
+    btn.disabled = false;
+    btn.classList.remove('is-busy');
+    menu.querySelector('.rm-label').textContent = '⬇ Export';
   }
 }
 
@@ -1292,6 +1401,8 @@ const SPECIAL_ACTIONS = {
   logout:        { label: 'Logout',         cls: 'pill-gray'   },
   entry_updated: { label: 'Entry edited',   cls: 'pill-orange' },
   report_exported: { label: 'Report exported', cls: 'pill-sky' },
+  access_denied: { label: 'Access denied', cls: 'pill-red' },
+  logs_deleted:  { label: 'Logs deleted',  cls: 'pill-orange' },
 };
 function actionMeta(action) {
   if (SPECIAL_ACTIONS[action]) return SPECIAL_ACTIONS[action];
@@ -1402,6 +1513,10 @@ function timelineHtml(logs) {
    ═══════════════════════════════════════════════════════════════════════════════ */
 const LOGS_PAGE = 50;
 let logsShown = 0, logsTotal = 0, logsSeq = 0, logsDebounce = null;
+let logSel = new Set();            // ids ticked in the list
+let logAllMatching = false;        // "select all N matching the filters"
+const PROTECTED_LOG_ACTION = 'logs_deleted';
+const isAdminUser = () => { const u = Auth.currentUser(); return !!u && u.role === 'admin'; };
 
 function loadLogsDebounced() {
   clearTimeout(logsDebounce);
@@ -1417,43 +1532,47 @@ function clearLogFilters() {
 const dayStart = d => (d ? new Date(`${d}T00:00:00`).toISOString() : '');
 const dayEnd   = d => (d ? new Date(`${d}T23:59:59.999`).toISOString() : '');
 
+/** The filters currently chosen above the list (empty ones left out). */
+function currentLogFilters() {
+  const f = { category: $('log-category').value, q: $('log-q').value.trim(), from: dayStart($('log-from').value), to: dayEnd($('log-to').value) };
+  Object.keys(f).forEach(k => { if (!f[k]) delete f[k]; });
+  return f;
+}
+
 async function loadLogs(reset = true) {
   const seq = ++logsSeq;
   const body = $('logs-body');
   const moreBtn = $('logs-more-btn');
+  $('logs-table').classList.toggle('readonly', !isAdminUser());      // only an Admin sees tick-boxes and delete buttons
   if (reset) {
     logsShown = 0;
-    body.innerHTML = '<tr class="empty-row"><td colspan="5"><span class="spinner"></span>Loading…</td></tr>';
+    clearLogSelection();
+    body.innerHTML = '<tr class="empty-row"><td colspan="7"><span class="spinner"></span>Loading…</td></tr>';
     moreBtn.style.display = 'none';
   } else {
     moreBtn.disabled = true;
   }
 
   try {
-    const res = await Logs.list({
-      limit: LOGS_PAGE, offset: logsShown,
-      category: $('log-category').value,
-      q: $('log-q').value.trim(),
-      from: dayStart($('log-from').value),
-      to:   dayEnd($('log-to').value),
-    });
+    const res = await Logs.list({ limit: LOGS_PAGE, offset: logsShown, ...currentLogFilters() });
     if (seq !== logsSeq) return;
 
     const rows = res.data || [];
     logsTotal = res.total ?? rows.length;
     if (reset) body.innerHTML = '';
     if (!rows.length && reset) {
-      body.innerHTML = '<tr class="empty-row"><td colspan="5">No activity found for these filters.</td></tr>';
+      body.innerHTML = '<tr class="empty-row"><td colspan="7">No activity found for these filters.</td></tr>';
     }
     rows.forEach(l => body.insertAdjacentHTML('beforeend', logRowHtml(l)));
     logsShown += rows.length;
 
     $('logs-count').textContent = logsTotal ? `Showing ${logsShown} of ${logsTotal}` : '';
     moreBtn.style.display = logsShown < logsTotal ? '' : 'none';
+    syncLogSelectionUi();
   } catch (e) {
     if (seq !== logsSeq) return;
     const setup = e.data && e.data.setup_required;
-    body.innerHTML = `<tr class="empty-row"><td colspan="5">${setup
+    body.innerHTML = `<tr class="empty-row"><td colspan="7">${setup
       ? '⚠️ The activity log table has not been created yet.<br><small>Open Supabase → SQL Editor and run <strong>run-in-supabase-logs.sql</strong>, then reload this page.</small>'
       : esc(e.message || 'Could not load the activity logs.')}</td></tr>`;
     $('logs-count').textContent = '';
@@ -1463,8 +1582,11 @@ async function loadLogs(reset = true) {
   }
 }
 
+const LOCK_SVG = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
+
 function logRowHtml(l) {
   const meta = actionMeta(l.action);
+  const protectedRow = l.action === PROTECTED_LOG_ACTION;
   const who  = l.user_name
     ? `<strong>${esc(l.user_name)}</strong>${l.user_role ? ` <span class="pill pill-gray">${esc(l.user_role)}</span>` : ''}`
     : '<span class="chg-none">Not signed in</span>';
@@ -1472,13 +1594,138 @@ function logRowHtml(l) {
     (l.entity_label ? `<div class="log-label">${esc(l.entity_label)}</div>` : '') +
     (l.reason ? `<div class="tl-reason"><span>Reason</span>${esc(l.reason)}</div>` : '') +
     logChangesHtml(l);
-  return `<tr>
+  const select = protectedRow
+    ? `<span class="lg-lock" title="A permanent record that the log was cleaned — it cannot be deleted" aria-label="Permanent record">${LOCK_SVG}</span>`
+    : `<input type="checkbox" class="lg-check" data-id="${esc(l.id)}" aria-label="Select this entry" ${logSel.has(String(l.id)) || logAllMatching ? 'checked' : ''}>`;
+  const del = protectedRow ? '' : `<button type="button" class="btn btn-danger btn-sm lg-del-btn" data-id="${esc(l.id)}" title="Delete this entry" aria-label="Delete this entry">🗑</button>`;
+  return `<tr${protectedRow ? ' class="is-protected"' : ''}>
+    <td class="lg-select">${select}</td>
     <td class="log-time">${fmtDateTime(l.created_at)}</td>
     <td>${who}</td>
     <td><span class="pill ${meta.cls}">${esc(meta.label)}</span></td>
     <td class="log-details">${details || '<span class="chg-none">—</span>'}</td>
     <td class="log-device">${esc(l.ip || '–')}${l.user_agent ? `<br><span title="${esc(l.user_agent)}">${esc(deviceLabel(l.user_agent))}</span>` : ''}</td>
+    <td class="lg-del">${del}</td>
   </tr>`;
+}
+
+/* ── Picking log entries (Admin) ───────────────────────────────────────────── */
+const selectableLogBoxes = () => [...document.querySelectorAll('#logs-body .lg-check')];
+
+function initLogSelection() {
+  const body = document.getElementById('logs-body');
+  if (!body) return;
+  body.addEventListener('change', ev => {
+    const box = ev.target.closest('.lg-check');
+    if (!box) return;
+    if (box.checked) logSel.add(box.dataset.id); else { logSel.delete(box.dataset.id); logAllMatching = false; }
+    syncLogSelectionUi();
+  });
+  body.addEventListener('click', ev => {
+    const b = ev.target.closest('.lg-del-btn');
+    if (b) deleteOneLog(b.dataset.id);
+  });
+}
+
+function toggleSelectAllLogs(checked) {
+  logAllMatching = false;
+  selectableLogBoxes().forEach(b => { b.checked = checked; if (checked) logSel.add(b.dataset.id); else logSel.delete(b.dataset.id); });
+  syncLogSelectionUi();
+}
+
+function selectAllMatchingLogs() {
+  logAllMatching = true;
+  selectableLogBoxes().forEach(b => { b.checked = true; });
+  syncLogSelectionUi();
+}
+
+function clearLogSelection() {
+  logSel.clear();
+  logAllMatching = false;
+  selectableLogBoxes().forEach(b => { b.checked = false; });
+  syncLogSelectionUi();
+}
+
+/** Keeps the tick-all box, the blue bar and the Export menu notes in step with what is ticked. */
+function syncLogSelectionUi() {
+  const boxes = selectableLogBoxes();
+  const ticked = boxes.filter(b => b.checked).length;
+  const all = $('log-select-all');
+  if (all) { all.checked = boxes.length > 0 && ticked === boxes.length; all.indeterminate = ticked > 0 && ticked < boxes.length; }
+  const bar = $('log-bar');
+  if (!bar) return;
+  const n = logAllMatching ? logsTotal : logSel.size;
+  bar.hidden = n === 0;
+  $('log-bar-text').textContent = logAllMatching
+    ? `All ${logsTotal} entries matching the filters are selected.`
+    : `${n} entr${n === 1 ? 'y' : 'ies'} selected.`;
+  const more = $('log-bar-matching');
+  const offerAll = !logAllMatching && boxes.length > 0 && ticked === boxes.length && logsTotal > logsShown;
+  more.hidden = !offerAll;
+  if (offerAll) more.textContent = `Select all ${logsTotal} entries matching the filters`;
+  updateLogExportNotes();
+}
+
+function updateLogExportNotes() {
+  const n = logAllMatching ? logsTotal : logSel.size;
+  const text = !isAdminUser() || n === 0
+    ? `all ${logsTotal} matching entr${logsTotal === 1 ? 'y' : 'ies'}`
+    : `${n} selected entr${n === 1 ? 'y' : 'ies'}`;
+  const x = $('log-note-xlsx'), p = $('log-note-pdf');
+  if (x) x.textContent = `.xlsx · ${text}`;
+  if (p) p.textContent = `.pdf · ${text}`;
+}
+
+/** What the Export menu sends: the ticked entries if any, otherwise everything matching the filters. */
+function logsReportBody(format) {
+  if (isAdminUser() && logSel.size && !logAllMatching) return { format, ids: [...logSel] };
+  return { format, filters: currentLogFilters() };
+}
+
+/* ── Deleting log entries (Admin) ──────────────────────────────────────────── */
+async function runLogDelete(body) {
+  try {
+    const res = await Logs.remove(body);
+    const kept = res.skipped ? ` (${res.skipped} permanent record${res.skipped === 1 ? ' was' : 's were'} kept)` : '';
+    showToast(res.deleted ? `🗑 Deleted ${res.deleted} log entr${res.deleted === 1 ? 'y' : 'ies'}.${kept}` : `Nothing was deleted${kept}.`);
+  } catch (e) {
+    showToast('❌ ' + (e.message || 'Could not delete.'), true);
+  }
+  loadLogs(true);
+}
+
+async function deleteOneLog(id) {
+  const ok = await askDanger({
+    title: 'Delete this log entry?',
+    message: 'It is removed from the Activity Log permanently.',
+    confirmLabel: 'Delete entry',
+  });
+  if (ok) runLogDelete({ ids: [id] });
+}
+
+async function deleteSelectedLogs() {
+  if (logAllMatching) {
+    const ok = await askDanger({
+      title: `Delete all ${logsTotal} matching log entries?`,
+      message: 'Everything that matches the current filters is removed permanently. A permanent note ("Logs deleted") will record who cleaned the log, when, and how much.',
+      confirmLabel: `Delete ${logsTotal} entries`,
+      typeToConfirm: true,
+    });
+    if (ok) runLogDelete({ filters: currentLogFilters(), confirm: 'DELETE' });
+    return;
+  }
+  const ids = [...logSel];
+  if (!ids.length) return;
+  const many = ids.length > 1;
+  const ok = await askDanger({
+    title: many ? `Delete ${ids.length} log entries?` : 'Delete this log entry?',
+    message: many
+      ? 'The selected entries are removed permanently. A permanent note ("Logs deleted") will record who cleaned the log, when, and how much.'
+      : 'It is removed from the Activity Log permanently.',
+    confirmLabel: many ? `Delete ${ids.length} entries` : 'Delete entry',
+    typeToConfirm: many,
+  });
+  if (ok) runLogDelete(many ? { ids, confirm: 'DELETE' } : { ids });
 }
 
 

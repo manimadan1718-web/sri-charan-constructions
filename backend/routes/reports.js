@@ -3,6 +3,9 @@ const router = express.Router();
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { logActivity } = require('../utils/activity');
 const reports = require('../utils/reports');
+const tableReports = require('../utils/tableReports');
+const reportData = require('../utils/reportData');
+const lq = require('../utils/logQuery');
 
 router.use(requireAuth);
 
@@ -76,6 +79,71 @@ router.post('/entries', requireRole('owner', 'admin'), async (req, res) => {
   } finally {
     active--;
   }
+});
+
+/* ── Inventory / Users / Activity-Log reports (Excel + PDF) ─────────────────── */
+const TABLE_FORMATS = { xlsx: FORMATS.xlsx, pdf: FORMATS.pdf };
+
+/** Shared by the three reports below: who-may-ask is checked by the route, this does the rest. */
+async function serveTableReport(req, res, { format, filePrefix, category, load }) {
+  const fmt = TABLE_FORMATS[format];
+  if (!fmt) return res.status(400).json({ error: 'Choose Excel or PDF.' });
+  if (active >= MAX_AT_ONCE) return res.status(429).json({ error: 'Another report is being prepared right now. Please try again in a moment.' });
+  active++;
+  try {
+    const data = await load(format);
+    if (!data) return res.status(400).json({ error: 'Nothing to export.' });
+    const meta = { user: reports.cleanText(req.user.name, 60) || 'user', subtitle: data.subtitle || '' };
+    const args = { sheetName: data.sheet, title: data.title, columns: data.columns, rows: data.rows, meta };
+    const buffer = format === 'xlsx' ? await tableReports.buildTableXlsx(args) : await tableReports.buildTablePdf(args);
+
+    const n = data.rows.length;
+    await logActivity(req, {
+      category, action: 'report_exported', entityType: 'report',
+      entityLabel: `${fmt.label} report · ${data.title} · ${n} row${n === 1 ? '' : 's'}`,
+    });
+    res.set({
+      'Content-Type': fmt.type,
+      'Content-Disposition': `attachment; filename="SCC-${filePrefix}-${reports.todayStamp()}.${fmt.ext}"`,
+      'Content-Length': buffer.length,
+      'Cache-Control': 'no-store',
+    });
+    res.send(buffer);
+  } catch (err) {
+    console.error(`POST /reports/${filePrefix}:`, err.message);
+    res.status(err.status || 500).json({ error: err.userMessage || 'The report could not be prepared. Please try again.' });
+  } finally {
+    active--;
+  }
+}
+
+// ── POST /api/reports/inventory  (Admin) — { type: 'vehicles' | 'sites' | 'operators', format } ──
+router.post('/inventory', requireRole('admin'), (req, res) => {
+  const { type, format } = req.body || {};
+  if (!Object.prototype.hasOwnProperty.call(reportData.INVENTORY, type)) return res.status(400).json({ error: 'Choose Vehicles, Sites or Operators.' });
+  return serveTableReport(req, res, { format, filePrefix: type, category: 'inventory', load: () => reportData.inventoryReport(type) });
+});
+
+// ── POST /api/reports/users  (Admin) — { format } — includes deleted users and who/when for every change ──
+router.post('/users', requireRole('admin'), (req, res) => {
+  return serveTableReport(req, res, { format: (req.body || {}).format, filePrefix: 'users', category: 'user', load: () => reportData.usersReport() });
+});
+
+// ── POST /api/reports/logs  (Owner + Admin) — { format, ids?: [...] | filters?: {...} } ──
+router.post('/logs', requireRole('owner', 'admin'), (req, res) => {
+  const body = req.body || {};
+  let ids = null, filters = {};
+  if (Array.isArray(body.ids)) {
+    ids = [...new Set(body.ids)];
+    if (!ids.length || !ids.every(id => typeof id === 'string' && ID_RE.test(id))) return res.status(400).json({ error: 'Some of the selected entries are not valid.' });
+  } else {
+    try { filters = lq.normalizeFilters(body.filters); }
+    catch (e) { return res.status(e.status || 400).json({ error: e.userMessage || 'Invalid filters.' }); }
+  }
+  return serveTableReport(req, res, {
+    format: body.format, filePrefix: 'activity-logs', category: 'system',
+    load: format => reportData.logsReport({ ids, filters, format }),
+  });
 });
 
 module.exports = router;

@@ -247,59 +247,27 @@
     </div>
   </div>
 
-  <!-- Manual Summary -->
-  <div class="card">
-    <div class="card-header">
-      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span> Manual Summary Entry</div>
-    </div>
-    <div class="form-grid">
-      <div class="form-group">
-        <label>Period *</label>
-        <input type="text" id="ms-period" placeholder="e.g. October 2025 or Week 1">
-      </div>
-      <div class="form-group">
-        <label>Total Diesel (L)</label>
-        <input type="number" id="ms-diesel" placeholder="0" min="0" step="0.5">
-      </div>
-      <div class="form-group">
-        <label>Total Hours / Reading</label>
-        <input type="text" id="ms-hours" placeholder="e.g. 280 hrs">
-      </div>
-      <div class="form-group">
-        <label>Total Loads</label>
-        <input type="number" id="ms-loads" placeholder="0" min="0">
-      </div>
-      <div class="form-group full">
-        <label>Notes</label>
-        <textarea id="ms-notes" placeholder="Summary remarks, special notes..."></textarea>
-      </div>
-    </div>
-    <div class="btn-group">
-      <button class="btn btn-primary" onclick="saveSummary()">💾 Save Summary</button>
-    </div>
-  </div>
-
-  <!-- Saved Summaries -->
-  <div class="card">
-    <div class="card-title" style="margin-bottom:14px;"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></span> Saved Manual Summaries</div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Period</th><th>Diesel (L)</th><th>Hours / Reading</th><th>Loads</th><th>Notes</th><th>Delete</th></tr>
-        </thead>
-        <tbody id="summaries-body"></tbody>
-      </table>
-    </div>
-  </div>
-
 </div><!-- /summary -->
 
 <!-- ═══════════════════════════════ INVENTORY (Admin) ═════════════════════════ -->
 <div class="section" id="section-inventory">
 
-  <div class="card">
+  <div class="sub-tabs" role="tablist" aria-label="Inventory sections">
+    <button type="button" class="sub-tab active" role="tab" id="invtab-vehicles" aria-selected="true" aria-controls="inv-panel-vehicles" onclick="showInvTab('vehicles')">Vehicles / Machines <span class="count" id="inv-count-vehicles">0</span></button>
+    <button type="button" class="sub-tab" role="tab" id="invtab-sites" aria-selected="false" aria-controls="inv-panel-sites" onclick="showInvTab('sites')">Sites <span class="count" id="inv-count-sites">0</span></button>
+    <button type="button" class="sub-tab" role="tab" id="invtab-operators" aria-selected="false" aria-controls="inv-panel-operators" onclick="showInvTab('operators')">Operators / Drivers <span class="count" id="inv-count-operators">0</span></button>
+  </div>
+
+  <div class="card inv-panel" id="inv-panel-vehicles" role="tabpanel" aria-labelledby="invtab-vehicles">
     <div class="card-header">
       <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1" y="3" width="15" height="13" rx="1"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></span> Vehicles / Machines <span class="badge">Admin</span></div>
+      <div class="export-menu rm ">
+        <button type="button" class="btn btn-outline btn-sm rm-btn" aria-haspopup="menu" aria-expanded="false"><span class="rm-label">⬇ Export</span><span class="caret" aria-hidden="true">▾</span></button>
+        <div class="export-pop" role="menu" aria-label="Choose a report format" hidden>
+          <button type="button" role="menuitem" data-rm-kind="inventory:vehicles" data-rm-format="xlsx"><span class="fmt fmt-xlsx">XLS</span><span class="fmt-text"><strong>Excel</strong><small>.xlsx · the whole vehicle list</small></span></button>
+          <button type="button" role="menuitem" data-rm-kind="inventory:vehicles" data-rm-format="pdf"><span class="fmt fmt-pdf">PDF</span><span class="fmt-text"><strong>PDF</strong><small>.pdf · print-ready vehicle list</small></span></button>
+        </div>
+      </div>
     </div>
     <div class="form-grid">
       <div class="form-group">
@@ -317,15 +285,22 @@
 
     <div class="table-wrap" style="margin-top:18px;">
       <table>
-        <thead><tr><th>Vehicle No.</th><th>Type</th><th>Active</th><th>Delete</th></tr></thead>
+        <thead><tr><th>Vehicle No.</th><th>Type</th><th>Status</th><th>Edit</th><th>Delete</th></tr></thead>
         <tbody id="vehicles-body"></tbody>
       </table>
     </div>
   </div>
 
-  <div class="card">
+  <div class="card inv-panel" id="inv-panel-sites" role="tabpanel" aria-labelledby="invtab-sites" hidden>
     <div class="card-header">
       <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></span> Sites <span class="badge">Admin</span></div>
+      <div class="export-menu rm ">
+        <button type="button" class="btn btn-outline btn-sm rm-btn" aria-haspopup="menu" aria-expanded="false"><span class="rm-label">⬇ Export</span><span class="caret" aria-hidden="true">▾</span></button>
+        <div class="export-pop" role="menu" aria-label="Choose a report format" hidden>
+          <button type="button" role="menuitem" data-rm-kind="inventory:sites" data-rm-format="xlsx"><span class="fmt fmt-xlsx">XLS</span><span class="fmt-text"><strong>Excel</strong><small>.xlsx · the whole site list</small></span></button>
+          <button type="button" role="menuitem" data-rm-kind="inventory:sites" data-rm-format="pdf"><span class="fmt fmt-pdf">PDF</span><span class="fmt-text"><strong>PDF</strong><small>.pdf · print-ready site list</small></span></button>
+        </div>
+      </div>
     </div>
     <div class="form-grid">
       <div class="form-group">
@@ -343,15 +318,22 @@
 
     <div class="table-wrap" style="margin-top:18px;">
       <table>
-        <thead><tr><th>Site Name</th><th>Location</th><th>Active</th><th>Delete</th></tr></thead>
+        <thead><tr><th>Site Name</th><th>Location</th><th>Status</th><th>Edit</th><th>Delete</th></tr></thead>
         <tbody id="sites-body"></tbody>
       </table>
     </div>
   </div>
 
-  <div class="card">
+  <div class="card inv-panel" id="inv-panel-operators" role="tabpanel" aria-labelledby="invtab-operators" hidden>
     <div class="card-header">
       <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span> Operators / Drivers <span class="badge">Admin</span></div>
+      <div class="export-menu rm ">
+        <button type="button" class="btn btn-outline btn-sm rm-btn" aria-haspopup="menu" aria-expanded="false"><span class="rm-label">⬇ Export</span><span class="caret" aria-hidden="true">▾</span></button>
+        <div class="export-pop" role="menu" aria-label="Choose a report format" hidden>
+          <button type="button" role="menuitem" data-rm-kind="inventory:operators" data-rm-format="xlsx"><span class="fmt fmt-xlsx">XLS</span><span class="fmt-text"><strong>Excel</strong><small>.xlsx · the whole operator list</small></span></button>
+          <button type="button" role="menuitem" data-rm-kind="inventory:operators" data-rm-format="pdf"><span class="fmt fmt-pdf">PDF</span><span class="fmt-text"><strong>PDF</strong><small>.pdf · print-ready operator list</small></span></button>
+        </div>
+      </div>
     </div>
     <div class="form-grid">
       <div class="form-group">
@@ -369,7 +351,7 @@
 
     <div class="table-wrap" style="margin-top:18px;">
       <table>
-        <thead><tr><th>Name</th><th>Phone</th><th>Active</th><th>Delete</th></tr></thead>
+        <thead><tr><th>Name</th><th>Phone</th><th>Status</th><th>Edit</th><th>Delete</th></tr></thead>
         <tbody id="operators-body"></tbody>
       </table>
     </div>
@@ -408,10 +390,19 @@
   </div>
 
   <div class="card">
-    <div class="card-title" style="margin-bottom:14px;"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></span> All Users</div>
+    <div class="card-header">
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></span> All Users</div>
+      <div class="export-menu rm ">
+        <button type="button" class="btn btn-outline btn-sm rm-btn" aria-haspopup="menu" aria-expanded="false"><span class="rm-label">⬇ Export</span><span class="caret" aria-hidden="true">▾</span></button>
+        <div class="export-pop" role="menu" aria-label="Choose a report format" hidden>
+          <button type="button" role="menuitem" data-rm-kind="users" data-rm-format="xlsx"><span class="fmt fmt-xlsx">XLS</span><span class="fmt-text"><strong>Excel</strong><small>.xlsx · includes deleted users</small></span></button>
+          <button type="button" role="menuitem" data-rm-kind="users" data-rm-format="pdf"><span class="fmt fmt-pdf">PDF</span><span class="fmt-text"><strong>PDF</strong><small>.pdf · includes deleted users</small></span></button>
+        </div>
+      </div>
+    </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Name</th><th>PIN</th><th>Role</th><th>Active</th><th>Delete</th></tr></thead>
+        <thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Edit</th><th>Delete</th></tr></thead>
         <tbody id="users-body"></tbody>
       </table>
     </div>
@@ -424,7 +415,16 @@
   <div class="card">
     <div class="card-header">
       <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span> Activity Logs <span class="badge">Audit trail</span></div>
-      <button class="btn btn-outline btn-sm" onclick="loadLogs(true)">↻ Refresh</button>
+      <div class="rec-actions">
+        <button class="btn btn-outline btn-sm" onclick="loadLogs(true)">↻ Refresh</button>
+        <div class="export-menu rm ">
+        <button type="button" class="btn btn-outline btn-sm rm-btn" aria-haspopup="menu" aria-expanded="false"><span class="rm-label">⬇ Export</span><span class="caret" aria-hidden="true">▾</span></button>
+        <div class="export-pop" role="menu" aria-label="Choose a report format" hidden>
+          <button type="button" role="menuitem" data-rm-kind="logs" data-rm-format="xlsx"><span class="fmt fmt-xlsx">XLS</span><span class="fmt-text"><strong>Excel</strong><small id="log-note-xlsx">.xlsx · all matching entries</small></span></button>
+          <button type="button" role="menuitem" data-rm-kind="logs" data-rm-format="pdf"><span class="fmt fmt-pdf">PDF</span><span class="fmt-text"><strong>PDF</strong><small id="log-note-pdf">.pdf · all matching entries</small></span></button>
+        </div>
+      </div>
+      </div>
     </div>
 
     <div class="log-filters">
@@ -435,6 +435,7 @@
         <option value="summary">Summaries</option>
         <option value="inventory">Inventory</option>
         <option value="user">Users</option>
+        <option value="system">System (log clean-ups)</option>
       </select>
       <input type="date" id="log-from" onchange="loadLogs(true)" title="From date">
       <input type="date" id="log-to" onchange="loadLogs(true)" title="To date">
@@ -442,10 +443,18 @@
       <button class="btn btn-outline btn-sm" onclick="clearLogFilters()">Clear</button>
     </div>
 
+    <div class="log-bar" id="log-bar" hidden>
+      <span id="log-bar-text"></span>
+      <button type="button" class="link-btn" id="log-bar-matching" hidden onclick="selectAllMatchingLogs()"></button>
+      <span class="grow"></span>
+      <button type="button" class="btn btn-danger btn-sm" id="log-bar-delete" onclick="deleteSelectedLogs()">🗑 Delete selected</button>
+      <button type="button" class="btn btn-outline btn-sm" onclick="clearLogSelection()">Clear selection</button>
+    </div>
+
     <div class="table-wrap">
-      <table class="log-table">
+      <table class="log-table" id="logs-table">
         <thead>
-          <tr><th>When</th><th>Who</th><th>Activity</th><th>Details</th><th>IP / Device</th></tr>
+          <tr><th class="lg-select"><input type="checkbox" id="log-select-all" aria-label="Select all shown" onchange="toggleSelectAllLogs(this.checked)"></th><th>When</th><th>Who</th><th>Activity</th><th>Details</th><th>IP / Device</th><th class="lg-del"><span class="sr-only">Delete</span></th></tr>
         </thead>
         <tbody id="logs-body"></tbody>
       </table>
@@ -580,6 +589,79 @@
     <div class="photo-stage">
       <img id="photo-img" alt="" hidden>
       <div class="photo-msg" id="photo-msg" role="status"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ EDIT INVENTORY ITEM (Admin) ═══════════════ -->
+<div class="modal-overlay" id="inv-edit-overlay" onclick="if(event.target===this) closeInvEdit()">
+  <div class="modal-card modal-small" role="dialog" aria-modal="true" aria-labelledby="inv-edit-title">
+    <div class="card-header">
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></span> <span id="inv-edit-title">Edit</span></div>
+      <button type="button" class="btn btn-outline btn-sm" onclick="closeInvEdit()">✕ Close</button>
+    </div>
+    <div class="form-grid one-col">
+      <div class="form-group"><label id="inv-edit-l1" for="inv-edit-f1">Name *</label><input type="text" id="inv-edit-f1" maxlength="80" autocomplete="off"></div>
+      <div class="form-group"><label id="inv-edit-l2" for="inv-edit-f2">Details</label><input type="text" id="inv-edit-f2" maxlength="80" autocomplete="off"></div>
+    </div>
+    <p class="form-hint" id="inv-edit-hint"></p>
+    <div class="form-error" id="inv-edit-error" role="alert"></div>
+    <div class="btn-group">
+      <button type="button" class="btn btn-primary" id="inv-edit-save" onclick="saveInvEdit()">💾 Save Changes</button>
+      <button type="button" class="btn btn-outline" onclick="closeInvEdit()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ EDIT USER (Admin) ═════════════════════════ -->
+<div class="modal-overlay" id="user-edit-overlay" onclick="if(event.target===this) closeUserEdit()">
+  <div class="modal-card modal-small" role="dialog" aria-modal="true" aria-labelledby="user-edit-title">
+    <div class="card-header">
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></span> <span id="user-edit-title">Edit user</span></div>
+      <button type="button" class="btn btn-outline btn-sm" onclick="closeUserEdit()">✕ Close</button>
+    </div>
+    <div class="form-grid two-col">
+      <div class="form-group span-2"><label for="ue-name">Name *</label><input type="text" id="ue-name" maxlength="80" autocomplete="off"></div>
+      <div class="form-group">
+        <label for="ue-role">Role</label>
+        <select id="ue-role">
+          <option value="supervisor">Supervisor — Data Entry only</option>
+          <option value="owner">Owner — Reports only</option>
+          <option value="admin">Admin — Full access</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="ue-active">Status</label>
+        <select id="ue-active"><option value="true">Active — can log in</option><option value="false">Inactive — cannot log in</option></select>
+      </div>
+      <div class="form-group span-2">
+        <label for="ue-pin">New PIN <span class="reason-hint">(optional — leave empty to keep the current PIN)</span></label>
+        <input type="password" id="ue-pin" placeholder="4–10 characters" maxlength="10" autocomplete="new-password">
+      </div>
+    </div>
+    <p class="form-hint" id="ue-self-note" hidden>This is your own account, so you cannot change your role or switch yourself off.</p>
+    <div class="form-error" id="ue-error" role="alert"></div>
+    <div class="btn-group">
+      <button type="button" class="btn btn-primary" id="ue-save" onclick="saveUserEdit()">💾 Save Changes</button>
+      <button type="button" class="btn btn-outline" onclick="closeUserEdit()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ CONFIRM A DELETE ══════════════════════════ -->
+<div class="modal-overlay modal-top is-danger" id="danger-overlay">
+  <div class="modal-card modal-small" role="alertdialog" aria-modal="true" aria-labelledby="danger-title" aria-describedby="danger-msg">
+    <div class="card-header">
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg></span> <span id="danger-title">Delete?</span></div>
+    </div>
+    <p class="reason-intro" id="danger-msg"></p>
+    <div class="form-group" id="danger-type-wrap" hidden>
+      <label for="danger-type">Type <strong>DELETE</strong> to confirm</label>
+      <input type="text" id="danger-type" autocomplete="off" autocapitalize="characters" spellcheck="false">
+    </div>
+    <div class="btn-group">
+      <button type="button" class="btn btn-danger-solid" id="danger-ok">Delete</button>
+      <button type="button" class="btn btn-outline" id="danger-cancel">Cancel</button>
     </div>
   </div>
 </div>

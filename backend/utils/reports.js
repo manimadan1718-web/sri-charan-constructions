@@ -416,6 +416,7 @@ async function buildPdf(rows, meta, thumbs) {
 }
 
 module.exports = {
+  lib, COLORS, REPORT_TZ, nowStamp, zoneName,
   MAX_ROWS, MAX_PHOTOS, todayStamp, cleanText, userError,
   fetchEntriesByIds, toRow, countPhotos, loadThumbnails,
   buildCsv, buildXlsx, buildPdf, csvEscape, photoSummary,

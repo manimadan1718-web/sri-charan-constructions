@@ -140,19 +140,6 @@ const Entries = {
   },
 };
 
-// ── Summaries ─────────────────────────────────────────────────────────────────
-const Summaries = {
-  getAll() {
-    return apiFetch('/summaries');
-  },
-  create(payload) {
-    return apiFetch('/summaries', { method: 'POST', body: JSON.stringify(payload) });
-  },
-  delete(id) {
-    return apiFetch(`/summaries/${id}`, { method: 'DELETE' });
-  },
-};
-
 // ── Users (Admin only) ──────────────────────────────────────────────────────
 const Users = {
   getAll() {
@@ -209,7 +196,7 @@ const Inventory = {
   },
 };
 
-// ── Activity logs (Owner + Admin, read-only) ────────────────────────────────
+// ── Activity logs (Owner + Admin can read; only Admin can delete) ────────────────────────────────
 const Logs = {
   list(params = {}) {
     const clean = Object.entries(params).filter(([, v]) => v !== '' && v !== undefined && v !== null);
@@ -221,6 +208,10 @@ const Logs = {
   },
   entryCounts(ids) {
     return apiFetch('/logs/entry-counts', { method: 'POST', body: JSON.stringify({ ids }) });
+  },
+  // Admin only. body = { ids: [...] }  or  { filters: {...}, confirm: 'DELETE' }  (several rows need confirm: 'DELETE')
+  remove(body) {
+    return apiFetch('/logs', { method: 'DELETE', body: JSON.stringify(body) });
   },
 };
 
@@ -246,5 +237,17 @@ const Reports = {
   // ids = the records currently on screen, in order. Resolves with the file (a Blob).
   entries(body) {
     return apiFetch('/reports/entries', { method: 'POST', body: JSON.stringify(body), asBlob: true });
+  },
+  // { type: 'vehicles' | 'sites' | 'operators', format: 'xlsx' | 'pdf' }   (Admin)
+  inventory(body) {
+    return apiFetch('/reports/inventory', { method: 'POST', body: JSON.stringify(body), asBlob: true });
+  },
+  // { format }   (Admin) — includes deleted users
+  users(body) {
+    return apiFetch('/reports/users', { method: 'POST', body: JSON.stringify(body), asBlob: true });
+  },
+  // { format, ids: [...] }  or  { format, filters: { category, q, from, to } }   (Owner + Admin)
+  logs(body) {
+    return apiFetch('/reports/logs', { method: 'POST', body: JSON.stringify(body), asBlob: true });
   },
 };

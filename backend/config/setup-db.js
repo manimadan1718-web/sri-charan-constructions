@@ -146,6 +146,22 @@ WHERE NOT EXISTS (SELECT 1 FROM users WHERE role = 'admin');
 ALTER TABLE entries ADD COLUMN IF NOT EXISTS start_photo TEXT;
 ALTER TABLE entries ADD COLUMN IF NOT EXISTS close_photo TEXT;
 ALTER TABLE entries ADD COLUMN IF NOT EXISTS diesel_photo TEXT;
+
+-- 12. Who created / edited / deleted each user (used by the downloadable Users report).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS created_by_name TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at      TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_by_name TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at      TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_by_name TEXT;
+
+-- 13. Lock every table: only this app's server (secret service-role key) may read or change data.
+ALTER TABLE IF EXISTS users         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS entries       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS breakup_rows  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS vehicles      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS operators     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS sites         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS summaries     ENABLE ROW LEVEL SECURITY;
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('reading-photos', 'reading-photos', false)
 ON CONFLICT (id) DO NOTHING;

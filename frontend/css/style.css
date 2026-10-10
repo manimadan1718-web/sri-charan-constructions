@@ -1,3 +1,6 @@
+/* The HTML "hidden" attribute must always win — otherwise a rule like .form-group { display: flex } would show hidden things. */
+[hidden] { display: none !important; }
+
 /* ═══════════════════════════════════════════════════════════════════════════════
    Sri Charan Constructions — light theme
    ═══════════════════════════════════════════════════════════════════════════════ */
@@ -901,6 +904,56 @@ tbody tr:hover td      { background: #FFFAF4; }
 }
 @media print { .export-menu { display: none !important; } }
 
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Sub-sections (Inventory), form helpers for the new dialogs, Activity-Log selection
+   ═══════════════════════════════════════════════════════════════════════════════ */
+.sub-tabs {
+  display: flex; flex-wrap: wrap; gap: 6px; width: fit-content; max-width: 100%;
+  margin: 0 0 18px; padding: 5px;
+  background: #fff; border: 1px solid var(--line); border-radius: 14px;
+}
+.sub-tab {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 9px 16px; border: 0; border-radius: 10px; background: none; cursor: pointer;
+  font-family: var(--font-body); font-size: 13.5px; font-weight: 600; color: var(--steel);
+  transition: background-color .15s, color .15s;
+}
+.sub-tab:hover { background: var(--paper); color: var(--ink); }
+.sub-tab:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(226,116,10,.4); }
+.sub-tab.active { background: var(--hazard-tint); color: var(--hazard-deep); }
+.sub-tab .count {
+  min-width: 22px; padding: 1px 7px; border-radius: 99px; text-align: center;
+  background: var(--paper); color: var(--steel); font-size: 11.5px; font-weight: 700;
+}
+.sub-tab.active .count { background: var(--hazard); color: #fff; }
+.inv-panel[hidden] { display: none; }
+
+.form-grid.one-col, .modal-card .form-grid.one-col { grid-template-columns: 1fr; }
+.form-grid.two-col, .modal-card .form-grid.two-col { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.form-grid.two-col .span-2 { grid-column: 1 / -1; }
+.form-hint  { margin: 14px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--steel); }
+.form-hint[hidden] { display: none; }
+.form-error { margin-top: 10px; font-size: 13px; font-weight: 600; line-height: 1.4; color: var(--brick); }
+.form-error:empty { display: none; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+.log-bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
+  margin-bottom: 12px; padding: 10px 14px;
+  background: var(--sky-tint); border: 1px solid #CFE3F7; border-radius: 11px;
+  font-size: 13px; font-weight: 600; color: var(--ink);
+}
+.log-bar[hidden] { display: none; }
+.log-bar .grow { flex: 1; }
+.link-btn { background: none; border: 0; padding: 0; cursor: pointer; font-family: var(--font-body); font-size: 13px; font-weight: 700; color: var(--hazard-deep); text-decoration: underline; }
+.link-btn[hidden] { display: none; }
+.lg-select, .lg-del { width: 46px; text-align: center; vertical-align: top; }
+.lg-select input { width: 17px; height: 17px; margin-top: 2px; cursor: pointer; accent-color: var(--hazard); }
+.lg-lock { display: inline-flex; margin-top: 2px; color: var(--steel-light); }
+.log-table.readonly .lg-select, .log-table.readonly .lg-del { display: none; }
+.log-table tbody tr.is-protected td { background: #FFFBF5; }
+@media print { .log-bar, .lg-select, .lg-del { display: none !important; } }
+
 /* ── Edit Entry Modal ────────────────────────────────────────────────────────── */
 .modal-overlay {
   display: none;
@@ -982,11 +1035,20 @@ tbody tr:hover td      { background: #FFFAF4; }
   .log-table tbody tr:not(.empty-row):last-child { border-bottom: none; }
   .log-table tbody tr:not(.empty-row) td { display: block; padding: 0; border: 0; white-space: normal; min-width: 0; max-width: none; }
   .log-table tbody tr:hover td { background: none; }
+  .log-table tbody tr:not(.empty-row) { grid-template-columns: auto 1fr auto auto; }
   .log-table td:nth-child(1) { grid-column: 1;      grid-row: 1; align-self: center; }
-  .log-table td:nth-child(3) { grid-column: 2;      grid-row: 1; justify-self: end; }
-  .log-table td:nth-child(2) { grid-column: 1 / -1; grid-row: 2; }
-  .log-table td:nth-child(4) { grid-column: 1 / -1; grid-row: 3; }
-  .log-table td:nth-child(5) { grid-column: 1 / -1; grid-row: 4; }
+  .log-table td:nth-child(2) { grid-column: 2;      grid-row: 1; align-self: center; }
+  .log-table td:nth-child(4) { grid-column: 3;      grid-row: 1; justify-self: end; align-self: center; }
+  .log-table td:nth-child(7) { grid-column: 4;      grid-row: 1; align-self: center; }
+  .log-table td:nth-child(3) { grid-column: 1 / -1; grid-row: 2; }
+  .log-table td:nth-child(5) { grid-column: 1 / -1; grid-row: 3; }
+  .log-table td:nth-child(6) { grid-column: 1 / -1; grid-row: 4; }
+  /* Owner: no tick-box / delete cells, so the card is just: when · activity */
+  .log-table.readonly tbody tr:not(.empty-row) { grid-template-columns: 1fr auto; }
+  .log-table.readonly td:nth-child(2) { grid-column: 1; }
+  .log-table.readonly td:nth-child(4) { grid-column: 2; }
+  .lg-select, .lg-del { width: auto; }
+  .card-header { position: relative; }       /* the download menu opens full-width under its own header */
 }
 
 @media (max-width: 1250px) { .rec-filters-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }

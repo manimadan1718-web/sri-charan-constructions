@@ -3,6 +3,7 @@ const router = express.Router();
 const supabase = require('../config/supabase');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { logActivity, simpleDiff, simpleSnapshot } = require('../utils/activity');
+const { serverError } = require('../utils/http');
 
 router.use(requireAuth);
 
@@ -31,8 +32,7 @@ function crud({ table, path, label, orderBy, required, fields, uniqueMsg, entity
       if (error) throw error;
       res.json({ success: true, data });
     } catch (err) {
-      console.error(`GET /inventory/${path}:`, err.message);
-      res.status(500).json({ error: err.message });
+      return serverError(res, err, `GET /inventory/${path}`);
     }
   });
 
@@ -54,8 +54,7 @@ function crud({ table, path, label, orderBy, required, fields, uniqueMsg, entity
       });
       res.status(201).json({ success: true, data });
     } catch (err) {
-      console.error(`POST /inventory/${path}:`, err.message);
-      res.status(500).json({ error: err.message });
+      return serverError(res, err, `POST /inventory/${path}`);
     }
   });
 
@@ -88,8 +87,7 @@ function crud({ table, path, label, orderBy, required, fields, uniqueMsg, entity
       }
       res.json({ success: true, data });
     } catch (err) {
-      console.error(`PUT /inventory/${path}/:id:`, err.message);
-      res.status(500).json({ error: err.message });
+      return serverError(res, err, `PUT /inventory/${path}/:id`);
     }
   });
 
@@ -107,8 +105,7 @@ function crud({ table, path, label, orderBy, required, fields, uniqueMsg, entity
       }
       res.json({ success: true });
     } catch (err) {
-      console.error(`DELETE /inventory/${path}/:id:`, err.message);
-      res.status(500).json({ error: err.message });
+      return serverError(res, err, `DELETE /inventory/${path}/:id`);
     }
   });
 }

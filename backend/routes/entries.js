@@ -6,6 +6,7 @@ const {
   logActivity, cleanReason, reasonError, entryDiff, entrySnapshot, entryLabel,
 } = require('../utils/activity');
 const photos = require('../utils/photos');
+const { serverError } = require('../utils/http');
 
 router.use(requireAuth);
 
@@ -93,7 +94,7 @@ function sendSaveError(res, err) {
   if (photos.isMissingPhotoColumn(err)) {
     return res.status(503).json({ error: photos.PHOTO_SETUP_MESSAGE, setup_required: true });
   }
-  return res.status(500).json({ error: err.message });
+  return serverError(res, err, 'entry save');
 }
 
 // ── GET /api/entries  (Owner + Admin — "Records" & "Summary" reports) ───────
@@ -142,8 +143,7 @@ router.get('/', requireRole('owner', 'admin'), async (req, res) => {
 
     res.json({ success: true, data });
   } catch (err) {
-    console.error('GET /entries:', err.message);
-    res.status(500).json({ error: err.message });
+    return serverError(res, err, 'GET /entries');
   }
 });
 
@@ -171,8 +171,7 @@ router.get('/summary-stats', requireRole('owner', 'admin'), async (req, res) => 
 
     res.json({ success: true, data: stats });
   } catch (err) {
-    console.error('GET /entries/summary-stats:', err.message);
-    res.status(500).json({ error: err.message });
+    return serverError(res, err, 'GET /entries/summary-stats');
   }
 });
 
@@ -353,8 +352,7 @@ router.delete('/:id', requireRole('admin'), async (req, res) => {
 
     res.json({ success: true });
   } catch (err) {
-    console.error('DELETE /entries:', err.message);
-    res.status(500).json({ error: err.message });
+    return serverError(res, err, 'DELETE /entries');
   }
 });
 

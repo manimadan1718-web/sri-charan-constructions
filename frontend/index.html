@@ -142,7 +142,25 @@
       <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span> All Records</div>
       <div class="rec-actions">
         <button class="btn btn-outline btn-sm" onclick="clearFilters()">✕ Clear filters</button>
-        <button class="btn btn-outline btn-sm" onclick="exportCSV()">⬇ Export CSV</button>
+        <div class="export-menu" id="export-menu">
+          <button type="button" class="btn btn-outline btn-sm" id="export-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="export-pop" onclick="toggleExportMenu(event)">
+            <span id="export-label">⬇ Export</span><span class="caret" aria-hidden="true">▾</span>
+          </button>
+          <div class="export-pop" id="export-pop" role="menu" aria-label="Choose a report format" hidden>
+            <button type="button" role="menuitem" id="export-xlsx" onclick="exportReport('xlsx')">
+              <span class="fmt fmt-xlsx">XLS</span>
+              <span class="fmt-text"><strong>Excel</strong><small>.xlsx · photos shown in the sheet</small></span>
+            </button>
+            <button type="button" role="menuitem" id="export-pdf" onclick="exportReport('pdf')">
+              <span class="fmt fmt-pdf">PDF</span>
+              <span class="fmt-text"><strong>PDF</strong><small>.pdf · print-ready, photos included</small></span>
+            </button>
+            <button type="button" role="menuitem" id="export-csv" onclick="exportReport('csv')">
+              <span class="fmt fmt-csv">CSV</span>
+              <span class="fmt-text"><strong>CSV</strong><small>.csv · text only, photos marked Yes / No</small></span>
+            </button>
+          </div>
+        </div>
         <button class="btn btn-outline btn-sm" onclick="window.print()">🖨 Print</button>
       </div>
     </div>

@@ -23,6 +23,7 @@ const usersRouter     = require('./routes/users');
 const inventoryRouter = require('./routes/inventory');
 const logsRouter      = require('./routes/logs');
 const uploadsRouter   = require('./routes/uploads');
+const reportsRouter   = require('./routes/reports');
 const { ensureBucket } = require('./utils/photos');
 const { checkLogsTable } = require('./utils/activity');
 
@@ -81,6 +82,7 @@ app.use('/api/users',     usersRouter);
 app.use('/api/inventory', inventoryRouter);
 app.use('/api/logs',      logsRouter);
 app.use('/api/uploads',   uploadsRouter);
+app.use('/api/reports',   reportsRouter);
 
 // Health check
 app.get('/api/health', (req, res) => {

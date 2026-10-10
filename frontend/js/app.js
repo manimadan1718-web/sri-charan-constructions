@@ -32,6 +32,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   applyRoleUI(user.role);
   initReasonModal();
   initPhotoFields();
+  initExportMenu();
 
   document.getElementById('header-user').textContent = `${user.name} / ${capitalize(user.role)}`;
   document.getElementById('f-date').value = today();
@@ -553,42 +554,102 @@ async function deleteEntry(id) {
   }
 }
 
-/* ── Export CSV ──────────────────────────────────────────────────────────────── */
-function csvEscape(val) {
-  let s = (val === null || val === undefined) ? '' : String(val);
-  // Text starting with = + - @ is executed as a formula by Excel/Sheets
-  // (CSV injection). Prefix it with a quote so it stays plain text.
-  // Real numbers are left alone so negative values still export as numbers.
-  if (typeof val === 'string' && /^[=+\-@\t\r]/.test(s)) s = "'" + s;
-  if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-  return s;
+/* ── Export report (Excel / PDF / CSV) ───────────────────────────────────────── */
+// The report is built by the server from the records on screen, so it always matches what you
+// are looking at (filters included). Excel and PDF show the reading photos; CSV can't, so it says Yes / No.
+const EXPORT_LABELS = { xlsx: 'Excel', pdf: 'PDF', csv: 'CSV' };
+let exporting = false;
+
+function exportItems() { return [...document.querySelectorAll('#export-pop [role="menuitem"]')]; }
+
+function openExportMenu() {
+  if (exporting) return;
+  document.getElementById('export-pop').hidden = false;
+  document.getElementById('export-btn').setAttribute('aria-expanded', 'true');
+  const first = exportItems()[0];
+  if (first) first.focus();
 }
 
-function exportCSV() {
-  if (!currentRecords.length) { showToast('No records to export.', true); return; }
+function closeExportMenu(returnFocus) {
+  const pop = document.getElementById('export-pop');
+  if (!pop || pop.hidden) return;
+  pop.hidden = true;
+  const btn = document.getElementById('export-btn');
+  btn.setAttribute('aria-expanded', 'false');
+  if (returnFocus) btn.focus();
+}
 
-  const headers = ['Date','Site','Category','Vehicle No.','Start','Start Photo','Close','Close Photo','Working Hrs','Diesel (L)','Loads','Operator','Remarks','Breakup'];
-  const rows = currentRecords.map(e => {
-    const breakupText = (e.breakup_rows || [])
-      .map(b => `${b.description || ''}: ${b.quantity || ''}`)
-      .join(' | ');
-    return [
-      fmtDate(e.date), e.site || '', e.category === 'rental' ? 'Rental' : 'Own', e.vehicle_no,
-      e.start_reading || '', e.start_photo ? 'Yes' : 'No', e.close_reading || '', e.close_photo ? 'Yes' : 'No',
-      e.working_hours || '', e.diesel ?? 0, e.loads ?? 0, e.operator || '', e.remarks || '', breakupText
-    ];
+function toggleExportMenu(ev) {
+  if (ev) ev.stopPropagation();
+  const pop = document.getElementById('export-pop');
+  if (pop.hidden) openExportMenu(); else closeExportMenu(false);
+}
+
+function initExportMenu() {
+  const menu = document.getElementById('export-menu');
+  if (!menu) return;
+  document.addEventListener('click', ev => { if (!ev.target.closest('#export-menu')) closeExportMenu(false); });
+  menu.addEventListener('keydown', ev => {
+    const pop = document.getElementById('export-pop');
+    if (pop.hidden) return;
+    const items = exportItems();
+    const i = items.indexOf(document.activeElement);
+    if (ev.key === 'Escape')    { ev.preventDefault(); closeExportMenu(true); }
+    else if (ev.key === 'ArrowDown') { ev.preventDefault(); items[(i + 1) % items.length].focus(); }
+    else if (ev.key === 'ArrowUp')   { ev.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
+    else if (ev.key === 'Tab')  { closeExportMenu(false); }
   });
+}
 
-  const csv = [headers, ...rows].map(r => r.map(csvEscape).join(',')).join('\n');
-  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
+/** "From 01/10/2026 · Site: ISKCON" — printed at the top of Excel / PDF reports. */
+function describeFilters() {
+  const val = id => document.getElementById(id).value;
+  const parts = [];
+  if (val('filter-date-from')) parts.push(`From ${fmtDate(val('filter-date-from'))}`);
+  if (val('filter-date-to'))   parts.push(`To ${fmtDate(val('filter-date-to'))}`);
+  if (val('filter-category'))  parts.push(`Category: ${val('filter-category') === 'rental' ? 'Rental' : 'Own'}`);
+  if (val('filter-type'))      parts.push(`Type: ${val('filter-type')}`);
+  if (val('filter-vehicle'))   parts.push(`Vehicle: ${val('filter-vehicle')}`);
+  if (val('filter-site'))      parts.push(`Site: ${val('filter-site')}`);
+  return parts.join(' · ');
+}
+
+function setExportBusy(on, label) {
+  const btn = document.getElementById('export-btn');
+  btn.disabled = on;
+  btn.classList.toggle('is-busy', on);
+  document.getElementById('export-label').textContent = on ? `Preparing ${label}…` : '⬇ Export';
+}
+
+function saveBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
   a.href = url;
-  a.download = `SCC-site-log-${today()}.csv`;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function exportReport(format) {
+  closeExportMenu(false);
+  if (exporting) return;
+  if (!currentRecords.length) { showToast('No records to export.', true); return; }
+
+  const label = EXPORT_LABELS[format] || 'report';
+  exporting = true;
+  setExportBusy(true, label);
+  try {
+    const blob = await Reports.entries({ format, ids: currentRecords.map(e => e.id), filtersText: describeFilters() });
+    saveBlob(blob, `SCC-site-log-${today()}.${format}`);
+    showToast(`✅ ${label} report downloaded.`);
+  } catch (e) {
+    showToast('❌ ' + (e.message || 'The report could not be prepared.'), true);
+  } finally {
+    exporting = false;
+    setExportBusy(false);
+  }
 }
 
 /* ── Edit Entry Modal (Admin only) ─────────────────────────────────────────── */
@@ -1312,6 +1373,7 @@ const SPECIAL_ACTIONS = {
   login_blocked: { label: 'Login blocked',  cls: 'pill-red'    },
   logout:        { label: 'Logout',         cls: 'pill-gray'   },
   entry_updated: { label: 'Entry edited',   cls: 'pill-orange' },
+  report_exported: { label: 'Report exported', cls: 'pill-sky' },
 };
 function actionMeta(action) {
   if (SPECIAL_ACTIONS[action]) return SPECIAL_ACTIONS[action];

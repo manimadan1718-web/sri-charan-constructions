@@ -50,6 +50,9 @@ async function apiFetch(path, options = {}) {
     throw new Error('Cannot reach the server. Check your connection and try again.');
   }
 
+  // A downloaded file (report) is returned as it is — reading it as JSON would destroy it.
+  if (options.asBlob && res.ok) return res.blob();
+
   // Not every error response is JSON (proxies, crashes...), so never let a
   // parse failure hide the real status.
   let data = null;
@@ -235,5 +238,13 @@ const Uploads = {
   // Throws away a photo that was uploaded but never saved with an entry.
   discard(path) {
     return apiFetch('/uploads/reading', { method: 'DELETE', body: JSON.stringify({ path }) });
+  },
+};
+
+// ── Reports (Excel / PDF / CSV) ───────────────────────────────────────────────
+const Reports = {
+  // ids = the records currently on screen, in order. Resolves with the file (a Blob).
+  entries(body) {
+    return apiFetch('/reports/entries', { method: 'POST', body: JSON.stringify(body), asBlob: true });
   },
 };

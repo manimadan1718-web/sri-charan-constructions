@@ -1,5 +1,5 @@
 /**
- * Photo-proof helpers (Starting / Closing reading photos).
+ * Photo-proof helpers (Starting / Closing reading and Diesel photos).
  *
  * Photos live in a PRIVATE Supabase Storage bucket. The database only stores the
  * file's path (entries.start_photo / entries.close_photo). People never get a
@@ -27,7 +27,7 @@ const MAX_BYTES = 4 * 1024 * 1024;           // the browser shrinks photos to ~1
 const SIGNED_URL_SECONDS = 10 * 60;
 const MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
-const PHOTO_COLUMNS = ['start_photo', 'close_photo'];
+const PHOTO_COLUMNS = ['start_photo', 'close_photo', 'diesel_photo'];
 
 // pending/2026/10/<uuid>.jpg  and  readings/2026/10/<uuid>.jpg — the ONLY shapes of path the app accepts
 const TAIL = '\\/\\d{4}\\/\\d{2}\\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.(?:jpg|png|webp)$';
@@ -138,7 +138,7 @@ async function discardPending(path) {
 
 /** True when a database error is only because the photo columns haven't been added yet. */
 const isMissingPhotoColumn = err =>
-  !!err && /(start_photo|close_photo)/i.test(String(err.message || '')) &&
+  !!err && /(start_photo|close_photo|diesel_photo)/i.test(String(err.message || '')) &&
   /(column|schema cache)/i.test(String(err.message || ''));
 
 const PHOTO_SETUP_MESSAGE =

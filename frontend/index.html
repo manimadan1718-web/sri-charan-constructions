@@ -96,6 +96,7 @@
       <div class="form-group">
         <label>Diesel (Litres)</label>
         <input type="number" id="f-diesel" placeholder="0" min="0" step="0.5">
+        <div class="photo-field" data-key="f-diesel" data-label="Diesel photo"></div>
       </div>
       <div class="form-group">
         <label>Loads</label>
@@ -112,21 +113,6 @@
         <label>Remarks</label>
         <textarea id="f-remarks" placeholder="Any notes or observations..."></textarea>
       </div>
-    </div>
-
-    <!-- Breakup -->
-    <div class="breakup-section">
-      <div class="card-title" style="margin-bottom:14px;font-size:15px;">
-        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span> Work Breakup <span class="badge">Optional</span>
-      </div>
-      <div id="breakup-rows">
-        <div class="breakup-row">
-          <input type="text" placeholder="Description (e.g. Earthwork, Levelling...)" class="bu-desc">
-          <input type="text" placeholder="Qty / Hours" class="bu-qty" style="max-width:150px;">
-          <button class="remove-breakup-btn" onclick="removeBreakup(this)">×</button>
-        </div>
-      </div>
-      <button class="add-breakup-btn" onclick="addBreakup()">＋ Add Row</button>
     </div>
 
     <div class="btn-group">
@@ -219,7 +205,7 @@
             <th>#</th><th>Date</th><th>Site</th><th>Category</th><th>Vehicle No.</th>
             <th>Start</th><th>Close</th><th>Working Hrs</th>
             <th>Diesel (L)</th><th>Loads</th><th>Operator</th>
-            <th>Remarks</th><th>Breakup</th>
+            <th>Remarks</th>
             <th class="hist-col">History</th><th class="admin-only-col edit-col">Edit</th><th class="admin-only-col del-col">Delete</th>
           </tr>
         </thead>
@@ -523,6 +509,7 @@
       <div class="form-group">
         <label>Diesel (Litres)</label>
         <input type="number" id="e-diesel" min="0" step="0.5">
+        <div class="photo-field" data-key="e-diesel" data-label="Diesel photo"></div>
       </div>
       <div class="form-group">
         <label>Loads</label>
@@ -539,14 +526,6 @@
         <label>Remarks</label>
         <textarea id="e-remarks"></textarea>
       </div>
-    </div>
-
-    <div class="breakup-section">
-      <div class="card-title" style="margin-bottom:14px;font-size:15px;">
-        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span> Work Breakup <span class="badge">Optional</span>
-      </div>
-      <div id="e-breakup-rows"></div>
-      <button class="add-breakup-btn" onclick="addEditBreakup()">＋ Add Row</button>
     </div>
 
     <div class="btn-group">

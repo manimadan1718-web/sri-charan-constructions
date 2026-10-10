@@ -201,8 +201,6 @@ main { padding: 26px var(--gutter) 64px; }
   border-radius: 9px;
 }
 .ic svg { width: 18px; height: 18px; }
-.breakup-section .ic { width: 28px; height: 28px; border-radius: 8px; }
-.breakup-section .ic svg { width: 15px; height: 15px; }
 .badge {
   background: var(--hazard-tint);
   color: var(--hazard-deep);
@@ -367,14 +365,6 @@ tbody tr:hover td      { background: #FFFAF4; }
 .stat-val   { font-family: var(--font-display); font-size: 36px; font-weight: 700; line-height: 1.05; color: var(--ink); }
 .stat-unit  { font-size: 12px; color: var(--steel-light); margin-top: 4px; }
 
-/* ── Breakup rows ────────────────────────────────────────────────────────────── */
-.breakup-section     { margin-top: 24px; border-top: 1px dashed #D5DBE5; padding-top: 20px; }
-.breakup-row         { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
-.breakup-row input   { flex: 1; }
-.add-breakup-btn     { background: var(--hazard-tint); border: none; border-radius: 8px; padding: 7px 14px; cursor: pointer; color: var(--hazard-deep); font-family: var(--font-body); font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 5px; margin-top: 6px; transition: background-color .15s; }
-.add-breakup-btn:hover { background: var(--hazard-mid); }
-.remove-breakup-btn  { background: none; border: none; cursor: pointer; color: var(--steel-light); font-size: 22px; line-height: 1; padding: 4px 8px; border-radius: 6px; transition: color .15s, background-color .15s; }
-.remove-breakup-btn:hover { color: var(--brick); background: var(--brick-tint); }
 
 /* ── Toast ───────────────────────────────────────────────────────────────────── */
 .toast {
@@ -940,7 +930,7 @@ tbody tr:hover td      { background: #FFFAF4; }
 /* ── Print ───────────────────────────────────────────────────────────────────── */
 @media print {
   body { background: #fff !important; background-image: none !important; }
-  .app-top, .btn, .add-breakup-btn, .modal-overlay, .hazard-stripe { display: none !important; }
+  .app-top, .btn, .modal-overlay, .hazard-stripe { display: none !important; }
   main { padding: 0; }
   .card { border: 1px solid #ccc; box-shadow: none; break-inside: avoid; }
   thead th { background: #eee !important; color: #000 !important; }

@@ -48,12 +48,12 @@ const nowStamp = () =>
 
 const cleanText = (v, max = 300) => String(v == null ? '' : v).replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
 
-/** Fetches the entries (with breakup rows) for the given ids, keeping the caller's order. */
+/** Fetches the entries for the given ids, keeping the caller's order. */
 async function fetchEntriesByIds(ids) {
   const byId = new Map();
   for (let i = 0; i < ids.length; i += 100) {
     // eslint-disable-next-line no-await-in-loop
-    const { data, error } = await supabase.from('entries').select('*, breakup_rows(*)').in('id', ids.slice(i, i + 100));
+    const { data, error } = await supabase.from('entries').select('*').in('id', ids.slice(i, i + 100));
     if (error) throw error;
     (data || []).forEach(r => byId.set(String(r.id), r));
   }
@@ -62,9 +62,6 @@ async function fetchEntriesByIds(ids) {
 
 /** One flat, display-ready row per entry. */
 function toRow(e, i) {
-  const breakup = (e.breakup_rows || [])
-    .filter(b => b && (b.description || b.quantity))
-    .map(b => `${b.description || ''}: ${b.quantity || ''}`).join(' | ');
   return {
     n: i + 1,
     date: fmtDateDMY(e.date),
@@ -77,21 +74,23 @@ function toRow(e, i) {
     closePhoto: photos.isReadingPath(e.close_photo) ? e.close_photo : null,
     hours: e.working_hours || '',
     diesel: Number(e.diesel) || 0,
+    dieselPhoto: photos.isReadingPath(e.diesel_photo) ? e.diesel_photo : null,
     loads: parseInt(e.loads, 10) || 0,
     operator: e.operator || '',
     remarks: e.remarks || '',
-    breakup,
     hadStartPhoto: !!e.start_photo,
     hadClosePhoto: !!e.close_photo,
+    hadDieselPhoto: !!e.diesel_photo,
   };
 }
 
-const countPhotos = rows => rows.reduce((n, r) => n + (r.startPhoto ? 1 : 0) + (r.closePhoto ? 1 : 0), 0);
+const PHOTO_KEYS = ['startPhoto', 'closePhoto', 'dieselPhoto'];
+const countPhotos = rows => rows.reduce((n, r) => n + PHOTO_KEYS.filter(k => r[k]).length, 0);
 
 /** "4 photos" or "4 photos (1 unavailable)" — counts what is really shown in the report. */
 function photoSummary(rows, thumbs) {
   const attached = countPhotos(rows);
-  const shown = rows.reduce((n, r) => n + (r.startPhoto && thumbs.has(r.startPhoto) ? 1 : 0) + (r.closePhoto && thumbs.has(r.closePhoto) ? 1 : 0), 0);
+  const shown = rows.reduce((n, r) => n + PHOTO_KEYS.filter(k => r[k] && thumbs.has(r[k])).length, 0);
   const missing = attached - shown;
   return `${shown} photo${shown === 1 ? '' : 's'}${missing ? ` (${missing} unavailable)` : ''}`;
 }
@@ -112,7 +111,7 @@ async function makeThumb(sharp, photoPath) {
 
 /** Map of photo path → { buffer, width, height }. A photo that can't be read is simply left out. */
 async function loadThumbnails(rows) {
-  const wanted = [...new Set(rows.flatMap(r => [r.startPhoto, r.closePhoto]).filter(Boolean))];
+  const wanted = [...new Set(rows.flatMap(r => PHOTO_KEYS.map(k => r[k])).filter(Boolean))];
   const out = new Map();
   if (!wanted.length) return out;
   const sharp = lib('sharp');
@@ -142,10 +141,10 @@ function csvEscape(val) {
 }
 
 function buildCsv(rows) {
-  const headers = ['Date', 'Site', 'Category', 'Vehicle No.', 'Start', 'Start Photo', 'Close', 'Close Photo', 'Working Hrs', 'Diesel (L)', 'Loads', 'Operator', 'Remarks', 'Breakup'];
+  const headers = ['Date', 'Site', 'Category', 'Vehicle No.', 'Start', 'Start Photo', 'Close', 'Close Photo', 'Working Hrs', 'Diesel (L)', 'Diesel Photo', 'Loads', 'Operator', 'Remarks'];
   const lines = rows.map(r => [
     r.date, r.site, r.category, r.vehicle, r.start, r.hadStartPhoto ? 'Yes' : 'No', r.close, r.hadClosePhoto ? 'Yes' : 'No',
-    r.hours, r.diesel, r.loads, r.operator, r.remarks, r.breakup,
+    r.hours, r.diesel, r.hadDieselPhoto ? 'Yes' : 'No', r.loads, r.operator, r.remarks,
   ]);
   const csv = [headers, ...lines].map(l => l.map(csvEscape).join(',')).join('\n');
   return Buffer.from('\uFEFF' + csv, 'utf8');   // BOM so Excel reads accents/₹ correctly
@@ -164,10 +163,10 @@ const XL_COLS = [
   { key: 'closePhoto', header: 'Close Photo',  width: 23, photo: true },
   { key: 'hours',      header: 'Working Hrs',  width: 14 },
   { key: 'diesel',     header: 'Diesel (L)',   width: 11 },
+  { key: 'dieselPhoto', header: 'Diesel Photo', width: 23, photo: true },
   { key: 'loads',      header: 'Loads',        width: 8 },
   { key: 'operator',   header: 'Operator',     width: 16 },
-  { key: 'remarks',    header: 'Remarks',      width: 28 },
-  { key: 'breakup',    header: 'Breakup',      width: 30 },
+  { key: 'remarks',    header: 'Remarks',      width: 30 },
 ];
 const HEADER_ROW = 5;
 const IMG_BOX_W = 150, IMG_BOX_H = 112;      // pixels — how big a photo appears in its cell
@@ -175,7 +174,7 @@ const PHOTO_ROW_PT = (IMG_BOX_H + 14) * 0.75; // a row that holds a photo is a l
 const EMU = 9525;                             // English Metric Units per pixel
 
 // Excel does not resize a row by itself when its height is set, so estimate how many lines the wrapped columns need.
-const WRAP_WIDTHS = { site: 20, remarks: 28, breakup: 30 };
+const WRAP_WIDTHS = { site: 20, remarks: 30 };
 const wrappedLines = (text, widthChars) =>
   !text ? 1 : String(text).split(/\r?\n/).reduce((n, line) => n + Math.max(1, Math.ceil(line.length / (widthChars * 1.08))), 0);
 
@@ -225,7 +224,7 @@ async function buildXlsx(rows, meta, thumbs) {
   const firstData = HEADER_ROW + 1;
   rows.forEach((r, idx) => {
     const row = ws.getRow(firstData + idx);
-    const hasPhoto = (r.startPhoto && thumbs.has(r.startPhoto)) || (r.closePhoto && thumbs.has(r.closePhoto));
+    const hasPhoto = PHOTO_KEYS.some(k => r[k] && thumbs.has(r[k]));
     XL_COLS.forEach((c, i) => {
       const cell = row.getCell(i + 1);
       if (c.photo) {
@@ -236,7 +235,7 @@ async function buildXlsx(rows, meta, thumbs) {
         cell.value = r[c.key];                                  // plain strings are never treated as formulas
       }
       cell.font = { name: 'Calibri', size: 10.5, color: argb(COLORS.ink), bold: c.key === 'vehicle' };
-      cell.alignment = { vertical: 'middle', horizontal: c.photo ? 'center' : (c.key === 'diesel' || c.key === 'loads' || c.key === 'n') ? 'right' : 'left', wrapText: c.key === 'remarks' || c.key === 'breakup' || c.key === 'site', indent: c.photo ? 0 : 1 };
+      cell.alignment = { vertical: 'middle', horizontal: c.photo ? 'center' : (c.key === 'diesel' || c.key === 'loads' || c.key === 'n') ? 'right' : 'left', wrapText: c.key === 'remarks' || c.key === 'site', indent: c.photo ? 0 : 1 };
       cell.border = BORDER;
       if (idx % 2 === 1) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: argb(COLORS.paper) };
       if (c.photo && cell.value && cell.value !== '—') cell.font = { name: 'Calibri', size: 9, italic: true, color: argb('B4372A') };
@@ -299,19 +298,19 @@ const pdfText = s => String(s == null ? '' : s)
 const PDF_COLS = [
   { key: 'n',          header: '#',           w: 20 },
   { key: 'date',       header: 'Date',        w: 50 },
-  { key: 'site',       header: 'Site',        w: 58 },
+  { key: 'site',       header: 'Site',        w: 55 },
   { key: 'category',   header: 'Cat.',        w: 36 },
   { key: 'vehicle',    header: 'Vehicle No.', w: 76, bold: true },
   { key: 'start',      header: 'Start',       w: 44 },
   { key: 'startPhoto', header: 'Start photo', w: 76, photo: true },
   { key: 'close',      header: 'Close',       w: 44 },
   { key: 'closePhoto', header: 'Close photo', w: 76, photo: true },
-  { key: 'hours',      header: 'Working hrs', w: 48 },
+  { key: 'hours',      header: 'Working hrs', w: 46 },
   { key: 'diesel',     header: 'Diesel (L)',  w: 42, right: true },
+  { key: 'dieselPhoto', header: 'Diesel photo', w: 76, photo: true },
   { key: 'loads',      header: 'Loads',       w: 28, right: true },
-  { key: 'operator',   header: 'Operator',    w: 56 },
-  { key: 'remarks',    header: 'Remarks',     w: 63 },
-  { key: 'breakup',    header: 'Breakup',     w: 68 },
+  { key: 'operator',   header: 'Operator',    w: 55 },
+  { key: 'remarks',    header: 'Remarks',     w: 59 },
 ];
 
 async function buildPdf(rows, meta, thumbs) {
@@ -361,7 +360,7 @@ async function buildPdf(rows, meta, thumbs) {
       doc.font(c.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(FONT);
       textH = Math.max(textH, Math.min(MAX_TEXT_H, doc.heightOfString(t || ' ', { width: c.w - PAD * 2 })));
     });
-    const hasPhoto = (r.startPhoto && thumbs.has(r.startPhoto)) || (r.closePhoto && thumbs.has(r.closePhoto));
+    const hasPhoto = PHOTO_KEYS.some(k => r[k] && thumbs.has(r[k]));
     const rowH = Math.max(textH, hasPhoto ? BOX_H : 0) + PAD * 2 + 2;
 
     if (y + rowH > bottom) { doc.addPage(); y = M; drawHeader(); }

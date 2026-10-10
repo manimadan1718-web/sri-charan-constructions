@@ -60,11 +60,9 @@ function parseEntryBody(body) {
     category: b.category === 'rental' ? 'rental' : 'own',
   };
 
-  const rows = (Array.isArray(b.breakup_rows) ? b.breakup_rows : [])
-    .map(r => ({ description: str(r && r.description) || '', quantity: str(r && r.quantity) || '' }))
-    .filter(r => r.description || r.quantity);
+  // (Work Breakup was removed. A page that still sends `breakup_rows` is simply ignored.)
 
-  // Photo proof (start / close reading). A photo is only ever a path our own upload route handed out.
+  // Photo proof (start / close reading and diesel). A photo is only ever a path our own upload route handed out.
   //   key missing        → "leave as it is"
   //   null / ''          → "remove the photo"
   //   valid path string  → "attach this photo"
@@ -78,7 +76,7 @@ function parseEntryBody(body) {
     photoInput[col] = v;
   }
 
-  return { fields, rows, photoInput };
+  return { fields, photoInput };
 }
 
 /** Checks that each photo path being attached really exists in storage. Returns an error message or null. */
@@ -105,7 +103,7 @@ router.get('/', requireRole('owner', 'admin'), async (req, res) => {
 
     let query = supabase
       .from('entries')
-      .select('*, breakup_rows(*)')
+      .select('*')
       .order('date', { ascending: false })
       .order('created_at', { ascending: false });
 
@@ -213,13 +211,6 @@ router.post('/', requireRole('supervisor', 'admin'), async (req, res) => {
     if (entryErr) throw entryErr;
     createdId = entry.id;
 
-    if (parsed.rows.length > 0) {
-      const { error: buErr } = await supabase
-        .from('breakup_rows')
-        .insert(parsed.rows.map(r => ({ entry_id: entry.id, ...r })));
-      if (buErr) throw buErr;
-    }
-
     // Last step: file the photos under readings/. If this fails the entry is removed again (below)
     // and the photos are put back, so the person can just press Save again.
     if (toPromote.length) await photos.promoteAll(toPromote);
@@ -227,13 +218,13 @@ router.post('/', requireRole('supervisor', 'admin'), async (req, res) => {
     await logActivity(req, {
       category: 'entry', action: 'entry_created', entityType: 'entry', entityId: entry.id,
       entityLabel: entryLabel(parsed.fields),
-      changes: entrySnapshot(parsed.fields, parsed.rows, 'to'),
+      changes: entrySnapshot(parsed.fields, 'to'),
     });
 
     res.status(201).json({ success: true, data: entry });
   } catch (err) {
     console.error('POST /entries:', err.message);
-    // Don't leave a half-saved entry (entry without its breakup rows) behind.
+    // Don't leave a half-saved entry (saved, but its photos could not be filed) behind.
     if (createdId) await supabase.from('entries').delete().eq('id', createdId);
     sendSaveError(res, err);
   }
@@ -244,9 +235,8 @@ router.post('/', requireRole('supervisor', 'admin'), async (req, res) => {
 // the activity log together with exactly what changed.
 router.put('/:id', requireRole('admin'), async (req, res) => {
   const { id } = req.params;
-  let snapshot = null; // original entry + breakup rows, used to roll back on failure
+  let snapshot = null; // the entry as it was, used to roll back on failure
   let entryChanged = false;
-  let rowsReplaced = false;
 
   try {
     const parsed = parseEntryBody(req.body);
@@ -254,7 +244,7 @@ router.put('/:id', requireRole('admin'), async (req, res) => {
 
     const { data: original, error: getErr } = await supabase
       .from('entries')
-      .select('*, breakup_rows(*)')
+      .select('*')
       .eq('id', id)
       .maybeSingle();
     if (getErr) throw getErr;
@@ -282,11 +272,10 @@ router.put('/:id', requireRole('admin'), async (req, res) => {
       return res.status(400).json({ error: 'The same photo cannot be used twice. Please attach a separate photo for each reading.' });
     }
 
-    const changes = entryDiff(original, parsed.fields, parsed.rows);
+    const changes = entryDiff(original, parsed.fields);
     if (!changes.length) {
       // Nothing actually differs — don't touch the record or ask for a reason.
-      const { breakup_rows, ...plain } = original;
-      return res.json({ success: true, unchanged: true, data: plain });
+      return res.json({ success: true, unchanged: true, data: original });
     }
 
     const rErr = reasonError(req.body.reason, 'change an entry');
@@ -308,18 +297,6 @@ router.put('/:id', requireRole('admin'), async (req, res) => {
     entryChanged = true;
     if (!entry) return res.status(404).json({ error: 'Entry not found.' });
 
-    // Replace breakup rows: delete old, insert new
-    const { error: delErr } = await supabase.from('breakup_rows').delete().eq('entry_id', id);
-    if (delErr) throw delErr;
-    rowsReplaced = true;
-
-    if (parsed.rows.length > 0) {
-      const { error: buErr } = await supabase
-        .from('breakup_rows')
-        .insert(parsed.rows.map(r => ({ entry_id: id, ...r })));
-      if (buErr) throw buErr;
-    }
-
     // Last step: file new photos under readings/. If it fails, the catch block below restores the old entry.
     if (toPromote.length) await photos.promoteAll(toPromote);
 
@@ -331,17 +308,12 @@ router.put('/:id', requireRole('admin'), async (req, res) => {
     res.json({ success: true, data: entry });
   } catch (err) {
     console.error('PUT /entries/:id:', err.message);
-    // Best-effort rollback so a failed edit can't silently wipe the old breakup rows.
+    // Best-effort rollback so a failed edit (for example photos that could not be filed) leaves the entry as it was.
     if (snapshot) {
       try {
-        const { breakup_rows: oldRows = [], ...oldEntry } = snapshot;
         if (entryChanged) {
-          const { id: _omit, created_at: _c, ...restore } = oldEntry;
+          const { id: _omit, created_at: _c, ...restore } = snapshot;
           await supabase.from('entries').update(restore).eq('id', id);
-        }
-        if (rowsReplaced) {
-          await supabase.from('breakup_rows').delete().eq('entry_id', id);
-          if (oldRows.length) await supabase.from('breakup_rows').insert(oldRows);
         }
       } catch (rbErr) {
         console.error('PUT /entries/:id rollback failed:', rbErr.message);
@@ -362,13 +334,13 @@ router.delete('/:id', requireRole('admin'), async (req, res) => {
 
     const { data: original, error: getErr } = await supabase
       .from('entries')
-      .select('*, breakup_rows(*)')
+      .select('*')
       .eq('id', id)
       .maybeSingle();
     if (getErr) throw getErr;
     if (!original) return res.status(404).json({ error: 'Entry not found.' });
 
-    // breakup_rows delete cascades automatically
+    // (Any old Work Breakup rows that belong to this entry are removed with it by the database.)
     const { error } = await supabase.from('entries').delete().eq('id', id);
     if (error) throw error;
 
@@ -376,7 +348,7 @@ router.delete('/:id', requireRole('admin'), async (req, res) => {
     await logActivity(req, {
       category: 'entry', action: 'entry_deleted', entityType: 'entry', entityId: id,
       entityLabel: entryLabel(original), reason,
-      changes: entrySnapshot(original, original.breakup_rows, 'from'),
+      changes: entrySnapshot(original, 'from'),
     });
 
     res.json({ success: true });

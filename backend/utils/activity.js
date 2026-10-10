@@ -82,6 +82,7 @@ const ENTRY_FIELDS = [
   ['remarks',       'Remarks',      'text'],
   ['start_photo',   'Start photo',  'photo'],
   ['close_photo',   'Close photo',  'photo'],
+  ['diesel_photo',  'Diesel photo', 'photo'],
 ];
 
 function fmtValue(kind, v) {
@@ -94,17 +95,8 @@ function fmtValue(kind, v) {
   return s;
 }
 
-const breakupText = rows =>
-  (rows || []).filter(r => norm(r.description) || norm(r.quantity))
-    .map(r => `${norm(r.description)}: ${norm(r.quantity)}`).join(' | ') || null;
-
-// Order-insensitive key, so re-ordering alone never counts as a change.
-const breakupKey = rows =>
-  (rows || []).filter(r => norm(r.description) || norm(r.quantity))
-    .map(r => `${norm(r.description)}\u0001${norm(r.quantity)}`).sort().join('\u0002');
-
-/** What changed between the saved entry (with breakup_rows) and the new values. */
-function entryDiff(before, afterFields, afterRows) {
+/** What changed between the saved entry and the new values. */
+function entryDiff(before, afterFields) {
   const out = [];
   for (const [col, label, kind] of ENTRY_FIELDS) {
     if (kind === 'photo') {
@@ -120,22 +112,17 @@ function entryDiff(before, afterFields, afterRows) {
     const b = fmtValue(kind, afterFields[col]);
     if (a !== b) out.push({ field: label, from: a, to: b });
   }
-  if (breakupKey(before.breakup_rows) !== breakupKey(afterRows)) {
-    out.push({ field: 'Work Breakup', from: breakupText(before.breakup_rows), to: breakupText(afterRows) });
-  }
   return out;
 }
 
 /** Every filled-in field of an entry — used for "created" and "deleted" logs. */
-function entrySnapshot(fields, rows, side) {
+function entrySnapshot(fields, side) {
   const out = [];
   for (const [col, label, kind] of ENTRY_FIELDS) {
     const v = fmtValue(kind, fields[col]);
     if (v === null || (kind === 'num' && Number(v) === 0)) continue;
     out.push(side === 'from' ? { field: label, from: v, to: null } : { field: label, from: null, to: v });
   }
-  const bt = breakupText(rows);
-  if (bt) out.push(side === 'from' ? { field: 'Work Breakup', from: bt, to: null } : { field: 'Work Breakup', from: null, to: bt });
   return out;
 }
 

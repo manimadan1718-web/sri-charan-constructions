@@ -356,42 +356,6 @@ function switchTab(name) {
   if (name === 'logs')      loadLogs(true);
 }
 
-/* ── Breakup rows (New Entry form) ───────────────────────────────────────────── */
-function addBreakup() {
-  const row = document.createElement('div');
-  row.className = 'breakup-row';
-  row.innerHTML = `
-    <input type="text" placeholder="Description" class="bu-desc">
-    <input type="text" placeholder="Qty / Hours" class="bu-qty" style="max-width:150px;">
-    <button class="remove-breakup-btn" onclick="removeBreakup(this)">×</button>`;
-  document.getElementById('breakup-rows').appendChild(row);
-}
-
-function removeBreakup(btn) {
-  const container = document.getElementById('breakup-rows');
-  if (container.querySelectorAll('.breakup-row').length > 1) {
-    btn.closest('.breakup-row').remove();
-  }
-}
-
-function getBreakupData() {
-  return [...document.querySelectorAll('#breakup-rows .breakup-row')]
-    .map(r => ({
-      description: r.querySelector('.bu-desc').value.trim(),
-      quantity:    r.querySelector('.bu-qty').value.trim(),
-    }))
-    .filter(r => r.description || r.quantity);
-}
-
-function clearBreakup() {
-  document.getElementById('breakup-rows').innerHTML = `
-    <div class="breakup-row">
-      <input type="text" placeholder="Description (e.g. Earthwork, Levelling...)" class="bu-desc">
-      <input type="text" placeholder="Qty / Hours" class="bu-qty" style="max-width:150px;">
-      <button class="remove-breakup-btn" onclick="removeBreakup(this)">×</button>
-    </div>`;
-}
-
 /* ── Form ────────────────────────────────────────────────────────────────────── */
 function clearForm() {
   ['f-vehicle','f-vehicle-text','f-start','f-close','f-hours','f-diesel','f-loads','f-operator','f-operator-text','f-remarks','f-site']
@@ -399,7 +363,6 @@ function clearForm() {
   document.getElementById('f-date').value = today();
   document.getElementById('f-category').value = 'own';
   toggleCategoryFields('f');
-  clearBreakup();
   resetCalcHint();
   releasePhotos('f', true);   // photos that were never saved are thrown away
 }
@@ -414,6 +377,7 @@ async function saveEntry() {
     date, vehicle_no,
     start_photo: photoPath('f-start'),
     close_photo: photoPath('f-close'),
+    diesel_photo: photoPath('f-diesel'),
     site: document.getElementById('f-site').value.trim(),
     category: document.getElementById('f-category').value,
     start_reading: document.getElementById('f-start').value.trim(),
@@ -423,7 +387,6 @@ async function saveEntry() {
     loads:   parseInt(document.getElementById('f-loads').value)    || 0,
     operator: getOperatorValue('f'),
     remarks:  document.getElementById('f-remarks').value.trim(),
-    breakup_rows: getBreakupData(),
   };
 
   try {
@@ -494,15 +457,11 @@ function renderRecordsTable(entries) {
   tbody.innerHTML = '';
 
   if (!entries.length) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="${isAdmin ? 16 : 14}">No records found.</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="${isAdmin ? 15 : 13}">No records found.</td></tr>`;
     return;
   }
 
   entries.forEach((e, i) => {
-    const breakupText = (e.breakup_rows || [])
-      .map(b => `${b.description || ''}: ${b.quantity || ''}`)
-      .join(' | ') || '–';
-
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${i + 1}</td>
@@ -513,11 +472,10 @@ function renderRecordsTable(entries) {
       <td><span class="reading-cell">${esc(e.start_reading) || '–'}${photoChipHtml(e.start_photo, `Starting reading · ${e.vehicle_no} · ${fmtDate(e.date)}`)}</span></td>
       <td><span class="reading-cell">${esc(e.close_reading) || '–'}${photoChipHtml(e.close_photo, `Closing reading · ${e.vehicle_no} · ${fmtDate(e.date)}`)}</span></td>
       <td>${esc(e.working_hours) || '–'}</td>
-      <td>${esc(e.diesel ?? 0)}</td>
+      <td><span class="reading-cell">${esc(e.diesel ?? 0)}${photoChipHtml(e.diesel_photo, `Diesel · ${e.vehicle_no} · ${fmtDate(e.date)}`)}</span></td>
       <td>${esc(e.loads ?? 0)}</td>
       <td>${esc(e.operator) || '–'}</td>
-      <td style="max-width:160px;white-space:normal;">${esc(e.remarks) || '–'}</td>
-      <td style="max-width:180px;white-space:normal;font-size:12px;color:var(--mid);">${esc(breakupText)}</td>
+      <td style="max-width:200px;white-space:normal;">${esc(e.remarks) || '–'}</td>
       <td class="hist-col"><button class="btn btn-outline btn-sm hist-btn" data-id="${esc(e.id)}" onclick="openHistory(this.dataset.id)" title="View history">${CLOCK_SVG}<span class="hist-count"></span></button></td>
       ${isAdmin ? `<td class="edit-col"><button class="btn btn-outline btn-sm" onclick="openEditModal('${esc(e.id)}')">✏️</button></td>
       <td class="del-col"><button class="btn btn-danger btn-sm" onclick="deleteEntry('${esc(e.id)}')">🗑</button></td>` : ''}`;
@@ -682,11 +640,7 @@ function openEditModal(id) {
   releasePhotos('e', true);
   setExistingPhoto('e-start', entry.start_photo || null);
   setExistingPhoto('e-close', entry.close_photo || null);
-
-  const buContainer = document.getElementById('e-breakup-rows');
-  buContainer.innerHTML = '';
-  const rows = (entry.breakup_rows && entry.breakup_rows.length) ? entry.breakup_rows : [{ description: '', quantity: '' }];
-  rows.forEach(r => addEditBreakup(r.description, r.quantity));
+  setExistingPhoto('e-diesel', entry.diesel_photo || null);
 
   document.getElementById('edit-modal-overlay').classList.add('open');
 }
@@ -694,32 +648,6 @@ function openEditModal(id) {
 function closeEditModal() {
   document.getElementById('edit-modal-overlay').classList.remove('open');
   releasePhotos('e', true);   // a photo that was picked but never saved is thrown away
-}
-
-function addEditBreakup(desc = '', qty = '') {
-  const row = document.createElement('div');
-  row.className = 'breakup-row';
-  row.innerHTML = `
-    <input type="text" placeholder="Description" class="bu-desc" value="${esc(desc)}">
-    <input type="text" placeholder="Qty / Hours" class="bu-qty" style="max-width:150px;" value="${esc(qty)}">
-    <button class="remove-breakup-btn" onclick="removeEditBreakup(this)">×</button>`;
-  document.getElementById('e-breakup-rows').appendChild(row);
-}
-
-function removeEditBreakup(btn) {
-  const container = document.getElementById('e-breakup-rows');
-  if (container.querySelectorAll('.breakup-row').length > 1) {
-    btn.closest('.breakup-row').remove();
-  }
-}
-
-function getEditBreakupData() {
-  return [...document.querySelectorAll('#e-breakup-rows .breakup-row')]
-    .map(r => ({
-      description: r.querySelector('.bu-desc').value.trim(),
-      quantity:    r.querySelector('.bu-qty').value.trim(),
-    }))
-    .filter(r => r.description || r.quantity);
 }
 
 async function submitEditEntry() {
@@ -733,6 +661,7 @@ async function submitEditEntry() {
     date, vehicle_no,
     start_photo: photoPath('e-start'),
     close_photo: photoPath('e-close'),
+    diesel_photo: photoPath('e-diesel'),
     site: document.getElementById('e-site').value.trim(),
     category: document.getElementById('e-category').value,
     start_reading: document.getElementById('e-start').value.trim(),
@@ -742,7 +671,6 @@ async function submitEditEntry() {
     loads:   parseInt(document.getElementById('e-loads').value)    || 0,
     operator: getOperatorValue('e'),
     remarks:  document.getElementById('e-remarks').value.trim(),
-    breakup_rows: getEditBreakupData(),
   };
 
   // Work out what actually changed. Nothing changed → nothing to save (or explain).
@@ -1236,6 +1164,7 @@ const ENTRY_FIELDS = [
   ['remarks',       'Remarks',     'text'],
   ['start_photo',   'Start photo', 'photo'],
   ['close_photo',   'Close photo', 'photo'],
+  ['diesel_photo',  'Diesel photo', 'photo'],
 ];
 const _n = v => (v === null || v === undefined ? '' : String(v).trim());
 
@@ -1246,14 +1175,6 @@ function fieldValue(kind, v) {
   if (kind === 'date') return fmtDate(t);
   if (kind === 'num')  return Number.isFinite(Number(t)) ? String(Number(t)) : t;
   return t;
-}
-function breakupPlain(rows) {
-  return (rows || []).filter(r => _n(r.description) || _n(r.quantity))
-    .map(r => `${_n(r.description)}: ${_n(r.quantity)}`).join(' | ') || null;
-}
-function breakupKey(rows) {   // order-insensitive
-  return (rows || []).filter(r => _n(r.description) || _n(r.quantity))
-    .map(r => `${_n(r.description)}\u0001${_n(r.quantity)}`).sort().join('\u0002');
 }
 function diffEntry(before, after) {
   const out = [];
@@ -1269,9 +1190,6 @@ function diffEntry(before, after) {
     const b = fieldValue(kind, after[col]);
     if (a !== b) out.push({ field: label, from: a, to: b });
   });
-  if (breakupKey(before.breakup_rows) !== breakupKey(after.breakup_rows)) {
-    out.push({ field: 'Work Breakup', from: breakupPlain(before.breakup_rows), to: breakupPlain(after.breakup_rows) });
-  }
   return out;
 }
 
@@ -1565,7 +1483,7 @@ function logRowHtml(l) {
 
 
 /* ═══════════════════════════════════════════════════════════════════════════════
-   Photo proof for the Starting / Closing reading
+   Photo proof for the Starting / Closing reading and the Diesel
    ───────────────────────────────────────────────────────────────────────────────
    • The photo is shrunk in the browser first (≈150 KB instead of 3–8 MB) so it uploads
      quickly on site mobile data and doesn't fill the storage.
@@ -1576,7 +1494,7 @@ function logRowHtml(l) {
 const PHOTO_MAX_EDGE  = 1280;                 // longest side, in pixels — plenty to read a dial or odometer
 const PHOTO_QUALITY   = 0.72;
 const PHOTO_MAX_INPUT = 30 * 1024 * 1024;     // refuse absurdly large originals before even trying
-const PHOTO_GROUPS    = { f: ['f-start', 'f-close'], e: ['e-start', 'e-close'] };
+const PHOTO_GROUPS    = { f: ['f-start', 'f-close', 'f-diesel'], e: ['e-start', 'e-close', 'e-diesel'] };
 
 const CAMERA_SVG = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>';
 

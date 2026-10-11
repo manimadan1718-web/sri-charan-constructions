@@ -2,20 +2,24 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="icon" type="image/png" href="/img/favicon.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Sign in – Sri Charan Constructions Site Log</title>
+  <meta name="description" content="Sign in to the Sri Charan Constructions Site Activity Log with your PIN. Authorised site staff only.">
+  <meta name="robots" content="index, follow">
   <meta name="theme-color" content="#1B2433">
-  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="64x64" href="/img/favicon.png">
   <link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.webmanifest">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="SCC">
-  <title>Login – Sri Charan Constructions</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Barlow+Semi+Condensed:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="preload" href="/fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
+<noscript><div style="padding:14px 16px;background:#FFF1E0;color:#7A3D00;text-align:center;font:600 14px sans-serif">This app needs JavaScript. Please turn it on in your browser settings and reload the page.</div></noscript>
 <div class="login-wrap" id="login-wrap">
 
   <!-- Background: parallax layer > slow zoom layer, then shade, dust and vignette -->
@@ -30,7 +34,7 @@
 
       <div class="login-card-body">
         <div class="login-logo">
-          <div class="login-coin"><img src="/img/logo.png" alt="Sri Charan Constructions logo"></div>
+          <a class="login-logo-link" href="/" aria-label="Sri Charan Constructions — home"><div class="login-coin"><img src="/img/logo.png" alt="Sri Charan Constructions logo" width="192" height="192"></div></a>
         </div>
 
         <h2>SRI CHARAN CONSTRUCTIONS</h2>
@@ -54,6 +58,7 @@
           <span class="login-btn-text">Login</span>
         </button>
         <div class="login-error" id="login-error" role="alert"></div>
+        <div class="login-info" id="login-info" role="status"></div>
 
         <div class="login-foot">
           <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
@@ -62,10 +67,23 @@
       </div>
     </div>
   </div>
+<footer class="site-footer login-footer">
+  <span>&copy; <span data-year>2026</span> Sri Charan Constructions</span>
+  <a href="/privacy.html">Privacy Policy</a>
+  <span data-contact="email" hidden></span>
+  <span data-contact="phone" hidden></span>
+</footer>
 </div>
 
 <script src="/js/api.js"></script>
 <script>
+(function () {   // a one-time message from the page we came from ("You have been signed out." etc.)
+  var note = null;
+  try { note = sessionStorage.getItem('scc_flash'); sessionStorage.removeItem('scc_flash'); } catch (e) { /* no storage */ }
+  var el = document.getElementById('login-info');
+  if (note && el) el.textContent = note;
+})();
+
   // If already logged in, redirect
   (async () => {
     if (sessionStorage.getItem('scc_token')) {
@@ -181,6 +199,7 @@
   // Phones: don't — it would pop the keyboard up over the page before it's even seen.
   if (canHover) setTimeout(() => pinEl.focus({ preventScroll: true }), reduced ? 0 : 700);
 </script>
+<script src="/js/site.js"></script>
 <script src="/js/pwa.js"></script>
 </body>
 </html>

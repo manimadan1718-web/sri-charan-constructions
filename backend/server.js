@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const compression = require('compression');
 const path = require('path');
 const rateLimit = require('express-rate-limit');
 
@@ -62,8 +63,8 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'"],
       scriptSrcAttr: ["'unsafe-inline'"],
-      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
-      fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      fontSrc: ["'self'", 'data:'],               // fonts are served from this site (/fonts) — nothing is fetched from another company
       imgSrc: ["'self'", 'data:', 'blob:', supabaseOrigin, ...extraImgOrigins],   // reading photos open from the Supabase address
       connectSrc: ["'self'"],
       manifestSrc: ["'self'"],
@@ -106,15 +107,49 @@ const limiter = rateLimit({
 });
 app.use('/api/', limiter);
 
+// Smaller downloads on a phone connection (app.js alone drops from ~130 KB to ~30 KB).
+app.use(compression());
+
+// ── Android app verification (Play Store) ────────────────────────────────────
+// Google checks this file to confirm the Android app and this website belong together (which is what hides the
+// browser address bar). It is built from the server settings, so no code change is needed once the app is signed:
+//   ANDROID_PACKAGE_NAME             e.g. com.sricharanconstructions.sitelog
+//   ANDROID_SHA256_CERT_FINGERPRINTS one or more SHA-256 fingerprints from Play Console, separated by commas
+// Until a fingerprint is set the file is a valid but empty list — it never contains made-up values.
+app.get('/.well-known/assetlinks.json', (req, res) => {
+  const pkg = (process.env.ANDROID_PACKAGE_NAME || 'com.sricharanconstructions.sitelog').trim();
+  const prints = (process.env.ANDROID_SHA256_CERT_FINGERPRINTS || '').split(',').map(x => x.trim().toUpperCase())
+    .filter(x => /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/.test(x));
+  const valid = /^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$/.test(pkg);
+  const body = prints.length && valid
+    ? [{ relation: ['delegate_permission/common.handle_all_urls'], target: { namespace: 'android_app', package_name: pkg, sha256_cert_fingerprints: prints } }]
+    : [];
+  res.set('Cache-Control', 'public, max-age=300').type('application/json').send(JSON.stringify(body, null, 2));
+});
+
+// ── Public contact details (shown in the footer and the privacy policy) ──────
+// Only what the owner chooses to set on the server; nothing is invented. Validated before it is ever sent.
+app.get('/api/public-config', (req, res) => {
+  const email = (process.env.SUPPORT_EMAIL || '').trim();
+  const phone = (process.env.SUPPORT_PHONE || '').trim();
+  res.set('Cache-Control', 'public, max-age=3600').json({
+    success: true,
+    support_email: /^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']{2,}$/.test(email) && email.length <= 120 ? email : null,
+    support_phone: /^\+?[0-9 ()-]{7,20}$/.test(phone) ? phone : null,
+  });
+});
+
 // ── Serve Frontend ───────────────────────────────────────────────────────────
-app.use(express.static(path.join(__dirname, '../frontend')));
-// Explicit route as a safety net: some static-file configs ignore dotfiles/dot-folders
-// by default, and .well-known/assetlinks.json must always be reachable for the
-// Android app (Play Store) to verify this domain and hide its browser address bar.
-app.use('/.well-known', express.static(path.join(__dirname, '../frontend/.well-known'), { dotfiles: 'allow' }));
+// Pictures and fonts change rarely: let the phone keep them for 30 days. Pages, scripts and styles are always
+// re-checked, so a new deploy reaches everybody straight away.
+app.use(express.static(path.join(__dirname, '../frontend'), {
+  setHeaders(res, file) {
+    res.setHeader('Cache-Control', /\.(?:woff2|png|jpe?g|webp|ico)$/i.test(file) ? 'public, max-age=2592000' : 'no-cache');
+  },
+}));
 
 // API answers contain business data — never let a browser, proxy or shared computer keep a copy.
-app.use('/api', (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
+app.use('/api', (req, res, next) => { if (!res.get('Cache-Control')) res.set('Cache-Control', 'no-store'); next(); });
 
 // ── API Routes ───────────────────────────────────────────────────────────────
 app.use('/api/auth',      authRouter);
@@ -137,9 +172,12 @@ app.use('/api', (req, res) => {
   res.status(404).json({ error: 'API route not found.' });   // (deliberately does not repeat what was asked for)
 });
 
-// ── Catch-all → serve frontend ───────────────────────────────────────────────
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/index.html'));
+// ── Anything else: a proper 404 page (with a 404 status) ─────────────────────
+// The app lives at "/" and its pages are real files, so an address that matched nothing above does not exist.
+app.use((req, res) => {
+  res.status(404);
+  if (req.method === 'GET' || req.method === 'HEAD') return res.sendFile(path.join(__dirname, '../frontend/404.html'));
+  res.type('text/plain').send('Not found.');
 });
 
 // ── Error handler ────────────────────────────────────────────────────────────

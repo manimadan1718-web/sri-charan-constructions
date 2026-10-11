@@ -2,34 +2,45 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="icon" type="image/png" href="/img/favicon.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Sri Charan Constructions – Site Log</title>
+  <meta name="description" content="Sri Charan Constructions site activity log: daily vehicle and machine entries, records, summaries, documents and payments for authorised staff.">
+  <meta name="robots" content="noindex, nofollow">
   <meta name="theme-color" content="#1B2433">
-  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="64x64" href="/img/favicon.png">
   <link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.webmanifest">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="SCC">
-  <title>Sri Charan Constructions – Site Log</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Barlow+Semi+Condensed:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="preload" href="/fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
+<a class="skip-link" href="#main-content">Skip to main content</a>
+<noscript><div style="padding:14px 16px;background:#FFF1E0;color:#7A3D00;text-align:center;font:600 14px sans-serif">This app needs JavaScript. Please turn it on in your browser settings and reload the page.</div></noscript>
 
 <!-- HEADER + TABS (sticky together) -->
 <div class="app-top">
 <header class="site-header">
-  <div class="logo-box"><img src="/img/logo.png" alt="Sri Charan Constructions logo"></div>
-  <div class="brand">
-    <h1>SRI CHARAN CONSTRUCTIONS</h1>
-    <p>Site Activity Log System</p>
-  </div>
+  <a class="brand-link" id="brand-link" href="/" aria-label="Sri Charan Constructions Site Activity Log System — go to the home screen">
+    <div class="logo-box"><img src="/img/logo.png" alt="" width="52" height="52"></div>
+    <div class="brand">
+      <h1>SRI CHARAN CONSTRUCTIONS</h1>
+      <p>Site Activity Log System</p>
+    </div>
+  </a>
   <div class="header-right">
     <span class="header-date" id="header-date"></span>
     <span class="header-user" id="header-user"></span>
     <button class="btn btn-outline btn-sm logout-btn" onclick="Auth.logout()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>Logout</button>
   </div>
+<button type="button" class="menu-btn" id="menu-btn" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-menu">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+    <span class="menu-current" id="menu-current">Menu</span>
+  </button>
 </header>
 
 <!-- TABS -->
@@ -45,7 +56,7 @@
 </nav>
 </div>
 
-<main>
+<main id="main-content">
 
 <!-- ═══════════════════════════════ DATA ENTRY ═══════════════════════════════ -->
 <div class="section active" id="section-entry">
@@ -57,62 +68,62 @@
 
     <div class="form-grid">
       <div class="form-group">
-        <label>Date *</label>
+        <label for="f-date">Date *</label>
         <input type="date" id="f-date">
       </div>
       <div class="form-group">
-        <label>Site</label>
+        <label for="f-site">Site</label>
         <select id="f-site">
           <option value="">Select site…</option>
         </select>
       </div>
       <div class="form-group">
-        <label>Category *</label>
+        <label for="f-category">Category *</label>
         <select id="f-category" onchange="toggleCategoryFields('f')">
           <option value="own">Own</option>
           <option value="rental">Rental</option>
         </select>
       </div>
       <div class="form-group">
-        <label>Vehicle / Machine No. *</label>
+        <label for="f-vehicle">Vehicle / Machine No. *</label>
         <select id="f-vehicle">
           <option value="">Select vehicle…</option>
         </select>
-        <input type="text" id="f-vehicle-text" placeholder="Rental vehicle / machine no." style="display:none;">
+        <input type="text" id="f-vehicle-text" placeholder="Rental vehicle / machine no." style="display:none;" aria-label="Vehicle or machine number (type it)">
       </div>
       <div class="form-group">
-        <label>Starting Reading / Time</label>
+        <label for="f-start">Starting Reading / Time</label>
         <input type="text" id="f-start" placeholder="e.g. 08:00 AM or 1250">
         <div class="photo-field" data-key="f-start" data-label="Starting reading photo"></div>
       </div>
       <div class="form-group">
-        <label>Closing Reading / Time</label>
+        <label for="f-close">Closing Reading / Time</label>
         <input type="text" id="f-close" placeholder="e.g. 06:00 PM or 1380">
         <div class="photo-field" data-key="f-close" data-label="Closing reading photo"></div>
       </div>
       <div class="form-group">
-        <label>Working Hours / Reading <span style="color:var(--orange);font-weight:400;">(auto-fills)</span></label>
+        <label for="f-hours">Working Hours / Reading <span style="color:var(--orange);font-weight:400;">(auto-fills)</span></label>
         <input type="text" id="f-hours" placeholder="Auto-calculated">
         <span id="calc-hint" class="calc-hint"></span>
       </div>
       <div class="form-group">
-        <label>Diesel (Litres)</label>
+        <label for="f-diesel">Diesel (Litres)</label>
         <input type="number" id="f-diesel" placeholder="0" min="0" step="0.5">
         <div class="photo-field" data-key="f-diesel" data-label="Diesel photo"></div>
       </div>
       <div class="form-group">
-        <label>Loads</label>
+        <label for="f-loads">Loads</label>
         <input type="number" id="f-loads" placeholder="0" min="0">
       </div>
       <div class="form-group">
-        <label>Operator / Driver</label>
+        <label for="f-operator">Operator / Driver</label>
         <select id="f-operator">
           <option value="">Select operator…</option>
         </select>
-        <input type="text" id="f-operator-text" placeholder="Driver name" style="display:none;">
+        <input type="text" id="f-operator-text" placeholder="Driver name" style="display:none;" aria-label="Operator or driver name (type it)">
       </div>
       <div class="form-group span-2">
-        <label>Remarks</label>
+        <label for="f-remarks">Remarks</label>
         <textarea id="f-remarks" placeholder="Any notes or observations..."></textarea>
       </div>
     </div>
@@ -253,8 +264,8 @@
       </div>
     </div>
     <div class="sum-custom" id="sum-custom" hidden>
-      <label>From <input type="date" id="sum-from" onchange="loadSummary()"></label>
-      <label>To <input type="date" id="sum-to" onchange="loadSummary()"></label>
+      <label>From <input type="date" id="sum-from" onchange="loadSummary()" aria-label="From date"></label>
+      <label>To <input type="date" id="sum-to" onchange="loadSummary()" aria-label="To date"></label>
     </div>
     <p class="sum-range-text" id="sum-range-text"></p>
     <div class="stats-grid">
@@ -326,7 +337,7 @@
     </div>
     <div class="log-filters">
       <select id="doc-filter-category" onchange="loadDocuments()" aria-label="Filter by type"><option value="">All types</option></select>
-      <input type="text" id="doc-search" placeholder="Search name, file, site or notes…" oninput="loadDocumentsDebounced()" autocomplete="off">
+      <input type="text" id="doc-search" placeholder="Search name, file, site or notes…" oninput="loadDocumentsDebounced()" autocomplete="off" aria-label="Search documents">
       <button type="button" class="btn btn-outline btn-sm" onclick="clearDocFilters()">Clear</button>
     </div>
     <div class="table-wrap">
@@ -370,11 +381,11 @@
     </div>
     <div class="form-grid">
       <div class="form-group">
-        <label>Vehicle / Machine No. *</label>
-        <input type="text" id="inv-vehicle-no" placeholder="e.g. AP 16 AB 1234">
+        <label for="inv-vehicle-no">Vehicle / Machine No. *</label>
+        <input type="text" id="inv-vehicle-no" placeholder="e.g. KA 05 AB 1234">
       </div>
       <div class="form-group">
-        <label>Type</label>
+        <label for="inv-vehicle-type">Type</label>
         <input type="text" id="inv-vehicle-type" placeholder="e.g. Tipper, JCB, Roller">
       </div>
     </div>
@@ -403,11 +414,11 @@
     </div>
     <div class="form-grid">
       <div class="form-group">
-        <label>Site Name *</label>
+        <label for="inv-site-name">Site Name *</label>
         <input type="text" id="inv-site-name" placeholder="e.g. VK Hill Phase 2">
       </div>
       <div class="form-group">
-        <label>Location</label>
+        <label for="inv-site-location">Location</label>
         <input type="text" id="inv-site-location" placeholder="Optional">
       </div>
     </div>
@@ -436,11 +447,11 @@
     </div>
     <div class="form-grid">
       <div class="form-group">
-        <label>Name *</label>
+        <label for="inv-operator-name">Name *</label>
         <input type="text" id="inv-operator-name" placeholder="Full name">
       </div>
       <div class="form-group">
-        <label>Phone</label>
+        <label for="inv-operator-phone">Phone</label>
         <input type="text" id="inv-operator-phone" placeholder="Optional">
       </div>
     </div>
@@ -467,15 +478,15 @@
     </div>
     <div class="form-grid">
       <div class="form-group">
-        <label>Name *</label>
+        <label for="u-name">Name *</label>
         <input type="text" id="u-name" placeholder="Full name">
       </div>
       <div class="form-group">
-        <label>PIN *</label>
+        <label for="u-pin">PIN *</label>
         <input type="password" id="u-pin" placeholder="4–10 characters" maxlength="10" autocomplete="new-password">
       </div>
       <div class="form-group">
-        <label>Role *</label>
+        <label for="u-role">Role *</label>
         <select id="u-role">
           <option value="supervisor">Supervisor — Data Entry only</option>
           <option value="owner">Owner — Reports only</option>
@@ -527,7 +538,7 @@
     </div>
 
     <div class="log-filters">
-      <select id="log-category" onchange="loadLogs(true)" title="Type of activity">
+      <select id="log-category" onchange="loadLogs(true)" title="Type of activity" aria-label="Filter by type of activity">
         <option value="">All activity</option>
         <option value="auth">Login &amp; logout</option>
         <option value="entry">Data entries</option>
@@ -538,9 +549,9 @@
         <option value="payment">Payments</option>
         <option value="system">System (log clean-ups)</option>
       </select>
-      <input type="date" id="log-from" onchange="loadLogs(true)" title="From date">
-      <input type="date" id="log-to" onchange="loadLogs(true)" title="To date">
-      <input type="text" id="log-q" placeholder="Search person, vehicle, reason…" oninput="loadLogsDebounced()">
+      <input type="date" id="log-from" onchange="loadLogs(true)" title="From date" aria-label="From date">
+      <input type="date" id="log-to" onchange="loadLogs(true)" title="To date" aria-label="To date">
+      <input type="text" id="log-q" placeholder="Search person, vehicle, reason…" oninput="loadLogsDebounced()" aria-label="Search the activity log">
       <button class="btn btn-outline btn-sm" onclick="clearLogFilters()">Clear</button>
     </div>
 
@@ -579,61 +590,61 @@
     <input type="hidden" id="e-id">
     <div class="form-grid">
       <div class="form-group">
-        <label>Date *</label>
+        <label for="e-date">Date *</label>
         <input type="date" id="e-date">
       </div>
       <div class="form-group">
-        <label>Site</label>
+        <label for="e-site">Site</label>
         <select id="e-site">
           <option value="">Select site…</option>
         </select>
       </div>
       <div class="form-group">
-        <label>Category *</label>
+        <label for="e-category">Category *</label>
         <select id="e-category" onchange="toggleCategoryFields('e')">
           <option value="own">Own</option>
           <option value="rental">Rental</option>
         </select>
       </div>
       <div class="form-group">
-        <label>Vehicle / Machine No. *</label>
+        <label for="e-vehicle">Vehicle / Machine No. *</label>
         <select id="e-vehicle">
           <option value="">Select vehicle…</option>
         </select>
-        <input type="text" id="e-vehicle-text" placeholder="Rental vehicle / machine no." style="display:none;">
+        <input type="text" id="e-vehicle-text" placeholder="Rental vehicle / machine no." style="display:none;" aria-label="Vehicle or machine number (type it)">
       </div>
       <div class="form-group">
-        <label>Starting Reading / Time</label>
+        <label for="e-start">Starting Reading / Time</label>
         <input type="text" id="e-start">
         <div class="photo-field" data-key="e-start" data-label="Starting reading photo"></div>
       </div>
       <div class="form-group">
-        <label>Closing Reading / Time</label>
+        <label for="e-close">Closing Reading / Time</label>
         <input type="text" id="e-close">
         <div class="photo-field" data-key="e-close" data-label="Closing reading photo"></div>
       </div>
       <div class="form-group">
-        <label>Working Hours / Reading</label>
+        <label for="e-hours">Working Hours / Reading</label>
         <input type="text" id="e-hours">
       </div>
       <div class="form-group">
-        <label>Diesel (Litres)</label>
+        <label for="e-diesel">Diesel (Litres)</label>
         <input type="number" id="e-diesel" min="0" step="0.5">
         <div class="photo-field" data-key="e-diesel" data-label="Diesel photo"></div>
       </div>
       <div class="form-group">
-        <label>Loads</label>
+        <label for="e-loads">Loads</label>
         <input type="number" id="e-loads" min="0">
       </div>
       <div class="form-group">
-        <label>Operator / Driver</label>
+        <label for="e-operator">Operator / Driver</label>
         <select id="e-operator">
           <option value="">Select operator…</option>
         </select>
-        <input type="text" id="e-operator-text" placeholder="Driver name" style="display:none;">
+        <input type="text" id="e-operator-text" placeholder="Driver name" style="display:none;" aria-label="Operator or driver name (type it)">
       </div>
       <div class="form-group full">
-        <label>Remarks</label>
+        <label for="e-remarks">Remarks</label>
         <textarea id="e-remarks"></textarea>
       </div>
     </div>
@@ -823,8 +834,36 @@
 <datalist id="unload-points-list"></datalist>
 <datalist id="pay-employees"></datalist>
 
-<div class="toast" id="toast"></div>
+<!-- ═══════════════════════════════ MOBILE MENU ═══════════════════════════════ -->
+<div class="mobile-menu-overlay" id="menu-overlay" hidden></div>
+<aside class="mobile-menu" id="mobile-menu" aria-label="Main menu" hidden>
+  <div class="mm-head">
+    <div class="mm-user" id="mm-user"></div>
+    <button type="button" class="mm-close" id="mm-close" aria-label="Close menu">✕</button>
+  </div>
+  <nav class="mm-nav" id="mm-nav" aria-label="Sections"></nav>
+  <div class="mm-foot">
+    <button type="button" class="btn btn-outline" onclick="Auth.logout()">Log out</button>
+    <footer class="site-footer">
+      <span>&copy; <span data-year>2026</span> Sri Charan Constructions</span>
+      <a href="/privacy.html">Privacy Policy</a>
+      <span data-contact="email" hidden></span>
+      <span data-contact="phone" hidden></span>
+    </footer>
+  </div>
+</aside>
 
+<div class="net-banner" id="net-banner" role="status" aria-live="polite" hidden></div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<footer class="site-footer app-footer">
+  <span>&copy; <span data-year>2026</span> Sri Charan Constructions</span>
+  <a href="/privacy.html">Privacy Policy</a>
+  <span data-contact="email" hidden></span>
+  <span data-contact="phone" hidden></span>
+</footer>
+<script src="/js/site.js"></script>
 <script src="/js/api.js"></script>
 <script src="/js/app.js"></script>
 <script src="/js/pwa.js"></script>

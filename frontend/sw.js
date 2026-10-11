@@ -7,15 +7,18 @@
  *     The cache is only a fallback for when the network fails.
  *   • Bump VERSION whenever you change the list below, so old caches are cleaned up.
  */
-const VERSION = 'v1';
+const VERSION = 'v2';
 const SHELL   = `scc-shell-${VERSION}`;
 const RUNTIME = `scc-runtime-${VERSION}`;
 
 const PRECACHE = [
   '/offline.html',
+  '/css/public.css',
   '/css/style.css',
+  '/js/site.js',
   '/js/api.js',
   '/js/app.js',
+  '/fonts/inter-latin-wght-normal.woff2',     // the offline page's font
   '/img/logo.png',
   '/img/favicon.png',
   '/img/icon-192.png',

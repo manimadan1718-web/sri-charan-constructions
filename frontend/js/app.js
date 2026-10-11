@@ -32,6 +32,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (!user) { Auth.logout(); return; }
 
   applyRoleUI(user.role);
+  initMobileMenu(user);
+  initBrandLink();
+  initTableLabels();
+  initNetBanner();
   initReasonModal();
   initPhotoFields();
   initExportMenu();
@@ -119,8 +123,9 @@ async function loadDropdownData() {
     populateFilterSelect('filter-vehicle', vehicles, 'vehicle_no', 'All vehicles');
     populateFilterSelect('filter-site',    sites,    'name',       'All sites');
     populateFilterSelect('filter-type',    distinctTypes(vehicles), 'type', 'All types');
-  } catch {
-    /* dropdowns stay empty if this role can't reach inventory (shouldn't happen) */
+  } catch (e) {
+    // Without the lists a supervisor cannot pick a vehicle or site — say so instead of leaving empty boxes.
+    showToast("Couldn't load the vehicle, site and operator lists. Check your connection, then reload this page.", true);
   }
 }
 
@@ -346,10 +351,24 @@ function showToast(msg, isError = false) {
 }
 
 /* ── Tab ─────────────────────────────────────────────────────────────────────── */
+const TAB_LABELS = { entry: 'Data Entry', records: 'Records', summary: 'Summary', documents: 'Documents', payments: 'Payments', inventory: 'Inventory', users: 'Users', logs: 'Activity Logs' };
+
 function switchTab(name) {
+  // Only open a screen the signed-in role is meant to have (the server enforces this too; this keeps the screen honest).
+  const me = Auth.currentUser();
+  if (!ROLE_TABS[name] || !me || !ROLE_TABS[name].includes(me.role)) return;
+
   document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
   const tabEl = document.getElementById('tab-' + name);
   if (tabEl) tabEl.classList.add('active');
+  document.title = `${TAB_LABELS[name]} – Sri Charan Constructions`;          // each screen has its own page title
+  const cur = document.getElementById('menu-current');
+  if (cur) cur.textContent = TAB_LABELS[name];
+  document.querySelectorAll('.mm-item').forEach(b => {
+    const on = b.dataset.tab === name;
+    b.classList.toggle('active', on);
+    if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+  });
 
   document.querySelectorAll('.section').forEach(el => el.classList.remove('active'));
   const sectionEl = document.getElementById('section-' + name);
@@ -906,7 +925,7 @@ async function addVehicle() {
 }
 
 async function toggleVehicleActive(id, currentActive) {
-  try { await Inventory.updateVehicle(id, { active: !currentActive }); loadInventory(); loadDropdownData(); }
+  try { await Inventory.updateVehicle(id, { active: !currentActive }); showToast(currentActive ? 'Vehicle marked inactive — it no longer appears in the entry form.' : 'Vehicle marked active again.'); loadInventory(); loadDropdownData(); }
   catch (e) { showToast('❌ ' + (e.message || 'Update failed.'), true); }
 }
 
@@ -933,7 +952,7 @@ async function addOperator() {
 }
 
 async function toggleOperatorActive(id, currentActive) {
-  try { await Inventory.updateOperator(id, { active: !currentActive }); loadInventory(); loadDropdownData(); }
+  try { await Inventory.updateOperator(id, { active: !currentActive }); showToast(currentActive ? 'Operator marked inactive — it no longer appears in the entry form.' : 'Operator marked active again.'); loadInventory(); loadDropdownData(); }
   catch (e) { showToast('❌ ' + (e.message || 'Update failed.'), true); }
 }
 
@@ -960,7 +979,7 @@ async function addSite() {
 }
 
 async function toggleSiteActive(id, currentActive) {
-  try { await Inventory.updateSite(id, { active: !currentActive }); loadInventory(); loadDropdownData(); }
+  try { await Inventory.updateSite(id, { active: !currentActive }); showToast(currentActive ? 'Site marked inactive — it no longer appears in the entry form.' : 'Site marked active again.'); loadInventory(); loadDropdownData(); }
   catch (e) { showToast('❌ ' + (e.message || 'Update failed.'), true); }
 }
 
@@ -2415,7 +2434,7 @@ function payPanelHtml(t) {
       <div class="card-header"><div class="card-title"><span class="ic">${IC}</span> Saved ${week ? 'weekly' : 'monthly'} payments</div><span class="doc-count" id="pay-${t}-count"></span></div>
       <div class="log-filters">
         <select id="pay-${t}-filter-period" onchange="renderPayList('${t}')" aria-label="Choose ${week ? 'week' : 'month'}"></select>
-        <input type="text" id="pay-${t}-search" placeholder="Search employee…" oninput="renderPayList('${t}')" autocomplete="off">
+        <input type="text" id="pay-${t}-search" placeholder="Search employee…" aria-label="Search employee" oninput="renderPayList('${t}')" autocomplete="off">
       </div>
       <div class="table-wrap"><table>
         <thead><tr><th>${week ? 'Week' : 'Month'}</th><th>Employee</th><th>Days</th><th>Amount</th><th>Added by</th><th>Added on</th>${admin ? '<th>Edit</th><th>Delete</th>' : ''}</tr></thead>
@@ -2705,4 +2724,134 @@ async function deletePayment(t, id) {
   try { await Payments.remove(row.id, reason); showToast('Payment deleted.'); loadPayList(t); }
   catch (e) { showToast('❌ ' + (e.message || 'Delete failed.'), true); }
 }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Mobile menu — on phones and small tablets the tab bar is replaced by a slide-in menu
+   ═══════════════════════════════════════════════════════════════════════════════ */
+function initMobileMenu(user) {
+  const btn = document.getElementById('menu-btn'), menu = document.getElementById('mobile-menu');
+  const overlay = document.getElementById('menu-overlay'), nav = document.getElementById('mm-nav');
+  if (!btn || !menu) return;
+
+  document.getElementById('mm-user').innerHTML = `${esc(user.name)}<small>${esc(capitalize(user.role))}</small>`;
+  nav.innerHTML = '';
+  TAB_ORDER.filter(t => ROLE_TABS[t].includes(user.role)).forEach(t => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'mm-item';
+    item.dataset.tab = t;
+    const icon = document.querySelector(`#tab-${t} svg`);
+    item.innerHTML = `${icon ? icon.outerHTML : ''}<span>${esc(TAB_LABELS[t])}</span>`;
+    item.addEventListener('click', () => { closeMobileMenu(false); switchTab(t); window.scrollTo(0, 0); });
+    nav.appendChild(item);
+  });
+
+  btn.addEventListener('click', () => (menu.classList.contains('open') ? closeMobileMenu(true) : openMobileMenu()));
+  overlay.addEventListener('click', () => closeMobileMenu(true));
+  document.getElementById('mm-close').addEventListener('click', () => closeMobileMenu(true));
+  document.addEventListener('keydown', ev => {
+    if (!menu.classList.contains('open')) return;
+    if (ev.key === 'Escape') { ev.preventDefault(); closeMobileMenu(true); return; }
+    if (ev.key === 'Tab') {                      // keep keyboard focus inside the open menu
+      const f = [...menu.querySelectorAll('button, a[href]')].filter(x => !x.hidden && x.offsetParent !== null);
+      if (!f.length) return;
+      const first = f[0], last = f[f.length - 1];
+      if (ev.shiftKey && document.activeElement === first) { ev.preventDefault(); last.focus(); }
+      else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
+    }
+  });
+  window.matchMedia('(min-width: 961px)').addEventListener('change', e => { if (e.matches) closeMobileMenu(false); });
+}
+
+function openMobileMenu() {
+  const btn = document.getElementById('menu-btn'), menu = document.getElementById('mobile-menu'), overlay = document.getElementById('menu-overlay');
+  menu.hidden = false; overlay.hidden = false;
+  requestAnimationFrame(() => { menu.classList.add('open'); overlay.classList.add('open'); });
+  document.body.classList.add('menu-open');
+  btn.setAttribute('aria-expanded', 'true');
+  btn.setAttribute('aria-label', 'Close menu');
+  const active = menu.querySelector('.mm-item.active') || menu.querySelector('.mm-item');
+  if (active) setTimeout(() => active.focus(), 60);
+}
+
+function closeMobileMenu(returnFocus) {
+  const btn = document.getElementById('menu-btn'), menu = document.getElementById('mobile-menu'), overlay = document.getElementById('menu-overlay');
+  if (!menu || menu.hidden) return;
+  menu.classList.remove('open'); overlay.classList.remove('open');
+  document.body.classList.remove('menu-open');
+  btn.setAttribute('aria-expanded', 'false');
+  btn.setAttribute('aria-label', 'Open menu');
+  setTimeout(() => { if (!menu.classList.contains('open')) { menu.hidden = true; overlay.hidden = true; } }, 230);
+  if (returnFocus) btn.focus();
+}
+
+/** The logo / name takes you to your home screen (the first screen your role has). */
+function initBrandLink() {
+  const a = document.getElementById('brand-link');
+  if (!a) return;
+  a.addEventListener('click', ev => {
+    if (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.button === 1) return;      // let "open in new tab" work
+    ev.preventDefault();
+    const me = Auth.currentUser();
+    const home = TAB_ORDER.find(t => me && ROLE_TABS[t].includes(me.role)) || 'entry';
+    closeMobileMenu(false);
+    switchTab(home);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Phone-friendly tables — every cell is given its column title, so on a phone each row reads as a card
+   ═══════════════════════════════════════════════════════════════════════════════ */
+const NO_LABEL_HEADS = new Set(['', 'edit', 'delete', 'history', 'download']);   // cells that only hold buttons
+
+function labelAllTables() {
+  document.querySelectorAll('.table-wrap table:not(.log-table)').forEach(table => {
+    if (!table.querySelector('tbody td:not([data-label])')) return;
+    const heads = [...table.querySelectorAll('thead th')].map(th => th.textContent.trim());
+    table.querySelectorAll('tbody tr').forEach(tr => {
+      if (tr.classList.contains('empty-row')) return;
+      [...tr.children].forEach((td, i) => {
+        if (td.hasAttribute('data-label')) return;
+        const h = heads[i] || '';
+        td.setAttribute('data-label', NO_LABEL_HEADS.has(h.toLowerCase()) ? '' : h);
+      });
+    });
+  });
+}
+
+function initTableLabels() {
+  let queued = false;
+  const run = () => { queued = false; labelAllTables(); };
+  new MutationObserver(() => { if (!queued) { queued = true; requestAnimationFrame(run); } })
+    .observe(document.getElementById('main-content') || document.body, { childList: true, subtree: true });
+  labelAllTables();
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Connection notice + a safety net for anything unexpected
+   ═══════════════════════════════════════════════════════════════════════════════ */
+function initNetBanner() {
+  const el = document.getElementById('net-banner');
+  if (!el) return;
+  let hideTimer = null;
+  const offline = () => { clearTimeout(hideTimer); el.className = 'net-banner'; el.textContent = "You're offline. Entries can't be saved until you're back online."; el.hidden = false; };
+  const online = () => {
+    if (el.hidden) return;
+    el.className = 'net-banner back'; el.textContent = "Back online.";
+    hideTimer = setTimeout(() => { el.hidden = true; }, 2500);
+  };
+  window.addEventListener('offline', offline);
+  window.addEventListener('online', online);
+  if (!navigator.onLine) offline();
+}
+
+// If something slips through un-handled, say so instead of failing silently.
+window.addEventListener('unhandledrejection', ev => {
+  console.error('Unhandled:', ev.reason);
+  if (typeof showToast === 'function') showToast('Something went wrong. Please try again.', true);
+});
 

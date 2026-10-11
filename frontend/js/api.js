@@ -5,6 +5,11 @@
 
 const API_BASE = '/api';
 
+/** A one-time note for the next page (shown on the login screen after signing out or when a session ends). */
+function flash(message) {
+  try { sessionStorage.setItem('scc_flash', message); } catch { /* storage unavailable — the redirect alone still works */ }
+}
+
 function getToken() {
   return sessionStorage.getItem('scc_token');
 }
@@ -64,6 +69,7 @@ async function apiFetch(path, options = {}) {
   if (res.status === 401 && path !== '/auth/login') {
     clearToken();
     clearUser();
+    flash('Your session has ended. Please sign in again.');
     window.location.href = '/login.html';
     throw new Error((data && data.error) || 'Session expired. Please log in again.');
   }
@@ -114,6 +120,7 @@ const Auth = {
     }
     clearToken();
     clearUser();
+    flash('You have been signed out.');
     window.location.href = '/login.html';
   },
 };
@@ -283,7 +290,7 @@ const Documents = {
       xhr.onload = () => {
         let data = null;
         try { data = JSON.parse(xhr.responseText); } catch { /* not JSON */ }
-        if (xhr.status === 401) { clearToken(); clearUser(); window.location.href = '/login.html'; return reject(new Error('Session expired. Please log in again.')); }
+        if (xhr.status === 401) { clearToken(); clearUser(); flash('Your session has ended. Please sign in again.'); window.location.href = '/login.html'; return reject(new Error('Session expired. Please log in again.')); }
         if (xhr.status >= 200 && xhr.status < 300) return resolve(data);
         const err = new Error((data && data.error) || `Upload failed (${xhr.status}).`);
         err.status = xhr.status; err.data = data;

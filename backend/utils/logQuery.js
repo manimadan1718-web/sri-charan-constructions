@@ -4,7 +4,7 @@
  */
 const supabase = require('../config/supabase');
 
-const CATEGORIES = ['auth', 'entry', 'summary', 'inventory', 'user', 'system'];
+const CATEGORIES = ['auth', 'entry', 'summary', 'inventory', 'user', 'system', 'document', 'payment'];
 const PROTECTED_ACTION = 'logs_deleted';     // the record that says "someone cleaned the log" can never be deleted
 const REPORT_TZ = process.env.REPORT_TZ || 'Asia/Kolkata';
 

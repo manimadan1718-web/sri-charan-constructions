@@ -5,6 +5,8 @@
 const supabase = require('../config/supabase');
 const { istDate, istTime } = require('./tableReports');
 const lq = require('./logQuery');
+const { summaryFor } = require('./summary');
+const { fmtDateDMY } = require('./activity');
 
 const MAX_LOG_ROWS_XLSX = parseInt(process.env.REPORT_MAX_LOG_ROWS_XLSX, 10) || 20000;
 const MAX_LOG_ROWS_PDF  = parseInt(process.env.REPORT_MAX_LOG_ROWS_PDF, 10)  || 2000;
@@ -233,4 +235,35 @@ async function logsReport({ ids, filters, format }) {
   return { title: 'Activity Logs', sheet: 'Activity Logs', columns: LOG_COLUMNS_XLSX, rows, subtitle: describeFilters(filters || {}, ids ? ids.length : 0) };
 }
 
-module.exports = { inventoryReport, usersReport, logsReport, INVENTORY, MAX_LOG_ROWS_XLSX, MAX_LOG_ROWS_PDF, activityLabel, changesText, deviceLabel };
+/* ── Summary ─────────────────────────────────────────────────────────────────── */
+const rangeText = ({ from, to }) => {
+  if (from && to) return from === to ? fmtDateDMY(from) : `${fmtDateDMY(from)} – ${fmtDateDMY(to)}`;
+  if (from) return `From ${fmtDateDMY(from)}`;
+  if (to) return `Up to ${fmtDateDMY(to)}`;
+  return 'All time';
+};
+const SUMMARY_COLUMNS = [
+  { key: 'n', header: '#', width: 6, weight: 4, align: 'right' },
+  { key: 'vehicle', header: 'Vehicle No.', width: 26, weight: 24, bold: true },
+  { key: 'entries', header: 'Entries', width: 12, weight: 10, align: 'right' },
+  { key: 'diesel', header: 'Total diesel (L)', width: 18, weight: 14, align: 'right' },
+  { key: 'loads', header: 'Total loads', width: 14, weight: 12, align: 'right' },
+];
+
+async function summaryReport(range) {
+  const s = await summaryFor(range);
+  const rows = s.vehicles.map((v, i) => ({ n: i + 1, vehicle: v.vehicle_no, entries: v.entries, diesel: v.diesel, loads: v.loads }));
+  if (rows.length) {
+    rows.push({
+      n: '', vehicle: 'TOTAL (vehicles listed)', entries: s.vehicles.reduce((a, v) => a + v.entries, 0),
+      diesel: s.vehicles.reduce((a, v) => a + parseFloat(v.diesel), 0).toFixed(2), loads: s.vehicles.reduce((a, v) => a + v.loads, 0),
+    });
+  }
+  return {
+    title: 'Summary', sheet: 'Summary', columns: SUMMARY_COLUMNS, rows,
+    subtitle: `Period: ${rangeText(s.range)}  ·  Only vehicles with loads are listed  ·  All entries in the period: ${s.total_entries} entries, ${s.total_diesel} L diesel, ${s.total_loads} loads`,
+    realRows: s.vehicles.length,
+  };
+}
+
+module.exports = { inventoryReport, usersReport, logsReport, summaryReport, rangeText, INVENTORY, MAX_LOG_ROWS_XLSX, MAX_LOG_ROWS_PDF, activityLabel, changesText, deviceLabel };

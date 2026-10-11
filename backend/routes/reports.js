@@ -6,6 +6,7 @@ const reports = require('../utils/reports');
 const tableReports = require('../utils/tableReports');
 const reportData = require('../utils/reportData');
 const lq = require('../utils/logQuery');
+const { summaryRange } = require('./entries');
 
 router.use(requireAuth);
 
@@ -97,7 +98,7 @@ async function serveTableReport(req, res, { format, filePrefix, category, load }
     const args = { sheetName: data.sheet, title: data.title, columns: data.columns, rows: data.rows, meta };
     const buffer = format === 'xlsx' ? await tableReports.buildTableXlsx(args) : await tableReports.buildTablePdf(args);
 
-    const n = data.rows.length;
+    const n = data.realRows !== undefined ? data.realRows : data.rows.length;
     await logActivity(req, {
       category, action: 'report_exported', entityType: 'report',
       entityLabel: `${fmt.label} report · ${data.title} · ${n} row${n === 1 ? '' : 's'}`,
@@ -127,6 +128,14 @@ router.post('/inventory', requireRole('admin'), (req, res) => {
 // ── POST /api/reports/users  (Admin) — { format } — includes deleted users and who/when for every change ──
 router.post('/users', requireRole('admin'), (req, res) => {
   return serveTableReport(req, res, { format: (req.body || {}).format, filePrefix: 'users', category: 'user', load: () => reportData.usersReport() });
+});
+
+// ── POST /api/reports/summary  (Owner + Admin) — { format, from?, to? } — the Summary screen as Excel / PDF ──
+router.post('/summary', requireRole('owner', 'admin'), (req, res) => {
+  const body = req.body || {};
+  const range = summaryRange(body);
+  if (range.error) return res.status(400).json({ error: range.error });
+  return serveTableReport(req, res, { format: body.format, filePrefix: 'summary', category: 'entry', load: () => reportData.summaryReport(range) });
 });
 
 // ── POST /api/reports/logs  (Owner + Admin) — { format, ids?: [...] | filters?: {...} } ──

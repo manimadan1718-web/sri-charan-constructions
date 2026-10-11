@@ -15,6 +15,7 @@ const path = require('path');
 const supabase = require('../config/supabase');
 const photos = require('./photos');
 const { fmtDateDMY } = require('./activity');
+const lp = require('./loadPoints');
 
 const REPORT_TZ  = process.env.REPORT_TZ || 'Asia/Kolkata';
 const MAX_ROWS   = parseInt(process.env.REPORT_MAX_ROWS, 10)   || 2000;
@@ -53,9 +54,11 @@ async function fetchEntriesByIds(ids) {
   const byId = new Map();
   for (let i = 0; i < ids.length; i += 100) {
     // eslint-disable-next-line no-await-in-loop
-    const { data, error } = await supabase.from('entries').select('*').in('id', ids.slice(i, i + 100));
-    if (error) throw error;
-    (data || []).forEach(r => byId.set(String(r.id), r));
+    const chunk = ids.slice(i, i + 100);
+    let r = await supabase.from('entries').select('*, load_points(*)').in('id', chunk);
+    if (r.error && lp.isMissingLoadPoints(r.error)) r = await supabase.from('entries').select('*').in('id', chunk);
+    if (r.error) throw r.error;
+    (r.data || []).forEach(row => byId.set(String(row.id), row));
   }
   return ids.map(id => byId.get(String(id))).filter(Boolean);
 }
@@ -76,6 +79,7 @@ function toRow(e, i) {
     diesel: Number(e.diesel) || 0,
     dieselPhoto: photos.isReadingPath(e.diesel_photo) ? e.diesel_photo : null,
     loads: parseInt(e.loads, 10) || 0,
+    unload: lp.pointsText(e.load_points) || '',
     operator: e.operator || '',
     remarks: e.remarks || '',
     hadStartPhoto: !!e.start_photo,
@@ -141,10 +145,10 @@ function csvEscape(val) {
 }
 
 function buildCsv(rows) {
-  const headers = ['Date', 'Site', 'Category', 'Vehicle No.', 'Start', 'Start Photo', 'Close', 'Close Photo', 'Working Hrs', 'Diesel (L)', 'Diesel Photo', 'Loads', 'Operator', 'Remarks'];
+  const headers = ['Date', 'Site', 'Category', 'Vehicle No.', 'Start', 'Start Photo', 'Close', 'Close Photo', 'Working Hrs', 'Diesel (L)', 'Diesel Photo', 'Loads', 'Unload points', 'Operator', 'Remarks'];
   const lines = rows.map(r => [
     r.date, r.site, r.category, r.vehicle, r.start, r.hadStartPhoto ? 'Yes' : 'No', r.close, r.hadClosePhoto ? 'Yes' : 'No',
-    r.hours, r.diesel, r.hadDieselPhoto ? 'Yes' : 'No', r.loads, r.operator, r.remarks,
+    r.hours, r.diesel, r.hadDieselPhoto ? 'Yes' : 'No', r.loads, r.unload, r.operator, r.remarks,
   ]);
   const csv = [headers, ...lines].map(l => l.map(csvEscape).join(',')).join('\n');
   return Buffer.from('\uFEFF' + csv, 'utf8');   // BOM so Excel reads accents/₹ correctly
@@ -165,6 +169,7 @@ const XL_COLS = [
   { key: 'diesel',     header: 'Diesel (L)',   width: 11 },
   { key: 'dieselPhoto', header: 'Diesel Photo', width: 23, photo: true },
   { key: 'loads',      header: 'Loads',        width: 8 },
+  { key: 'unload',     header: 'Unload points', width: 30 },
   { key: 'operator',   header: 'Operator',     width: 16 },
   { key: 'remarks',    header: 'Remarks',      width: 30 },
 ];
@@ -174,7 +179,7 @@ const PHOTO_ROW_PT = (IMG_BOX_H + 14) * 0.75; // a row that holds a photo is a l
 const EMU = 9525;                             // English Metric Units per pixel
 
 // Excel does not resize a row by itself when its height is set, so estimate how many lines the wrapped columns need.
-const WRAP_WIDTHS = { site: 20, remarks: 30 };
+const WRAP_WIDTHS = { site: 20, remarks: 30, unload: 30 };
 const wrappedLines = (text, widthChars) =>
   !text ? 1 : String(text).split(/\r?\n/).reduce((n, line) => n + Math.max(1, Math.ceil(line.length / (widthChars * 1.08))), 0);
 
@@ -235,7 +240,7 @@ async function buildXlsx(rows, meta, thumbs) {
         cell.value = r[c.key];                                  // plain strings are never treated as formulas
       }
       cell.font = { name: 'Calibri', size: 10.5, color: argb(COLORS.ink), bold: c.key === 'vehicle' };
-      cell.alignment = { vertical: 'middle', horizontal: c.photo ? 'center' : (c.key === 'diesel' || c.key === 'loads' || c.key === 'n') ? 'right' : 'left', wrapText: c.key === 'remarks' || c.key === 'site', indent: c.photo ? 0 : 1 };
+      cell.alignment = { vertical: 'middle', horizontal: c.photo ? 'center' : (c.key === 'diesel' || c.key === 'loads' || c.key === 'n') ? 'right' : 'left', wrapText: c.key === 'remarks' || c.key === 'site' || c.key === 'unload', indent: c.photo ? 0 : 1 };
       cell.border = BORDER;
       if (idx % 2 === 1) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: argb(COLORS.paper) };
       if (c.photo && cell.value && cell.value !== '—') cell.font = { name: 'Calibri', size: 9, italic: true, color: argb('B4372A') };
@@ -296,21 +301,22 @@ const pdfText = s => String(s == null ? '' : s)
   .replace(/[^\u0020-\u007e\u00a0-\u00ff\u2013\u2014\u2022\u2026\u20ac]/g, '?');
 
 const PDF_COLS = [
-  { key: 'n',          header: '#',           w: 20 },
-  { key: 'date',       header: 'Date',        w: 50 },
-  { key: 'site',       header: 'Site',        w: 55 },
-  { key: 'category',   header: 'Cat.',        w: 36 },
-  { key: 'vehicle',    header: 'Vehicle No.', w: 76, bold: true },
-  { key: 'start',      header: 'Start',       w: 44 },
-  { key: 'startPhoto', header: 'Start photo', w: 76, photo: true },
-  { key: 'close',      header: 'Close',       w: 44 },
-  { key: 'closePhoto', header: 'Close photo', w: 76, photo: true },
-  { key: 'hours',      header: 'Working hrs', w: 46 },
-  { key: 'diesel',     header: 'Diesel (L)',  w: 42, right: true },
-  { key: 'dieselPhoto', header: 'Diesel photo', w: 76, photo: true },
+  { key: 'n',          header: '#',           w: 18 },
+  { key: 'date',       header: 'Date',        w: 46 },
+  { key: 'site',       header: 'Site',        w: 48 },
+  { key: 'category',   header: 'Cat.',        w: 34 },
+  { key: 'vehicle',    header: 'Vehicle No.', w: 70, bold: true },
+  { key: 'start',      header: 'Start',       w: 40 },
+  { key: 'startPhoto', header: 'Start photo', w: 74, photo: true },
+  { key: 'close',      header: 'Close',       w: 40 },
+  { key: 'closePhoto', header: 'Close photo', w: 74, photo: true },
+  { key: 'hours',      header: 'Working hrs', w: 40 },
+  { key: 'diesel',     header: 'Diesel (L)',  w: 40, right: true },
+  { key: 'dieselPhoto', header: 'Diesel photo', w: 74, photo: true },
   { key: 'loads',      header: 'Loads',       w: 28, right: true },
-  { key: 'operator',   header: 'Operator',    w: 55 },
-  { key: 'remarks',    header: 'Remarks',     w: 59 },
+  { key: 'unload',     header: 'Unload points', w: 62 },
+  { key: 'operator',   header: 'Operator',    w: 48 },
+  { key: 'remarks',    header: 'Remarks',     w: 43 },
 ];
 
 async function buildPdf(rows, meta, thumbs) {

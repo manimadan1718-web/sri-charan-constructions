@@ -138,6 +138,10 @@ const Entries = {
     const params = new URLSearchParams(filters).toString();
     return apiFetch(`/entries/summary-stats${params ? '?' + params : ''}`);
   },
+  // Names of unloading points used before (for the type-ahead list). Supervisor + Admin.
+  unloadPoints() {
+    return apiFetch('/entries/unload-points');
+  },
 };
 
 // ── Users (Admin only) ──────────────────────────────────────────────────────
@@ -249,5 +253,76 @@ const Reports = {
   // { format, ids: [...] }  or  { format, filters: { category, q, from, to } }   (Owner + Admin)
   logs(body) {
     return apiFetch('/reports/logs', { method: 'POST', body: JSON.stringify(body), asBlob: true });
+  },
+  // { format, from?, to? }   (Owner + Admin) — the Summary screen
+  summary(body) {
+    return apiFetch('/reports/summary', { method: 'POST', body: JSON.stringify(body), asBlob: true });
+  },
+};
+
+// ── Documents (Owner + Admin) ─────────────────────────────────────────────────
+const Documents = {
+  list(params = {}) {
+    const clean = Object.entries(params).filter(([, v]) => v !== '' && v !== undefined && v !== null);
+    const q = new URLSearchParams(clean).toString();
+    return apiFetch(`/documents${q ? '?' + q : ''}`);
+  },
+  // Sends the file as the raw request body (details in the address). XMLHttpRequest is used instead of fetch
+  // only because it can report upload progress. Resolves with the saved document.
+  upload(file, meta, onProgress) {
+    return new Promise((resolve, reject) => {
+      const qs = new URLSearchParams({ ...meta, filename: file.name }).toString();
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${API_BASE}/documents?${qs}`);
+      const token = getToken();
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+      xhr.upload.onprogress = ev => { if (ev.lengthComputable && onProgress) onProgress(ev.loaded / ev.total); };
+      xhr.onerror = () => reject(new Error('Cannot reach the server. Check your connection and try again.'));
+      xhr.onabort = () => reject(new Error('The upload was cancelled.'));
+      xhr.onload = () => {
+        let data = null;
+        try { data = JSON.parse(xhr.responseText); } catch { /* not JSON */ }
+        if (xhr.status === 401) { clearToken(); clearUser(); window.location.href = '/login.html'; return reject(new Error('Session expired. Please log in again.')); }
+        if (xhr.status >= 200 && xhr.status < 300) return resolve(data);
+        const err = new Error((data && data.error) || `Upload failed (${xhr.status}).`);
+        err.status = xhr.status; err.data = data;
+        reject(err);
+      };
+      xhr.send(file);
+    });
+  },
+  update(id, payload) {
+    return apiFetch(`/documents/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(payload) });
+  },
+  // A link that DOWNLOADS the file (valid for 10 minutes).
+  url(id) {
+    return apiFetch(`/documents/${encodeURIComponent(id)}/url`);
+  },
+  remove(id) {
+    return apiFetch(`/documents/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+};
+
+// ── Payments (Supervisor adds · Owner + Admin see · Admin edits) ───────────────
+const Payments = {
+  list(type) {
+    return apiFetch(`/payments?type=${encodeURIComponent(type)}`);
+  },
+  mine() {
+    return apiFetch('/payments/mine');
+  },
+  employees() {
+    return apiFetch('/payments/employees');
+  },
+  // { pay_type, period, items: [{ employee_name, days_worked, amount }] } — all lines saved together, or none
+  create(payload) {
+    return apiFetch('/payments', { method: 'POST', body: JSON.stringify(payload) });
+  },
+  update(id, payload) {
+    return apiFetch(`/payments/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(payload) });
+  },
+  remove(id, reason) {
+    return apiFetch(`/payments/${encodeURIComponent(id)}`, { method: 'DELETE', body: JSON.stringify({ reason }) });
   },
 };

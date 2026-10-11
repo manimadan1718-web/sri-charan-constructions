@@ -166,6 +166,66 @@ INSERT INTO storage.buckets (id, name, public)
 VALUES ('reading-photos', 'reading-photos', false)
 ON CONFLICT (id) DO NOTHING;
 
+-- 12. Loads breakup, Documents and Payments.
+-- Loads breakup: an entry's Loads split by unloading point (the lines must add up to the entry's Loads — the app checks this).
+CREATE TABLE IF NOT EXISTS load_points (
+  id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  entry_id    UUID NOT NULL REFERENCES entries(id) ON DELETE CASCADE,
+  point_name  TEXT NOT NULL,
+  loads       INTEGER NOT NULL CHECK (loads > 0),
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_load_points_entry ON load_points(entry_id);
+
+-- Documents: work orders, tax invoices, … (the files themselves live in a PRIVATE storage bucket "documents").
+CREATE TABLE IF NOT EXISTS documents (
+  id                 UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  name               TEXT NOT NULL,
+  category           TEXT NOT NULL,
+  original_filename  TEXT,
+  ext                TEXT,
+  size_bytes         BIGINT NOT NULL DEFAULT 0,
+  storage_path       TEXT NOT NULL,
+  sha256             TEXT NOT NULL,
+  site               TEXT,
+  notes              TEXT,
+  uploaded_by_name   TEXT,
+  created_at         TIMESTAMPTZ DEFAULT NOW(),
+  updated_at         TIMESTAMPTZ,
+  updated_by_name    TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS documents_sha256_unique ON documents(sha256);     -- the exact same file cannot be stored twice
+CREATE INDEX IF NOT EXISTS idx_documents_created ON documents(created_at DESC);
+
+-- Payments: weekly (food …) and monthly (salary …). ONE line per person per period.
+CREATE TABLE IF NOT EXISTS payments (
+  id               UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  pay_type         TEXT NOT NULL CHECK (pay_type IN ('weekly', 'monthly')),
+  period_start     DATE NOT NULL,
+  period_end       DATE NOT NULL,
+  employee_name    TEXT NOT NULL,
+  employee_key     TEXT NOT NULL,                 -- the name in lower case, so "Ravi" and "ravi " are the same person
+  days_worked      NUMERIC(4,1) NOT NULL CHECK (days_worked >= 0),
+  amount           NUMERIC(12,2) NOT NULL CHECK (amount > 0),
+  created_by_id    TEXT,
+  created_by_name  TEXT,
+  created_at       TIMESTAMPTZ DEFAULT NOW(),
+  updated_at       TIMESTAMPTZ,
+  updated_by_name  TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS payments_unique_person_period ON payments(pay_type, period_start, employee_key);   -- no duplicates, even if two people save at the same moment
+CREATE INDEX IF NOT EXISTS idx_payments_period  ON payments(pay_type, period_start DESC);
+CREATE INDEX IF NOT EXISTS idx_payments_creator ON payments(created_by_id, created_at DESC);
+
+-- Locked down like every other table: only this app's server (secret key) can reach them.
+ALTER TABLE load_points ENABLE ROW LEVEL SECURITY;
+ALTER TABLE documents   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE payments    ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE load_points, documents, payments FROM anon, authenticated;
+
+-- The private bucket for documents (the app also creates it by itself on first start).
+INSERT INTO storage.buckets (id, name, public) VALUES ('documents', 'documents', false) ON CONFLICT (id) DO NOTHING;
+
 -- Make Supabase's API notice the new columns immediately.
 NOTIFY pgrst, 'reload schema';
 `;

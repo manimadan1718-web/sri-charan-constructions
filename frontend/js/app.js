@@ -3,11 +3,13 @@ const ROLE_TABS = {
   entry:     ['supervisor', 'admin'],
   records:   ['owner', 'admin'],
   summary:   ['owner', 'admin'],
+  documents: ['owner', 'admin'],
+  payments:  ['supervisor', 'owner', 'admin'],
   inventory: ['admin'],
   users:     ['admin'],
   logs:      ['owner', 'admin'],
 };
-const TAB_ORDER = ['entry', 'records', 'summary', 'inventory', 'users', 'logs'];
+const TAB_ORDER = ['entry', 'records', 'summary', 'documents', 'payments', 'inventory', 'users', 'logs'];
 
 /* ── Boot ────────────────────────────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', async () => {
@@ -45,6 +47,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadDropdownData();
   setupAutoCalculate();
   toggleCategoryFields('f');
+  initLoadPoints();
+  loadUnloadPoints();
 
   const firstTab = TAB_ORDER.find(t => ROLE_TABS[t].includes(user.role)) || 'entry';
   switchTab(firstTab);
@@ -352,7 +356,9 @@ function switchTab(name) {
   if (sectionEl) sectionEl.classList.add('active');
 
   if (name === 'records')   loadRecords();
-  if (name === 'summary')   { loadSummary(); populateMonthFilter(); }
+  if (name === 'summary')   loadSummary();
+  if (name === 'documents') loadDocuments();
+  if (name === 'payments')  initPayments();
   if (name === 'inventory') loadInventory();
   if (name === 'users')     loadUsers();
   if (name === 'logs')      loadLogs(true);
@@ -366,6 +372,7 @@ function clearForm() {
   document.getElementById('f-category').value = 'own';
   toggleCategoryFields('f');
   resetCalcHint();
+  clearLoadPoints('f');
   releasePhotos('f', true);   // photos that were never saved are thrown away
 }
 
@@ -374,6 +381,8 @@ async function saveEntry() {
   const vehicle_no = getVehicleValue('f');
   if (!date || !vehicle_no) { showToast('Date and Vehicle No. are required.', true); return; }
   if (photosBusy('f')) { showToast('Please wait — the photo is still uploading.', true); return; }
+  const lpProblem = validateLoadPoints('f');
+  if (lpProblem) { showToast(lpProblem, true); return; }
 
   const payload = {
     date, vehicle_no,
@@ -389,6 +398,7 @@ async function saveEntry() {
     loads:   parseInt(document.getElementById('f-loads').value)    || 0,
     operator: getOperatorValue('f'),
     remarks:  document.getElementById('f-remarks').value.trim(),
+    load_points: readLoadPoints('f'),
   };
 
   try {
@@ -396,6 +406,7 @@ async function saveEntry() {
     showToast('✅ Entry saved successfully!');
     releasePhotos('f', false);   // the photos now belong to the entry — keep them
     clearForm();
+    loadUnloadPoints();          // a new point name may have been used
   } catch (e) {
     showToast('❌ ' + (e.message || 'Save failed.'), true);
   }
@@ -475,7 +486,7 @@ function renderRecordsTable(entries) {
       <td><span class="reading-cell">${esc(e.close_reading) || '–'}${photoChipHtml(e.close_photo, `Closing reading · ${e.vehicle_no} · ${fmtDate(e.date)}`)}</span></td>
       <td>${esc(e.working_hours) || '–'}</td>
       <td><span class="reading-cell">${esc(e.diesel ?? 0)}${photoChipHtml(e.diesel_photo, `Diesel · ${e.vehicle_no} · ${fmtDate(e.date)}`)}</span></td>
-      <td>${esc(e.loads ?? 0)}</td>
+      <td>${esc(e.loads ?? 0)}${pointsMini(e)}</td>
       <td>${esc(e.operator) || '–'}</td>
       <td style="max-width:200px;white-space:normal;">${esc(e.remarks) || '–'}</td>
       <td class="hist-col"><button class="btn btn-outline btn-sm hist-btn" data-id="${esc(e.id)}" onclick="openHistory(this.dataset.id)" title="View history">${CLOCK_SVG}<span class="hist-count"></span></button></td>
@@ -639,6 +650,7 @@ function openEditModal(id) {
   document.getElementById('e-diesel').value   = entry.diesel ?? '';
   document.getElementById('e-loads').value    = entry.loads ?? '';
   document.getElementById('e-remarks').value  = entry.remarks || '';
+  setLoadPoints('e', entry.load_points || []);
   releasePhotos('e', true);
   setExistingPhoto('e-start', entry.start_photo || null);
   setExistingPhoto('e-close', entry.close_photo || null);
@@ -658,6 +670,8 @@ async function submitEditEntry() {
   const vehicle_no = getVehicleValue('e');
   if (!date || !vehicle_no) { showToast('Date and Vehicle No. are required.', true); return; }
   if (photosBusy('e')) { showToast('Please wait — the photo is still uploading.', true); return; }
+  const lpProblem = validateLoadPoints('e');
+  if (lpProblem) { showToast(lpProblem, true); return; }
 
   const payload = {
     date, vehicle_no,
@@ -673,6 +687,7 @@ async function submitEditEntry() {
     loads:   parseInt(document.getElementById('e-loads').value)    || 0,
     operator: getOperatorValue('e'),
     remarks:  document.getElementById('e-remarks').value.trim(),
+    load_points: readLoadPoints('e'),
   };
 
   // Work out what actually changed. Nothing changed → nothing to save (or explain).
@@ -705,78 +720,82 @@ async function submitEditEntry() {
 }
 
 /* ── Summary ─────────────────────────────────────────────────────────────────── */
-async function loadSummary() {
-  const month = document.getElementById('sum-month').value;
-  const filters = month ? { month } : {};
+const ymd = dt => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+function addDaysLocal(dateStr, n) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return ymd(new Date(y, m - 1, d + n));
+}
 
+/** The period chosen above the Summary as { from, to } (empty = no limit). */
+function summaryPeriod() {
+  const v = document.getElementById('sum-range').value;
+  const t = today();
+  if (v === 'today')     return { from: t, to: t };
+  if (v === 'yesterday') { const y = addDaysLocal(t, -1); return { from: y, to: y }; }
+  if (v === '7')         return { from: addDaysLocal(t, -6), to: t };
+  if (v === '30')        return { from: addDaysLocal(t, -29), to: t };
+  if (v === 'custom')    return { from: document.getElementById('sum-from').value, to: document.getElementById('sum-to').value };
+  return { from: '', to: '' };
+}
+
+function summaryRangeText({ from, to }) {
+  if (from && to) return from === to ? fmtDate(from) : `${fmtDate(from)} – ${fmtDate(to)}`;
+  if (from) return `From ${fmtDate(from)}`;
+  if (to)   return `Up to ${fmtDate(to)}`;
+  return 'All time';
+}
+
+function onSummaryRangeChange() {
+  const custom = document.getElementById('sum-range').value === 'custom';
+  document.getElementById('sum-custom').hidden = !custom;
+  if (custom && !document.getElementById('sum-from').value && !document.getElementById('sum-to').value) {
+    document.getElementById('sum-from').value = addDaysLocal(today(), -6);     // a sensible starting point the person can change
+    document.getElementById('sum-to').value   = today();
+  }
+  loadSummary();
+}
+
+let summarySeq = 0;
+async function loadSummary() {
+  const period = summaryPeriod();
+  if (period.from && period.to && period.from > period.to) { showToast('The "from" date cannot be after the "to" date.', true); return; }
+  document.getElementById('sum-range-text').textContent = `Showing: ${summaryRangeText(period)}`;
+  const filters = {};
+  if (period.from) filters.from = period.from;
+  if (period.to)   filters.to   = period.to;
+
+  const seq = ++summarySeq;
   try {
     const res = await Entries.stats(filters);
-    const s   = res.data || {};
+    if (seq !== summarySeq) return;                       // a newer choice has already been made
+    const s = res.data || {};
     document.getElementById('s-entries').textContent  = s.total_entries  ?? '–';
     document.getElementById('s-diesel').textContent   = s.total_diesel   ?? '–';
     document.getElementById('s-loads').textContent    = s.total_loads    ?? '–';
-    document.getElementById('s-vehicles').textContent = s.unique_vehicles ?? '–';
-  } catch { /* non-critical */ }
-
-  try {
-    const res = await Entries.getAll(filters);
-    renderVehicleBreakdown(res.data || []);
-  } catch { /* non-critical */ }
-
+    document.getElementById('s-vehicles').textContent = s.vehicles_with_loads ?? '–';
+    renderVehicleBreakdown(s.vehicles || []);
+  } catch (e) {
+    if (seq !== summarySeq) return;
+    document.getElementById('vehicle-summary-body').innerHTML = `<tr class="empty-row"><td colspan="4">${esc(e.message || 'Could not load the summary.')}</td></tr>`;
+  }
 }
 
-function renderVehicleBreakdown(entries) {
+function renderVehicleBreakdown(list) {
   const tbody = document.getElementById('vehicle-summary-body');
   tbody.innerHTML = '';
-
-  if (!entries.length) {
-    tbody.innerHTML = '<tr class="empty-row"><td colspan="4">No records yet.</td></tr>';
+  if (!list.length) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="4">No vehicles with loads in this period.</td></tr>';
     return;
   }
-
-  const byVehicle = {};
-  entries.forEach(e => {
-    const key = e.vehicle_no || 'Unknown';
-    if (!byVehicle[key]) byVehicle[key] = { entries: 0, diesel: 0, loads: 0 };
-    byVehicle[key].entries += 1;
-    byVehicle[key].diesel  += parseFloat(e.diesel) || 0;
-    byVehicle[key].loads   += parseInt(e.loads) || 0;
-  });
-
-  Object.keys(byVehicle).sort().forEach(vehicle => {
-    const v = byVehicle[vehicle];
+  list.forEach(v => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><strong>${esc(vehicle)}</strong></td>
-      <td>${v.entries}</td>
-      <td>${v.diesel.toFixed(2)}</td>
-      <td>${v.loads}</td>`;
+      <td><strong>${esc(v.vehicle_no)}</strong></td>
+      <td>${esc(v.entries)}</td>
+      <td>${esc(v.diesel)}</td>
+      <td>${esc(v.loads)}</td>`;
     tbody.appendChild(tr);
   });
-}
-
-/* ── Month filter dropdown ───────────────────────────────────────────────────── */
-async function populateMonthFilter() {
-  try {
-    const res     = await Entries.getAll();
-    const entries = res.data || [];
-    const months  = [...new Set(
-      entries.map(e => e.date ? e.date.substring(0, 7) : null).filter(Boolean)
-    )].sort().reverse();
-
-    const sel = document.getElementById('sum-month');
-    const cur = sel.value;
-    sel.innerHTML = '<option value="">All Time</option>';
-    months.forEach(m => {
-      const [y, mo] = m.split('-');
-      const label = new Date(y, mo - 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
-      const opt = document.createElement('option');
-      opt.value = m;
-      opt.textContent = label;
-      if (m === cur) opt.selected = true;
-      sel.appendChild(opt);
-    });
-  } catch { /* non-critical */ }
 }
 
 /* ── Inventory (Admin) — Vehicles / Sites / Operators as three sub-sections ───────────── */
@@ -1233,6 +1252,11 @@ async function runTableReport(kind, format, itemEl) {
   if (group === 'inventory')  { call = () => Reports.inventory({ type, format }); name = type; }
   else if (group === 'users') { call = () => Reports.users({ format }); name = 'users'; }
   else if (group === 'logs')  { call = () => Reports.logs(logsReportBody(format)); name = 'activity-logs'; }
+  else if (group === 'summary') {
+    const per = summaryPeriod();
+    if (per.from && per.to && per.from > per.to) { showToast('The "from" date cannot be after the "to" date.', true); return; }
+    call = () => Reports.summary({ format, from: per.from || undefined, to: per.to || undefined }); name = 'summary';
+  }
   else return;
 
   const menu = itemEl.closest('.rm');
@@ -1299,6 +1323,11 @@ function diffEntry(before, after) {
     const b = fieldValue(kind, after[col]);
     if (a !== b) out.push({ field: label, from: a, to: b });
   });
+  // Loads breakup: compared as text, so re-ordering the lines is not a change.
+  if (after.load_points !== undefined) {
+    const was = pointsText(before.load_points), now = pointsText(after.load_points);
+    if (was !== now) out.push({ field: 'Unload points', from: was, to: now });
+  }
   return out;
 }
 
@@ -1393,7 +1422,7 @@ function fmtDateTime(iso) {
   return d.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
 }
 
-const NOUNS = { entry: 'Entry', summary: 'Summary', vehicle: 'Vehicle', operator: 'Operator', site: 'Site', user: 'User' };
+const NOUNS = { entry: 'Entry', summary: 'Summary', vehicle: 'Vehicle', operator: 'Operator', site: 'Site', user: 'User', document: 'Document', payment: 'Payment' };
 const SPECIAL_ACTIONS = {
   login:         { label: 'Login',          cls: 'pill-green'  },
   login_failed:  { label: 'Failed login',   cls: 'pill-red'    },
@@ -1402,6 +1431,9 @@ const SPECIAL_ACTIONS = {
   entry_updated: { label: 'Entry edited',   cls: 'pill-orange' },
   report_exported: { label: 'Report exported', cls: 'pill-sky' },
   access_denied: { label: 'Access denied', cls: 'pill-red' },
+  document_uploaded:   { label: 'Document uploaded',   cls: 'pill-sky'  },
+  document_downloaded: { label: 'Document downloaded', cls: 'pill-sky'  },
+  payments_added:      { label: 'Payments added',      cls: 'pill-sky'  },
   logs_deleted:  { label: 'Logs deleted',  cls: 'pill-orange' },
 };
 function actionMeta(action) {
@@ -1984,3 +2016,693 @@ function viewFieldPhoto(key) {
   if (st.preview) { photoViewerSeq++; openPhotoViewer(title); setPhotoViewerImage(st.preview, false); }
   else if (st.path) viewSavedPhoto(st.path, title);
 }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Loads breakup — an entry's Loads split by unloading point
+   The lines are optional, but when present they must add up to Loads.
+   Used by the Data Entry form (prefix "f") and the Edit dialog (prefix "e").
+   ═══════════════════════════════════════════════════════════════════════════════ */
+const LP_MAX = 30;
+const lpEl = (p, part) => document.getElementById(`${p}-lp-${part}`);
+const lpTotalLoads = p => parseInt(document.getElementById(`${p}-loads`).value, 10) || 0;
+
+/** "Yard A: 5 · Yard B: 7" — the same text however the lines are ordered (null when there are none). */
+function pointsText(points) {
+  if (!Array.isArray(points) || !points.length) return null;
+  return [...points]
+    .sort((a, b) => String(a.point_name).toLowerCase().localeCompare(String(b.point_name).toLowerCase()))
+    .map(x => `${x.point_name}: ${x.loads}`).join(' · ');
+}
+function pointsMini(e) {
+  const t = pointsText(e.load_points);
+  return t ? `<div class="lp-mini" title="Loads by unloading point">${esc(t)}</div>` : '';
+}
+
+async function loadUnloadPoints() {
+  const u = Auth.currentUser();
+  if (!u || !['supervisor', 'admin'].includes(u.role)) return;
+  try {
+    const res = await Entries.unloadPoints();
+    document.getElementById('unload-points-list').innerHTML = (res.data || []).map(n => `<option value="${esc(n)}"></option>`).join('');
+  } catch { /* suggestions are a convenience only */ }
+}
+
+function initLoadPoints() {
+  ['f', 'e'].forEach(p => {
+    document.getElementById(`${p}-loads`).addEventListener('input', () => updateLpTotal(p));
+    const rows = lpEl(p, 'rows');
+    rows.addEventListener('input', () => updateLpTotal(p));
+    rows.addEventListener('click', ev => {
+      const b = ev.target.closest('.lp-del');
+      if (b) { b.closest('.lp-row').remove(); updateLpTotal(p); }
+    });
+    updateLpTotal(p);
+  });
+}
+
+function sumLoadPoints(p) {
+  return readLoadPoints(p).reduce((a, r) => a + (Number.isFinite(r.loads) ? r.loads : 0), 0);
+}
+
+function addLoadPoint(p, name = '', count = '', focus = true) {
+  const wrap = lpEl(p, 'rows');
+  if (wrap.children.length >= LP_MAX) { showToast(`At most ${LP_MAX} unloading points per entry.`, true); return; }
+  // A new empty line starts with the loads that are still unallocated — usually exactly what the person wants.
+  if (name === '' && count === '') {
+    const left = lpTotalLoads(p) - sumLoadPoints(p);
+    if (left > 0) count = left;
+  }
+  const row = document.createElement('div');
+  row.className = 'lp-row';
+  row.innerHTML = `
+    <input type="text" class="lp-name" list="unload-points-list" placeholder="Unloading point (e.g. Yard A)" maxlength="80" autocomplete="off" aria-label="Unloading point name" value="${esc(name)}">
+    <input type="number" class="lp-count" min="1" step="1" inputmode="numeric" placeholder="Loads" aria-label="Number of loads" value="${esc(count)}">
+    <button type="button" class="lp-del" aria-label="Remove this line">✕</button>`;
+  wrap.appendChild(row);
+  updateLpTotal(p);
+  if (focus) row.querySelector('.lp-name').focus();
+}
+
+/** The lines as typed (names tidied; completely empty lines left out). */
+function readLoadPoints(p) {
+  return [...lpEl(p, 'rows').querySelectorAll('.lp-row')].map(row => {
+    const raw = row.querySelector('.lp-count').value.trim();
+    return { point_name: row.querySelector('.lp-name').value.replace(/\s+/g, ' ').trim(), loads: raw === '' ? '' : Number(raw) };
+  }).filter(r => r.point_name || r.loads !== '');
+}
+
+function setLoadPoints(p, points) {
+  lpEl(p, 'rows').innerHTML = '';
+  [...(points || [])]
+    .sort((a, b) => String(a.point_name).toLowerCase().localeCompare(String(b.point_name).toLowerCase()))
+    .forEach(x => addLoadPoint(p, x.point_name, x.loads, false));
+  updateLpTotal(p);
+}
+function clearLoadPoints(p) { lpEl(p, 'rows').innerHTML = ''; updateLpTotal(p); }
+
+/** The little "8 of 12 loads allocated" line — green when it matches, amber while loads are left, red when over. */
+function updateLpTotal(p) {
+  const el = lpEl(p, 'total');
+  if (!el) return;
+  const rows = readLoadPoints(p);
+  if (!rows.length) { el.textContent = ''; el.className = 'lp-total'; return; }
+  const total = lpTotalLoads(p), sum = sumLoadPoints(p);
+  let text, cls;
+  if (!total)            { text = 'Enter the total Loads above first'; cls = 'warn'; }
+  else if (sum === total) { text = `✓ ${sum} of ${total} loads allocated`; cls = 'ok'; }
+  else if (sum < total)   { text = `${sum} of ${total} loads allocated · ${total - sum} left`; cls = 'warn'; }
+  else                    { text = `${sum} of ${total} loads · ${sum - total} too many`; cls = 'bad'; }
+  el.textContent = text;
+  el.className = `lp-total ${cls}`;
+}
+
+/** Returns a message if the lines are not acceptable, otherwise null. Mirrors the server's rules. */
+function validateLoadPoints(p) {
+  const rows = readLoadPoints(p);
+  if (!rows.length) return null;
+  const seen = new Set();
+  for (const r of rows) {
+    if (!r.point_name) return 'Each unloading point needs a name.';
+    if (!Number.isInteger(r.loads) || r.loads < 1) return `Loads for "${r.point_name}" must be a whole number of 1 or more.`;
+    const key = r.point_name.toLowerCase();
+    if (seen.has(key)) return `"${r.point_name}" is listed twice. Combine them into one line.`;
+    seen.add(key);
+  }
+  const total = lpTotalLoads(p), sum = sumLoadPoints(p);
+  if (sum !== total) return `The unloading points add up to ${sum} load${sum === 1 ? '' : 's'}, but Loads is ${total}. They must match.`;
+  return null;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Documents (Owner + Admin) — work orders, tax invoices, …
+   ═══════════════════════════════════════════════════════════════════════════════ */
+const DOC = { meta: { categories: [], max_mb: 25, blocked: [] }, list: [], file: null, editingId: null, sites: [], debounce: null };
+
+const humanSize = n => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n} bytes`);
+const fileExt = name => { const m = /\.([A-Za-z0-9]{1,10})$/.exec(name || ''); return m ? m[1].toLowerCase() : ''; };
+const DOC_FORMATS = {
+  pdf: 'PDF', doc: 'Word', docx: 'Word', rtf: 'Word', odt: 'Word', xls: 'Excel', xlsx: 'Excel', csv: 'CSV', ods: 'Excel',
+  ppt: 'PowerPoint', pptx: 'PowerPoint', odp: 'PowerPoint', jpg: 'Image', jpeg: 'Image', png: 'Image', gif: 'Image', webp: 'Image',
+  bmp: 'Image', tif: 'Image', tiff: 'Image', heic: 'Image', svg: 'Image', dwg: 'CAD', dxf: 'CAD', zip: 'Archive', rar: 'Archive', '7z': 'Archive',
+  txt: 'Text', md: 'Text', xml: 'XML', json: 'JSON',
+};
+const docFormat = ext => (ext ? (DOC_FORMATS[ext] || ext.toUpperCase()) : 'File');
+const FMT_CLASS = { PDF: 'fm-pdf', Word: 'fm-word', Excel: 'fm-excel', CSV: 'fm-excel', PowerPoint: 'fm-ppt', Image: 'fm-img', CAD: 'fm-cad', Archive: 'fm-zip' };
+const fmtBadge = label => `<span class="fmt-badge ${FMT_CLASS[label] || 'fm-other'}">${esc(label)}</span>`;
+
+function fillSelect(sel, items, current, firstLabel) {
+  const keep = current !== undefined ? current : sel.value;
+  sel.innerHTML = (firstLabel !== undefined ? `<option value="">${esc(firstLabel)}</option>` : '') +
+    items.map(i => `<option value="${esc(i)}">${esc(i)}</option>`).join('');
+  if (keep && ![...sel.options].some(o => o.value === keep)) sel.insertAdjacentHTML('beforeend', `<option value="${esc(keep)}">${esc(keep)}</option>`);
+  sel.value = keep || '';
+}
+
+function loadDocumentsDebounced() {
+  clearTimeout(DOC.debounce);
+  DOC.debounce = setTimeout(loadDocuments, 300);
+}
+function clearDocFilters() {
+  document.getElementById('doc-filter-category').value = '';
+  document.getElementById('doc-search').value = '';
+  loadDocuments();
+}
+
+let docSeq = 0;
+async function loadDocuments() {
+  const seq = ++docSeq;
+  const body = document.getElementById('documents-body');
+  try {
+    const [res, sites] = await Promise.all([
+      Documents.list({ category: document.getElementById('doc-filter-category').value, q: document.getElementById('doc-search').value.trim() }),
+      DOC.sites.length ? Promise.resolve(null) : Inventory.getSites().catch(() => null),
+    ]);
+    if (seq !== docSeq) return;
+    if (res.meta) DOC.meta = res.meta;
+    if (sites) DOC.sites = (sites.data || []).filter(x => x.active).map(x => x.name);
+    DOC.list = res.data || [];
+    fillSelect(document.getElementById('doc-category'), DOC.meta.categories, undefined, 'Select type…');
+    fillSelect(document.getElementById('doc-filter-category'), DOC.meta.categories, undefined, 'All types');
+    fillSelect(document.getElementById('doc-site'), DOC.sites, undefined, '—');
+    document.getElementById('doc-hint').textContent =
+      `Any file type — PDF, Word, Excel, pictures, drawings and more. Up to ${DOC.meta.max_mb} MB. Programs and scripts (.exe, .bat, .js …) are not allowed.`;
+    renderDocuments();
+  } catch (e) {
+    if (seq !== docSeq) return;
+    const setup = e.data && e.data.setup_required;
+    body.innerHTML = `<tr class="empty-row"><td colspan="8">${setup
+      ? '⚠️ Documents need a one-time database update.<br><small>Open Supabase → SQL Editor and run <strong>run-in-supabase-3-new-features.sql</strong>, then reload this page.</small>'
+      : esc(e.message || 'Could not load the documents.')}</td></tr>`;
+    document.getElementById('doc-count').textContent = '';
+  }
+}
+
+function renderDocuments() {
+  const body = document.getElementById('documents-body');
+  body.innerHTML = '';
+  const n = DOC.list.length;
+  document.getElementById('doc-count').textContent = n ? `${n} document${n === 1 ? '' : 's'}` : '';
+  if (!n) {
+    const filtered = document.getElementById('doc-search').value.trim() || document.getElementById('doc-filter-category').value;
+    body.innerHTML = `<tr class="empty-row"><td colspan="8">${filtered ? 'No documents match these filters.' : 'No documents yet. Upload the first one above.'}</td></tr>`;
+    return;
+  }
+  DOC.list.forEach(d => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="doc-name-cell">
+        <strong>${esc(d.name)}</strong>
+        <div class="doc-sub">${esc(d.original_filename || '')}</div>
+        ${d.site ? `<div class="doc-sub">📍 ${esc(d.site)}</div>` : ''}
+        ${d.notes ? `<div class="doc-notes">${esc(d.notes)}</div>` : ''}
+      </td>
+      <td><span class="pill pill-orange">${esc(d.category)}</span></td>
+      <td>${fmtBadge(d.format)}</td>
+      <td class="doc-size">${esc(humanSize(d.size_bytes))}</td>
+      <td class="log-time">${fmtDateTime(d.created_at)}<br>${esc(d.uploaded_by_name || '')}</td>
+      <td><button type="button" class="btn btn-green btn-sm" onclick="downloadDocument('${esc(d.id)}')" aria-label="Download ${esc(d.name)}">⬇ Download</button></td>
+      <td><button type="button" class="btn btn-outline btn-sm" onclick="openDocEdit('${esc(d.id)}')" aria-label="Edit ${esc(d.name)}">✏️ Edit</button></td>
+      <td class="admin-only-col"><button type="button" class="btn btn-danger btn-sm" onclick="deleteDocument('${esc(d.id)}')" aria-label="Delete ${esc(d.name)}">🗑</button></td>`;
+    body.appendChild(tr);
+  });
+}
+
+function onDocFileChosen() {
+  const input = document.getElementById('doc-file');
+  const f = input.files[0] || null;
+  const info = document.getElementById('doc-file-info');
+  const err = document.getElementById('doc-error');
+  err.textContent = '';
+  DOC.file = null;
+  if (!f) { info.hidden = true; return; }
+  const ext = fileExt(f.name);
+  let problem = '';
+  if ((DOC.meta.blocked || []).includes(ext)) problem = `".${ext}" files cannot be stored here because they can run programs on a computer. Use a document format such as PDF, Word or Excel.`;
+  else if (f.size === 0) problem = 'That file is empty.';
+  else if (f.size > DOC.meta.max_mb * 1048576) problem = `That file is ${humanSize(f.size)}. The limit is ${DOC.meta.max_mb} MB.`;
+  if (problem) { err.textContent = problem; input.value = ''; info.hidden = true; return; }
+  DOC.file = f;
+  info.hidden = false;
+  info.innerHTML = `${fmtBadge(docFormat(ext))} <strong>${esc(f.name)}</strong> <span class="doc-size">${esc(humanSize(f.size))}</span>`;
+  const nameBox = document.getElementById('doc-name');
+  if (!nameBox.value.trim()) nameBox.value = f.name.replace(/\.[^.]+$/, '').replace(/[_]+/g, ' ').trim().slice(0, 120);   // a starting point — editable
+}
+
+function resetDocForm() {
+  ['doc-name', 'doc-notes', 'doc-file'].forEach(id => { document.getElementById(id).value = ''; });
+  document.getElementById('doc-category').value = '';
+  document.getElementById('doc-site').value = '';
+  document.getElementById('doc-file-info').hidden = true;
+  document.getElementById('doc-error').textContent = '';
+  document.getElementById('doc-progress').hidden = true;
+  DOC.file = null;
+}
+
+async function uploadDocument() {
+  const err = document.getElementById('doc-error');
+  const name = document.getElementById('doc-name').value.trim();
+  const category = document.getElementById('doc-category').value;
+  err.textContent = '';
+  if (!name)      { err.textContent = 'Give the document a name.'; document.getElementById('doc-name').focus(); return; }
+  if (!category)  { err.textContent = 'Choose the type of document (for example Work Order or Tax Invoice).'; document.getElementById('doc-category').focus(); return; }
+  if (!DOC.file)  { err.textContent = 'Choose a file to upload.'; return; }
+
+  const meta = { name, category };
+  const site = document.getElementById('doc-site').value, notes = document.getElementById('doc-notes').value.trim();
+  if (site) meta.site = site;
+  if (notes) meta.notes = notes;
+
+  const btn = document.getElementById('doc-upload-btn'), bar = document.getElementById('doc-progress-bar');
+  const prog = document.getElementById('doc-progress'), txt = document.getElementById('doc-progress-text');
+  btn.disabled = true; prog.hidden = false; bar.style.width = '0%'; txt.textContent = 'Uploading…';
+  try {
+    await Documents.upload(DOC.file, meta, f => {
+      bar.style.width = `${Math.round(f * 100)}%`;
+      txt.textContent = f >= 1 ? 'Saving…' : `Uploading… ${Math.round(f * 100)}%`;
+    });
+    showToast('✅ Document uploaded.');
+    resetDocForm();
+    loadDocuments();
+  } catch (e) {
+    err.textContent = e.message || 'The upload failed.';
+  } finally {
+    btn.disabled = false;
+    prog.hidden = true;
+  }
+}
+
+async function downloadDocument(id) {
+  try {
+    const r = await Documents.url(id);
+    const a = document.createElement('a');          // the link makes the browser DOWNLOAD the file (it is never opened in our page)
+    a.href = r.url; a.rel = 'noopener';
+    document.body.appendChild(a); a.click(); a.remove();
+    showToast('⬇ Download started.');
+  } catch (e) {
+    showToast('❌ ' + (e.message || 'Could not start the download.'), true);
+  }
+}
+
+function openDocEdit(id) {
+  const d = DOC.list.find(x => String(x.id) === String(id));
+  if (!d) return;
+  DOC.editingId = d.id;
+  document.getElementById('doc-edit-title').textContent = 'Edit document';
+  document.getElementById('de-name').value = d.name;
+  fillSelect(document.getElementById('de-category'), DOC.meta.categories, d.category);
+  fillSelect(document.getElementById('de-site'), DOC.sites, d.site || '', '—');
+  document.getElementById('de-notes').value = d.notes || '';
+  document.getElementById('de-error').textContent = '';
+  document.getElementById('doc-edit-overlay').classList.add('open');
+  setTimeout(() => document.getElementById('de-name').focus(), 50);
+}
+function closeDocEdit() { document.getElementById('doc-edit-overlay').classList.remove('open'); DOC.editingId = null; }
+
+async function saveDocEdit() {
+  if (!DOC.editingId) return;
+  const err = document.getElementById('de-error');
+  err.textContent = '';
+  const name = document.getElementById('de-name').value.trim();
+  if (!name) { err.textContent = 'The document needs a name.'; return; }
+  const btn = document.getElementById('de-save');
+  btn.disabled = true;
+  try {
+    const res = await Documents.update(DOC.editingId, {
+      name, category: document.getElementById('de-category').value,
+      site: document.getElementById('de-site').value, notes: document.getElementById('de-notes').value.trim(),
+    });
+    closeDocEdit();
+    showToast(res.unchanged ? 'No changes were made.' : '✅ Document updated.');
+    loadDocuments();
+  } catch (e) {
+    err.textContent = e.message || 'Could not save the changes.';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function deleteDocument(id) {
+  const d = DOC.list.find(x => String(x.id) === String(id));
+  const ok = await askDanger({
+    title: `Delete "${d ? d.name : 'this document'}"?`,
+    message: 'The record and the stored file are removed permanently. The deletion is written to the Activity Log.',
+    confirmLabel: 'Delete document',
+  });
+  if (!ok) return;
+  try { await Documents.remove(id); showToast('Document deleted.'); loadDocuments(); }
+  catch (e) { showToast('❌ ' + (e.message || 'Delete failed.'), true); }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Payments — Weekly (food, …) and Monthly (salary, …)
+   A supervisor adds one line per person; once saved, the Owner and Admin see them.
+   The same person cannot be saved twice for the same week / month.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+const PAY = { tab: 'weekly', built: false, lists: { weekly: [], monthly: [] }, mine: [], editing: null };
+const PAY_MAX_DAYS = { weekly: 7, monthly: 31 };
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const inr = n => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const payRole = () => (Auth.currentUser() || {}).role;
+const payCanAdd  = () => ['supervisor', 'admin'].includes(payRole());
+const payCanView = () => ['owner', 'admin'].includes(payRole());
+
+/** Monday–Sunday week that contains a date (local calendar maths, no time-zone surprises). */
+function weekRange(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dow = (new Date(y, m - 1, d).getDay() + 6) % 7;
+  return { start: ymd(new Date(y, m - 1, d - dow)), end: ymd(new Date(y, m - 1, d - dow + 6)) };
+}
+const payPeriodLabel = (type, start, end) => (type === 'weekly' ? `${fmtDate(start)} – ${fmtDate(end)}` : `${MONTHS[+start.slice(5, 7) - 1]} ${start.slice(0, 4)}`);
+const nameKey = n => String(n || '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+function payPanelHtml(t) {
+  const week = t === 'weekly';
+  const IC = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg>';
+  const add = !payCanAdd() ? '' : `
+    <div class="card">
+      <div class="card-header"><div class="card-title"><span class="ic">${IC}</span> Add ${week ? 'weekly' : 'monthly'} payments</div></div>
+      <div class="pay-period">
+        <div class="form-group">
+          <label for="pay-${t}-period">${week ? 'Any date in the week' : 'Month'} *</label>
+          <input type="${week ? 'date' : 'month'}" id="pay-${t}-period" onchange="onPayPeriodChange('${t}')">
+        </div>
+        <p class="pay-period-text" id="pay-${t}-period-text"></p>
+      </div>
+      <div class="pay-head" aria-hidden="true"><span>Employee name</span><span>Days worked</span><span>Amount (₹)</span><span></span></div>
+      <div class="pay-rows" id="pay-${t}-rows"></div>
+      <button type="button" class="btn btn-outline btn-sm" onclick="addPayRow('${t}')">＋ Add person</button>
+      <div class="pay-total" id="pay-${t}-total" aria-live="polite"></div>
+      <div class="form-error" id="pay-${t}-error" role="alert"></div>
+      <div class="btn-group">
+        <button type="button" class="btn btn-primary" id="pay-${t}-save" onclick="savePayments('${t}')">💾 Save payments</button>
+        <button type="button" class="btn btn-outline" onclick="resetPayForm('${t}')">✕ Clear</button>
+      </div>
+    </div>`;
+  const mine = payRole() !== 'supervisor' ? '' : `
+    <div class="card">
+      <div class="card-header"><div class="card-title"><span class="ic">${IC}</span> Recently saved by you</div></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>${week ? 'Week' : 'Month'}</th><th>Employee</th><th>Days</th><th>Amount</th><th>Saved</th></tr></thead>
+        <tbody id="pay-${t}-mine"></tbody>
+      </table></div>
+    </div>`;
+  const admin = payRole() === 'admin';
+  const list = !payCanView() ? '' : `
+    <div class="card">
+      <div class="card-header"><div class="card-title"><span class="ic">${IC}</span> Saved ${week ? 'weekly' : 'monthly'} payments</div><span class="doc-count" id="pay-${t}-count"></span></div>
+      <div class="log-filters">
+        <select id="pay-${t}-filter-period" onchange="renderPayList('${t}')" aria-label="Choose ${week ? 'week' : 'month'}"></select>
+        <input type="text" id="pay-${t}-search" placeholder="Search employee…" oninput="renderPayList('${t}')" autocomplete="off">
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>${week ? 'Week' : 'Month'}</th><th>Employee</th><th>Days</th><th>Amount</th><th>Added by</th><th>Added on</th>${admin ? '<th>Edit</th><th>Delete</th>' : ''}</tr></thead>
+        <tbody id="pay-${t}-list"></tbody>
+      </table></div>
+      <div class="pay-footer" id="pay-${t}-footer"></div>
+    </div>`;
+  return add + mine + list;
+}
+
+function showPayTab(t) {
+  PAY.tab = t;
+  ['weekly', 'monthly'].forEach(k => {
+    const on = k === t;
+    const tab = document.getElementById(`paytab-${k}`);
+    tab.classList.toggle('active', on);
+    tab.setAttribute('aria-selected', String(on));
+    document.getElementById(`pay-panel-${k}`).hidden = !on;
+  });
+}
+
+function initPayments() {
+  if (!PAY.built) {
+    ['weekly', 'monthly'].forEach(t => {
+      const panel = document.getElementById(`pay-panel-${t}`);
+      panel.innerHTML = payPanelHtml(t);
+      const rows = document.getElementById(`pay-${t}-rows`);
+      if (rows) {
+        // Once the person changes something, the old complaint (and its red marking) is out of date — clear it.
+        const clearPayError = () => {
+          document.getElementById(`pay-${t}-error`).textContent = '';
+          rows.querySelectorAll('.has-error').forEach(r => r.classList.remove('has-error'));
+        };
+        rows.addEventListener('input', () => { clearPayError(); updatePayTotal(t); });
+        rows.addEventListener('click', ev => { const b = ev.target.closest('.lp-del'); if (b) { b.closest('.pay-row').remove(); clearPayError(); updatePayTotal(t); } });
+        rows.addEventListener('keydown', ev => {
+          // Enter in the last amount box starts the next line — quick entry for a long list.
+          if (ev.key === 'Enter' && ev.target.classList.contains('pr-amount') && ev.target.closest('.pay-row') === rows.lastElementChild) { ev.preventDefault(); addPayRow(t); }
+        });
+        resetPayForm(t);
+      }
+    });
+    PAY.built = true;
+  }
+  showPayTab(PAY.tab);
+  refreshPayments();
+}
+
+async function refreshPayments() {
+  if (payCanAdd()) {
+    Payments.employees().then(res => {
+      document.getElementById('pay-employees').innerHTML = (res.data || []).map(n => `<option value="${esc(n)}"></option>`).join('');
+    }).catch(() => {});
+    Payments.mine().then(res => { PAY.mine = res.data || []; renderPayMine(); }).catch(() => {});
+  }
+  if (payCanView()) {
+    for (const t of ['weekly', 'monthly']) {
+      // eslint-disable-next-line no-await-in-loop
+      await loadPayList(t);
+    }
+  }
+}
+
+function onPayPeriodChange(t) {
+  const v = document.getElementById(`pay-${t}-period`).value;
+  const el = document.getElementById(`pay-${t}-period-text`);
+  if (!v) { el.textContent = ''; return; }
+  if (t === 'weekly') { const w = weekRange(v); el.textContent = `Week: ${fmtDate(w.start)} (Mon) – ${fmtDate(w.end)} (Sun)`; }
+  else el.textContent = `Month: ${MONTHS[+v.slice(5, 7) - 1]} ${v.slice(0, 4)}`;
+}
+
+function resetPayForm(t) {
+  const period = document.getElementById(`pay-${t}-period`);
+  if (!period) return;
+  period.value = t === 'weekly' ? today() : today().slice(0, 7);
+  onPayPeriodChange(t);
+  document.getElementById(`pay-${t}-rows`).innerHTML = '';
+  document.getElementById(`pay-${t}-error`).textContent = '';
+  addPayRow(t, '', '', '', false);
+  updatePayTotal(t);
+}
+
+function addPayRow(t, name = '', days = '', amount = '', focus = true) {
+  const wrap = document.getElementById(`pay-${t}-rows`);
+  if (wrap.children.length >= 100) { showToast('At most 100 people can be saved at once.', true); return; }
+  const row = document.createElement('div');
+  row.className = 'pay-row';
+  row.innerHTML = `
+    <input type="text" class="pr-name" list="pay-employees" placeholder="Employee name" maxlength="80" autocomplete="off" aria-label="Employee name" value="${esc(name)}">
+    <input type="number" class="pr-days" min="0" max="${PAY_MAX_DAYS[t]}" step="0.5" inputmode="decimal" placeholder="Days" aria-label="Days worked" value="${esc(days)}">
+    <input type="number" class="pr-amount" min="0" step="0.01" inputmode="decimal" placeholder="Amount" aria-label="Amount in rupees" value="${esc(amount)}">
+    <button type="button" class="lp-del" aria-label="Remove this person">✕</button>`;
+  wrap.appendChild(row);
+  updatePayTotal(t);
+  if (focus) row.querySelector('.pr-name').focus();
+}
+
+function readPayRows(t) {
+  return [...document.getElementById(`pay-${t}-rows`).querySelectorAll('.pay-row')].map(row => ({
+    row,
+    employee_name: row.querySelector('.pr-name').value.replace(/\s+/g, ' ').trim(),
+    days_worked: row.querySelector('.pr-days').value.trim(),
+    amount: row.querySelector('.pr-amount').value.trim(),
+  })).filter(r => r.employee_name || r.days_worked !== '' || r.amount !== '');
+}
+
+function updatePayTotal(t) {
+  const el = document.getElementById(`pay-${t}-total`);
+  if (!el) return;
+  const rows = readPayRows(t);
+  const total = rows.reduce((a, r) => a + (Number(r.amount) > 0 ? Number(r.amount) : 0), 0);
+  el.textContent = rows.length ? `${rows.length} ${rows.length === 1 ? 'person' : 'people'} · Total ${inr(total)}` : '';
+}
+
+/** Returns { error, bad: [rows] } — mirrors the server's rules so mistakes are caught before saving. */
+function checkPayRows(t, rows) {
+  if (!rows.length) return { error: 'Add at least one person.', bad: [] };
+  const seen = new Map();
+  for (const r of rows) {
+    const label = r.employee_name || 'This line';
+    if (!r.employee_name) return { error: "Enter the employee's name on every line.", bad: [r.row] };
+    const d = Number(r.days_worked);
+    if (r.days_worked === '' || !Number.isFinite(d) || d < 0 || d > PAY_MAX_DAYS[t] || Math.round(d * 2) / 2 !== d) {
+      return { error: `${label}: days worked must be between 0 and ${PAY_MAX_DAYS[t]} (half days are allowed).`, bad: [r.row] };
+    }
+    const a = Number(r.amount);
+    if (r.amount === '' || !Number.isFinite(a) || a <= 0) return { error: `${label}: enter an amount greater than 0.`, bad: [r.row] };
+    const k = nameKey(r.employee_name);
+    if (seen.has(k)) return { error: `"${r.employee_name}" is on the list twice. Each person can be paid only once for the same period.`, bad: [seen.get(k), r.row] };
+    seen.set(k, r.row);
+  }
+  return { error: null, bad: [] };
+}
+
+async function savePayments(t) {
+  const err = document.getElementById(`pay-${t}-error`);
+  err.textContent = '';
+  const period = document.getElementById(`pay-${t}-period`).value;
+  if (!period) { err.textContent = t === 'weekly' ? 'Choose a date inside the week.' : 'Choose the month.'; return; }
+  document.querySelectorAll(`#pay-${t}-rows .pay-row`).forEach(r => r.classList.remove('has-error'));
+  const rows = readPayRows(t);
+  const check = checkPayRows(t, rows);
+  if (check.error) { err.textContent = check.error; check.bad.forEach(r => r.classList.add('has-error')); (check.bad[0] && check.bad[0].querySelector('input'))?.focus(); return; }
+
+  const btn = document.getElementById(`pay-${t}-save`);
+  btn.disabled = true;
+  try {
+    const res = await Payments.create({
+      pay_type: t, period,
+      items: rows.map(r => ({ employee_name: r.employee_name, days_worked: Number(r.days_worked), amount: Number(r.amount) })),
+    });
+    showToast(`✅ Saved ${res.count} ${res.count === 1 ? 'payment' : 'payments'} for ${res.period.label} — total ${inr(res.total)}.`);
+    resetPayForm(t);
+    refreshPayments();
+  } catch (e) {
+    err.textContent = e.message || 'Could not save the payments.';
+    const dups = new Set(((e.data && e.data.duplicates) || []).map(d => nameKey(d.employee_name)));   // point at exactly who is already saved
+    rows.forEach(r => { if (dups.has(nameKey(r.employee_name))) r.row.classList.add('has-error'); });
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function renderPayMine() {
+  ['weekly', 'monthly'].forEach(t => {
+    const body = document.getElementById(`pay-${t}-mine`);
+    if (!body) return;
+    const rows = PAY.mine.filter(r => r.pay_type === t).slice(0, 20);
+    body.innerHTML = rows.length ? rows.map(r => `
+      <tr><td>${esc(payPeriodLabel(t, r.period_start, r.period_end))}</td><td><strong>${esc(r.employee_name)}</strong></td>
+      <td>${esc(r.days_worked)}</td><td>${esc(inr(r.amount))}</td><td class="log-time">${fmtDateTime(r.created_at)}</td></tr>`).join('')
+      : '<tr class="empty-row"><td colspan="5">Nothing saved by you yet.</td></tr>';
+  });
+}
+
+async function loadPayList(t) {
+  const body = document.getElementById(`pay-${t}-list`);
+  if (!body) return;
+  try {
+    const res = await Payments.list(t);
+    PAY.lists[t] = res.data || [];
+    renderPayList(t, true);
+  } catch (e) {
+    const setup = e.data && e.data.setup_required;
+    body.innerHTML = `<tr class="empty-row"><td colspan="8">${setup
+      ? '⚠️ Payments need a one-time database update.<br><small>Open Supabase → SQL Editor and run <strong>run-in-supabase-3-new-features.sql</strong>, then reload this page.</small>'
+      : esc(e.message || 'Could not load the payments.')}</td></tr>`;
+  }
+}
+
+function renderPayList(t, rebuildPeriods = false) {
+  const body = document.getElementById(`pay-${t}-list`);
+  if (!body) return;
+  const all = PAY.lists[t] || [];
+  const sel = document.getElementById(`pay-${t}-filter-period`);
+  if (rebuildPeriods || !sel.options.length) {
+    const keep = sel.value;
+    const seen = new Map();
+    all.forEach(r => { if (!seen.has(r.period_start)) seen.set(r.period_start, r.period_end); });      // already newest first
+    sel.innerHTML = '<option value="">All periods</option>' + [...seen].map(([s, e]) => `<option value="${esc(s)}">${esc(payPeriodLabel(t, s, e))}</option>`).join('');
+    const first = [...seen.keys()][0] || '';
+    sel.value = rebuildPeriods && keep && seen.has(keep) ? keep : (rebuildPeriods && !sel.dataset.touched ? first : (keep || ''));
+    sel.dataset.touched = '1';
+  }
+  const q = document.getElementById(`pay-${t}-search`).value.trim().toLowerCase();
+  const rows = all.filter(r => (!sel.value || r.period_start === sel.value) && (!q || r.employee_name.toLowerCase().includes(q)));
+  const admin = payRole() === 'admin';
+  body.innerHTML = rows.length ? rows.map(r => `
+    <tr>
+      <td>${esc(payPeriodLabel(t, r.period_start, r.period_end))}</td>
+      <td><strong>${esc(r.employee_name)}</strong></td>
+      <td>${esc(r.days_worked)}</td>
+      <td class="pay-amount">${esc(inr(r.amount))}</td>
+      <td>${esc(r.created_by_name || '')}</td>
+      <td class="log-time">${fmtDateTime(r.created_at)}</td>
+      ${admin ? `<td><button type="button" class="btn btn-outline btn-sm" onclick="openPayEdit('${t}','${esc(r.id)}')" aria-label="Edit ${esc(r.employee_name)}">✏️ Edit</button></td>
+      <td><button type="button" class="btn btn-danger btn-sm" onclick="deletePayment('${t}','${esc(r.id)}')" aria-label="Delete ${esc(r.employee_name)}">🗑</button></td>` : ''}
+    </tr>`).join('')
+    : `<tr class="empty-row"><td colspan="8">${all.length ? 'No payments match these filters.' : 'No payments saved yet.'}</td></tr>`;
+  const total = rows.reduce((a, r) => a + r.amount, 0);
+  document.getElementById(`pay-${t}-footer`).textContent = rows.length ? `${rows.length} ${rows.length === 1 ? 'line' : 'lines'} · Total ${inr(total)}` : '';
+  document.getElementById(`pay-${t}-count`).textContent = all.length ? `${all.length} in total` : '';
+}
+
+/* Admin: edit / delete a saved line (both need a written reason, like entries) */
+function openPayEdit(t, id) {
+  const row = (PAY.lists[t] || []).find(r => String(r.id) === String(id));
+  if (!row) return;
+  PAY.editing = { t, row };
+  document.getElementById('pay-edit-title').textContent = 'Edit payment';
+  document.getElementById('pay-edit-period').textContent = `${t === 'weekly' ? 'Week' : 'Month'}: ${payPeriodLabel(t, row.period_start, row.period_end)}`;
+  document.getElementById('pe-name').value = row.employee_name;
+  document.getElementById('pe-days').value = row.days_worked;
+  document.getElementById('pe-days').max = PAY_MAX_DAYS[t];
+  document.getElementById('pe-amount').value = row.amount;
+  document.getElementById('pe-error').textContent = '';
+  document.getElementById('pay-edit-overlay').classList.add('open');
+  setTimeout(() => document.getElementById('pe-name').focus(), 50);
+}
+function closePayEdit() { document.getElementById('pay-edit-overlay').classList.remove('open'); PAY.editing = null; }
+
+async function savePayEdit() {
+  if (!PAY.editing) return;
+  const { t, row } = PAY.editing;
+  const err = document.getElementById('pe-error');
+  err.textContent = '';
+  const body = {
+    employee_name: document.getElementById('pe-name').value.replace(/\s+/g, ' ').trim(),
+    days_worked: document.getElementById('pe-days').value.trim(),
+    amount: document.getElementById('pe-amount').value.trim(),
+  };
+  const chk = checkPayRows(t, [{ row: null, ...body }]);
+  if (chk.error) { err.textContent = chk.error; return; }
+  body.days_worked = Number(body.days_worked); body.amount = Number(body.amount);
+
+  const changes = [];
+  if (body.employee_name !== row.employee_name) changes.push({ field: 'Employee', from: row.employee_name, to: body.employee_name });
+  if (body.days_worked !== row.days_worked)     changes.push({ field: 'Days worked', from: String(row.days_worked), to: String(body.days_worked) });
+  if (body.amount !== row.amount)               changes.push({ field: 'Amount', from: inr(row.amount), to: inr(body.amount) });
+  if (!changes.length) { showToast('No changes were made.'); closePayEdit(); return; }
+
+  const reason = await askReason({ title: 'Reason for Changes', intro: 'Please explain why this payment is being changed. It is saved in the Activity Log.', confirmLabel: 'Confirm & Save', changes });
+  if (!reason) return;
+  const btn = document.getElementById('pe-save');
+  btn.disabled = true;
+  try {
+    await Payments.update(row.id, { ...body, reason });
+    closePayEdit();
+    showToast('✅ Payment updated.');
+    loadPayList(t);
+  } catch (e) {
+    err.textContent = e.message || 'Could not save the changes.';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function deletePayment(t, id) {
+  const row = (PAY.lists[t] || []).find(r => String(r.id) === String(id));
+  if (!row) return;
+  const reason = await askReason({
+    title: 'Delete this payment?',
+    intro: `<strong>${esc(row.employee_name)}</strong> · ${esc(payPeriodLabel(t, row.period_start, row.period_end))} · ${esc(inr(row.amount))}<br>Please explain why it is being deleted. This is saved in the Activity Log.`,
+    confirmLabel: 'Delete payment', danger: true,
+  });
+  if (!reason) return;
+  try { await Payments.remove(row.id, reason); showToast('Payment deleted.'); loadPayList(t); }
+  catch (e) { showToast('❌ ' + (e.message || 'Delete failed.'), true); }
+}
+

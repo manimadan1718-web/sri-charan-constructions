@@ -9,6 +9,7 @@
  * NEVER put PINs (typed or stored) into a log row.
  */
 const supabase = require('../config/supabase');
+const { pointsText } = require('./loadPoints');
 
 /* ── Writing a log row ─────────────────────────────────────────────────────── */
 function clientIp(req) {
@@ -96,7 +97,7 @@ function fmtValue(kind, v) {
 }
 
 /** What changed between the saved entry and the new values. */
-function entryDiff(before, afterFields) {
+function entryDiff(before, afterFields, afterPoints) {
   const out = [];
   for (const [col, label, kind] of ENTRY_FIELDS) {
     if (kind === 'photo') {
@@ -112,17 +113,24 @@ function entryDiff(before, afterFields) {
     const b = fmtValue(kind, afterFields[col]);
     if (a !== b) out.push({ field: label, from: a, to: b });
   }
+  // Loads breakup (unloading points): compared as text, so re-ordering the lines is not a change.
+  if (afterPoints !== undefined) {
+    const was = pointsText(before.load_points), now = pointsText(afterPoints);
+    if (was !== now) out.push({ field: 'Unload points', from: was, to: now });
+  }
   return out;
 }
 
 /** Every filled-in field of an entry — used for "created" and "deleted" logs. */
-function entrySnapshot(fields, side) {
+function entrySnapshot(fields, side, points) {
   const out = [];
   for (const [col, label, kind] of ENTRY_FIELDS) {
     const v = fmtValue(kind, fields[col]);
     if (v === null || (kind === 'num' && Number(v) === 0)) continue;
     out.push(side === 'from' ? { field: label, from: v, to: null } : { field: label, from: null, to: v });
   }
+  const pt = pointsText(points);
+  if (pt) out.push(side === 'from' ? { field: 'Unload points', from: pt, to: null } : { field: 'Unload points', from: null, to: pt });
   return out;
 }
 

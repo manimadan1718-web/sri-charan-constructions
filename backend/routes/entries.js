@@ -7,6 +7,9 @@ const {
 } = require('../utils/activity');
 const photos = require('../utils/photos');
 const { serverError } = require('../utils/http');
+const lp = require('../utils/loadPoints');
+const { fetchAll } = require('../utils/db');
+const { summaryFor } = require('../utils/summary');
 
 router.use(requireAuth);
 
@@ -31,6 +34,22 @@ function isValidDate(s) {
 }
 
 const str = v => (v === undefined || v === null ? null : String(v).trim());
+
+/** ?from / ?to (YYYY-MM-DD) or ?month (YYYY-MM) → { from, to } or { error }. Either end may be missing. */
+function summaryRange(q) {
+  let { from, to } = q;
+  if (q.month) {
+    const next = getNextMonthStart(q.month);
+    if (!next) return { error: 'month must be in YYYY-MM format.' };
+    from = `${q.month}-01`;
+    const d = new Date(`${next}T00:00:00Z`); d.setUTCDate(d.getUTCDate() - 1);
+    to = d.toISOString().slice(0, 10);
+  }
+  if (from && !isValidDate(from)) return { error: 'from must be a date in YYYY-MM-DD format.' };
+  if (to && !isValidDate(to))     return { error: 'to must be a date in YYYY-MM-DD format.' };
+  if (from && to && from > to)    return { error: 'The "from" date cannot be after the "to" date.' };
+  return { from: from || null, to: to || null };
+}
 
 /**
  * Validates + normalises the body shared by POST and PUT.
@@ -77,7 +96,11 @@ function parseEntryBody(body) {
     photoInput[col] = v;
   }
 
-  return { fields, photoInput };
+  // Loads breakup: the unloading points must add up to Loads (checked by parsePoints).
+  const pp = lp.parsePoints(b.load_points, loads);
+  if (pp.error) return { error: pp.error };
+
+  return { fields, photoInput, points: pp.points };
 }
 
 /** Checks that each photo path being attached really exists in storage. Returns an error message or null. */
@@ -94,7 +117,17 @@ function sendSaveError(res, err) {
   if (photos.isMissingPhotoColumn(err)) {
     return res.status(503).json({ error: photos.PHOTO_SETUP_MESSAGE, setup_required: true });
   }
+  if (lp.isMissingLoadPoints(err)) {
+    return res.status(503).json({ error: lp.LOAD_POINTS_SETUP_MESSAGE, setup_required: true });
+  }
   return serverError(res, err, 'entry save');
+}
+
+/** Reads entries together with their unloading points. Works even before the one-time SQL has been run. */
+async function withPoints(build) {
+  let r = await build('*, load_points(*)');
+  if (r.error && lp.isMissingLoadPoints(r.error)) r = await build('*');
+  return r;
 }
 
 // ── GET /api/entries  (Owner + Admin — "Records" & "Summary" reports) ───────
@@ -102,43 +135,45 @@ router.get('/', requireRole('owner', 'admin'), async (req, res) => {
   try {
     const { date, date_from, date_to, vehicle, site, month, vehicle_no, site_name, category, type } = req.query;
 
-    let query = supabase
-      .from('entries')
-      .select('*')
-      .order('date', { ascending: false })
-      .order('created_at', { ascending: false });
-
-    if (date)      query = query.eq('date', date);
-    if (date_from) query = query.gte('date', date_from);
-    if (date_to)   query = query.lte('date', date_to);
-    if (vehicle)   query = query.ilike('vehicle_no', `%${vehicle}%`);
-    if (site)      query = query.ilike('site', `%${site}%`);
-    // Exact matches — used by the Records dropdowns (values come from the inventory lists)
-    if (vehicle_no) query = query.eq('vehicle_no', vehicle_no);
-    if (site_name)  query = query.eq('site', site_name);
-    if (category) {
-      if (!['own', 'rental'].includes(category)) return res.status(400).json({ error: 'category must be "own" or "rental".' });
-      query = query.eq('category', category);
-    }
+    if (category && !['own', 'rental'].includes(category)) return res.status(400).json({ error: 'category must be "own" or "rental".' });
+    let monthRange = null;
     if (month) {
       const nextMonth = getNextMonthStart(month);
       if (!nextMonth) return res.status(400).json({ error: 'month must be in YYYY-MM format.' });
-      query = query.gte('date', `${month}-01`).lt('date', nextMonth);
+      monthRange = [`${month}-01`, nextMonth];
     }
 
     // Vehicle TYPE (Tipper, JCB, …) is stored in Inventory, not on the entry, so look up
     // which vehicle numbers have that type and filter the entries by those numbers.
     // Case-insensitive; % and _ are escaped so they can't act as wildcards.
+    let typeNumbers = null;
     if (typeof type === 'string' && type.trim()) {
       const exact = type.trim().replace(/[\\%_]/g, '\\$&');
       const { data: vs, error: vErr } = await supabase.from('vehicles').select('vehicle_no').ilike('type', exact);
       if (vErr) throw vErr;
-      const numbers = (vs || []).map(v => v.vehicle_no);
-      if (!numbers.length) return res.json({ success: true, data: [] });
-      query = query.in('vehicle_no', numbers);
+      typeNumbers = (vs || []).map(v => v.vehicle_no);
+      if (!typeNumbers.length) return res.json({ success: true, data: [] });
     }
 
-    const { data, error } = await query;
+    const build = cols => {
+      let query = supabase.from('entries').select(cols)
+        .order('date', { ascending: false }).order('created_at', { ascending: false }).order('id', { ascending: false });
+      if (date)      query = query.eq('date', date);
+      if (date_from) query = query.gte('date', date_from);
+      if (date_to)   query = query.lte('date', date_to);
+      if (vehicle)   query = query.ilike('vehicle_no', `%${vehicle}%`);
+      if (site)      query = query.ilike('site', `%${site}%`);
+      // Exact matches — used by the Records dropdowns (values come from the inventory lists)
+      if (vehicle_no) query = query.eq('vehicle_no', vehicle_no);
+      if (site_name)  query = query.eq('site', site_name);
+      if (category)   query = query.eq('category', category);
+      if (monthRange) query = query.gte('date', monthRange[0]).lt('date', monthRange[1]);
+      if (typeNumbers) query = query.in('vehicle_no', typeNumbers);
+      return query;
+    };
+
+    // Every page is read, so the list never silently stops at 1,000 records.
+    const { data, error } = await withPoints(cols => fetchAll(() => build(cols)));
     if (error) throw error;
 
     res.json({ success: true, data });
@@ -147,31 +182,37 @@ router.get('/', requireRole('owner', 'admin'), async (req, res) => {
   }
 });
 
-// ── GET /api/entries/summary-stats  (Owner + Admin — aggregated totals) ─────
+// ── GET /api/entries/summary-stats  (Owner + Admin) ─────────────────────────
+// ?from=YYYY-MM-DD&to=YYYY-MM-DD (either may be left out), or the older ?month=YYYY-MM.
+// Totals count every entry; the per-vehicle list shows only vehicles that have loads.
 router.get('/summary-stats', requireRole('owner', 'admin'), async (req, res) => {
   try {
-    const { month } = req.query;
-
-    let query = supabase.from('entries').select('diesel, loads, vehicle_no, date');
-    if (month) {
-      const nextMonth = getNextMonthStart(month);
-      if (!nextMonth) return res.status(400).json({ error: 'month must be in YYYY-MM format.' });
-      query = query.gte('date', `${month}-01`).lt('date', nextMonth);
-    }
-
-    const { data, error } = await query;
-    if (error) throw error;
-
-    const stats = {
-      total_entries: data.length,
-      total_diesel: data.reduce((a, e) => a + (parseFloat(e.diesel) || 0), 0).toFixed(2),
-      total_loads: data.reduce((a, e) => a + (parseInt(e.loads, 10) || 0), 0),
-      unique_vehicles: new Set(data.map(e => e.vehicle_no)).size,
-    };
-
-    res.json({ success: true, data: stats });
+    const range = summaryRange(req.query);
+    if (range.error) return res.status(400).json({ error: range.error });
+    res.json({ success: true, data: await summaryFor(range) });
   } catch (err) {
     return serverError(res, err, 'GET /entries/summary-stats');
+  }
+});
+
+// ── GET /api/entries/unload-points  (Supervisor + Admin) — names used before, for the type-ahead list ──
+router.get('/unload-points', requireRole('supervisor', 'admin'), async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('load_points').select('point_name, created_at')
+      .order('created_at', { ascending: false }).range(0, 1999);
+    if (error) {
+      if (lp.isMissingLoadPoints(error)) return res.json({ success: true, data: [] });   // SQL not run yet — nothing to suggest
+      throw error;
+    }
+    const seen = new Set(), names = [];
+    for (const r of data || []) {
+      const key = String(r.point_name).toLowerCase();
+      if (!seen.has(key)) { seen.add(key); names.push(r.point_name); }
+      if (names.length >= 100) break;
+    }
+    res.json({ success: true, data: names.sort((a, b) => a.localeCompare(b)) });
+  } catch (err) {
+    return serverError(res, err, 'GET /entries/unload-points');
   }
 });
 
@@ -210,6 +251,12 @@ router.post('/', requireRole('supervisor', 'admin'), async (req, res) => {
     if (entryErr) throw entryErr;
     createdId = entry.id;
 
+    // Loads breakup. (If this fails, the entry is removed again below, so nothing is half-saved.)
+    if (parsed.points && parsed.points.length) {
+      const { error: ptErr } = await supabase.from('load_points').insert(parsed.points.map(p => ({ entry_id: entry.id, ...p })));
+      if (ptErr) throw ptErr;
+    }
+
     // Last step: file the photos under readings/. If this fails the entry is removed again (below)
     // and the photos are put back, so the person can just press Save again.
     if (toPromote.length) await photos.promoteAll(toPromote);
@@ -217,10 +264,10 @@ router.post('/', requireRole('supervisor', 'admin'), async (req, res) => {
     await logActivity(req, {
       category: 'entry', action: 'entry_created', entityType: 'entry', entityId: entry.id,
       entityLabel: entryLabel(parsed.fields),
-      changes: entrySnapshot(parsed.fields, 'to'),
+      changes: entrySnapshot(parsed.fields, 'to', parsed.points),
     });
 
-    res.status(201).json({ success: true, data: entry });
+    res.status(201).json({ success: true, data: { ...entry, load_points: parsed.points || [] } });
   } catch (err) {
     console.error('POST /entries:', err.message);
     // Don't leave a half-saved entry (saved, but its photos could not be filed) behind.
@@ -236,19 +283,27 @@ router.put('/:id', requireRole('admin'), async (req, res) => {
   const { id } = req.params;
   let snapshot = null; // the entry as it was, used to roll back on failure
   let entryChanged = false;
+  let pointsReplaced = false;
+  let oldPoints = [];
 
   try {
     const parsed = parseEntryBody(req.body);
     if (parsed.error) return res.status(400).json({ error: parsed.error });
 
-    const { data: original, error: getErr } = await supabase
-      .from('entries')
-      .select('*')
-      .eq('id', id)
-      .maybeSingle();
+    const { data: original, error: getErr } = await withPoints(cols => supabase.from('entries').select(cols).eq('id', id).maybeSingle());
     if (getErr) throw getErr;
     if (!original) return res.status(404).json({ error: 'Entry not found.' });
-    snapshot = original;
+    const { load_points: _lp, ...entryOnly } = original;
+    snapshot = entryOnly;
+    oldPoints = Array.isArray(original.load_points) ? original.load_points : [];
+
+    // Unloading points: lines that were sent replace the old ones; if none were sent the old ones stay,
+    // and then they must still add up to the (possibly changed) Loads.
+    const finalPoints = parsed.points !== undefined ? parsed.points : oldPoints;
+    const finalSum = finalPoints.reduce((a, p) => a + p.loads, 0);
+    if (finalPoints.length && finalSum !== parsed.fields.loads) {
+      return res.status(400).json({ error: `The unloading points add up to ${finalSum} load${finalSum === 1 ? '' : 's'}, but Loads is ${parsed.fields.loads}. Update the unloading points so they match.` });
+    }
 
     // Photos: a freshly uploaded one (pending/…) replaces or attaches; null removes (only if there is one);
     // a key that is missing — or the entry's own saved photo sent again — leaves the photo exactly as it is.
@@ -271,7 +326,7 @@ router.put('/:id', requireRole('admin'), async (req, res) => {
       return res.status(400).json({ error: 'The same photo cannot be used twice. Please attach a separate photo for each reading.' });
     }
 
-    const changes = entryDiff(original, parsed.fields);
+    const changes = entryDiff(original, parsed.fields, parsed.points);
     if (!changes.length) {
       // Nothing actually differs — don't touch the record or ask for a reason.
       return res.json({ success: true, unchanged: true, data: original });
@@ -296,6 +351,17 @@ router.put('/:id', requireRole('admin'), async (req, res) => {
     entryChanged = true;
     if (!entry) return res.status(404).json({ error: 'Entry not found.' });
 
+    // Loads breakup: replace the old lines with the new ones (only when they really differ).
+    if (parsed.points !== undefined && lp.pointsText(parsed.points) !== lp.pointsText(oldPoints)) {
+      const { error: delErr } = await supabase.from('load_points').delete().eq('entry_id', id);
+      if (delErr) throw delErr;
+      pointsReplaced = true;
+      if (parsed.points.length) {
+        const { error: insErr } = await supabase.from('load_points').insert(parsed.points.map(p => ({ entry_id: id, ...p })));
+        if (insErr) throw insErr;
+      }
+    }
+
     // Last step: file new photos under readings/. If it fails, the catch block below restores the old entry.
     if (toPromote.length) await photos.promoteAll(toPromote);
 
@@ -304,7 +370,7 @@ router.put('/:id', requireRole('admin'), async (req, res) => {
       entityLabel: entryLabel(parsed.fields), reason, changes,
     });
 
-    res.json({ success: true, data: entry });
+    res.json({ success: true, data: { ...entry, load_points: finalPoints } });
   } catch (err) {
     console.error('PUT /entries/:id:', err.message);
     // Best-effort rollback so a failed edit (for example photos that could not be filed) leaves the entry as it was.
@@ -313,6 +379,10 @@ router.put('/:id', requireRole('admin'), async (req, res) => {
         if (entryChanged) {
           const { id: _omit, created_at: _c, ...restore } = snapshot;
           await supabase.from('entries').update(restore).eq('id', id);
+        }
+        if (pointsReplaced) {
+          await supabase.from('load_points').delete().eq('entry_id', id);
+          if (oldPoints.length) await supabase.from('load_points').insert(oldPoints.map(p => ({ entry_id: id, point_name: p.point_name, loads: p.loads })));
         }
       } catch (rbErr) {
         console.error('PUT /entries/:id rollback failed:', rbErr.message);
@@ -331,14 +401,11 @@ router.delete('/:id', requireRole('admin'), async (req, res) => {
     if (rErr) return res.status(400).json({ error: rErr });
     const reason = cleanReason(req.body.reason);
 
-    const { data: original, error: getErr } = await supabase
-      .from('entries')
-      .select('*')
-      .eq('id', id)
-      .maybeSingle();
+    const { data: original, error: getErr } = await withPoints(cols => supabase.from('entries').select(cols).eq('id', id).maybeSingle());
     if (getErr) throw getErr;
     if (!original) return res.status(404).json({ error: 'Entry not found.' });
 
+    // (Its unloading points — and any old Work Breakup rows — are removed with it by the database.)
     // (Any old Work Breakup rows that belong to this entry are removed with it by the database.)
     const { error } = await supabase.from('entries').delete().eq('id', id);
     if (error) throw error;
@@ -347,7 +414,7 @@ router.delete('/:id', requireRole('admin'), async (req, res) => {
     await logActivity(req, {
       category: 'entry', action: 'entry_deleted', entityType: 'entry', entityId: id,
       entityLabel: entryLabel(original), reason,
-      changes: entrySnapshot(original, 'from'),
+      changes: entrySnapshot(original, 'from', original.load_points),
     });
 
     res.json({ success: true });
@@ -357,3 +424,4 @@ router.delete('/:id', requireRole('admin'), async (req, res) => {
 });
 
 module.exports = router;
+module.exports.summaryRange = summaryRange;

@@ -29,6 +29,9 @@ const inventoryRouter = require('./routes/inventory');
 const logsRouter      = require('./routes/logs');
 const uploadsRouter   = require('./routes/uploads');
 const reportsRouter   = require('./routes/reports');
+const documentsRouter = require('./routes/documents');
+const paymentsRouter  = require('./routes/payments');
+const documentsUtil   = require('./utils/documents');
 const { ensureBucket } = require('./utils/photos');
 const { checkLogsTable } = require('./utils/activity');
 
@@ -121,6 +124,8 @@ app.use('/api/inventory', inventoryRouter);
 app.use('/api/logs',      logsRouter);
 app.use('/api/uploads',   uploadsRouter);
 app.use('/api/reports',   reportsRouter);
+app.use('/api/documents', documentsRouter);
+app.use('/api/payments',  paymentsRouter);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -144,8 +149,11 @@ app.get('*', (req, res) => {
 app.use((err, req, res, next) => {
   if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'Invalid JSON in request body.' });
   if (err.type === 'entity.too.large') {
-    const isPhoto = String(req.originalUrl || '').startsWith('/api/uploads');
-    return res.status(413).json({ error: isPhoto ? 'That photo is too large. Please choose a smaller one.' : 'Request is too large.' });
+    const url = String(req.originalUrl || '');
+    const msg = url.startsWith('/api/uploads') ? 'That photo is too large. Please choose a smaller one.'
+      : url.startsWith('/api/documents') ? `That file is too large (${documentsUtil.MAX_MB} MB at most).`
+      : 'Request is too large.';
+    return res.status(413).json({ error: msg });
   }
   console.error('Unhandled error:', err.message);
   res.status(err.status || 500).json({ error: 'Something went wrong on the server.' });
@@ -158,4 +166,5 @@ app.listen(PORT, () => {
   console.log(`📋  Environment: ${process.env.NODE_ENV || 'development'}\n`);
   checkLogsTable();   // warns if the activity_logs table hasn't been created yet
   ensureBucket();     // creates the private photo bucket on first start if it doesn't exist
+  documentsUtil.ensureBucket();   // …and the private documents bucket
 });

@@ -58,6 +58,17 @@ function newPath(ext) {
 const PATH_RE = /^docs\/\d{4}\/\d{2}\/[0-9a-f-]{36}(?:\.[a-z0-9]{1,10})?$/;
 const isValidPath = p => typeof p === 'string' && p.length < 120 && PATH_RE.test(p);
 
+// Purchase attachments live in the same private bucket under purchases/<who uploaded>/<year>/<month>/…
+const safeUid = id => String(id == null ? '' : id).replace(/[^0-9A-Za-z-]/g, '').slice(0, 64);
+function newPurchasePath(userId, ext) {
+  const d = new Date();
+  return `purchases/${safeUid(userId)}/${d.getUTCFullYear()}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${crypto.randomUUID()}${ext ? '.' + ext : ''}`;
+}
+const PURCHASE_PATH_RE = /^purchases\/([0-9A-Za-z-]{1,64})\/\d{4}\/\d{2}\/[0-9a-f-]{36}(?:\.[a-z0-9]{1,10})?$/;
+const isValidPurchasePath = p => typeof p === 'string' && p.length < 160 && PURCHASE_PATH_RE.test(p);
+/** Who uploaded this purchase file (the id is part of the path, so nobody can attach somebody else's upload). */
+const purchasePathOwner = p => (isValidPurchasePath(p) ? PURCHASE_PATH_RE.exec(p)[1] : null);
+
 const isMissingBucket = err => !!err && /bucket not found/i.test(String(err.message || ''));
 
 async function ensureBucket() {
@@ -103,5 +114,6 @@ const humanSize = n => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : n >= 1
 module.exports = {
   BUCKET, MAX_MB, MAX_BYTES, CATEGORIES, BLOCKED_EXT,
   clean, safeFilename, extensionOf, formatLabel, sha256, newPath, isValidPath,
+  newPurchasePath, isValidPurchasePath, purchasePathOwner, safeUid,
   ensureBucket, store, removeObject, downloadUrl, isMissingDocuments, DOCUMENTS_SETUP_MESSAGE, humanSize,
 };

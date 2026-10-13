@@ -7,6 +7,7 @@ const { logActivity } = require('../utils/activity');
 const { serverError } = require('../utils/http');
 const { fetchAll } = require('../utils/db');
 const docs = require('../utils/documents');
+const fileView = require('../utils/fileView');
 
 router.use(requireAuth);
 
@@ -23,7 +24,7 @@ const rawFile = express.raw({ type: () => true, limit: docs.MAX_BYTES });
 /** What the browser may see of a document — never the storage path or the file fingerprint. */
 const publicDoc = d => ({
   id: d.id, name: d.name, category: d.category, original_filename: d.original_filename, ext: d.ext,
-  format: docs.formatLabel(d.ext), size_bytes: d.size_bytes, site: d.site, notes: d.notes,
+  format: docs.formatLabel(d.ext), viewable: fileView.isViewable(d.ext), size_bytes: d.size_bytes, site: d.site, notes: d.notes,
   uploaded_by_name: d.uploaded_by_name, created_at: d.created_at, updated_at: d.updated_at, updated_by_name: d.updated_by_name,
 });
 
@@ -151,6 +152,22 @@ router.get('/:id/url', requireRole('owner', 'admin'), async (req, res) => {
     res.json({ success: true, url, filename: d.original_filename || d.name, expires_in: 600 });
   } catch (err) {
     sendError(res, err, 'GET /documents/:id/url');
+  }
+});
+
+// ── GET /api/documents/:id/view-link  (Owner + Admin) — a 2-minute link that SHOWS the file in a new tab ──
+router.get('/:id/view-link', requireRole('owner', 'admin'), async (req, res) => {
+  try {
+    if (!ID_RE.test(req.params.id)) return res.status(404).json({ error: 'Document not found.' });
+    const { data: d, error } = await supabase.from('documents').select('*').eq('id', req.params.id).maybeSingle();
+    if (error) throw error;
+    if (!d) return res.status(404).json({ error: 'Document not found.' });
+    if (!fileView.isViewable(d.ext)) return res.status(415).json({ error: `${docs.formatLabel(d.ext)} files cannot be previewed here. Use Download instead.` });
+    if (!(await docs.downloadUrl(d.storage_path, 'x'))) return res.status(404).json({ error: 'The file could not be found.' });   // is it really there?
+    await logActivity(req, { category: 'document', action: 'document_viewed', entityType: 'document', entityId: d.id, entityLabel: d.name });
+    res.json({ success: true, url: fileView.makeLink(d.storage_path, d.original_filename || d.name, d.ext, req.user.id), expires_in: fileView.VIEW_SECONDS });
+  } catch (err) {
+    sendError(res, err, 'GET /documents/:id/view-link');
   }
 });
 

@@ -32,6 +32,8 @@ const uploadsRouter   = require('./routes/uploads');
 const reportsRouter   = require('./routes/reports');
 const documentsRouter = require('./routes/documents');
 const paymentsRouter  = require('./routes/payments');
+const purchasesRouter = require('./routes/purchases');
+const filesRouter     = require('./routes/files');
 const documentsUtil   = require('./utils/documents');
 const { ensureBucket } = require('./utils/photos');
 const { checkLogsTable } = require('./utils/activity');
@@ -161,6 +163,8 @@ app.use('/api/uploads',   uploadsRouter);
 app.use('/api/reports',   reportsRouter);
 app.use('/api/documents', documentsRouter);
 app.use('/api/payments',  paymentsRouter);
+app.use('/api/purchases', purchasesRouter);
+app.use('/api/files',     filesRouter);        // short-lived "view" links (no sign-in header possible in a new tab)
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -189,7 +193,7 @@ app.use((err, req, res, next) => {
   if (err.type === 'entity.too.large') {
     const url = String(req.originalUrl || '');
     const msg = url.startsWith('/api/uploads') ? 'That photo is too large. Please choose a smaller one.'
-      : url.startsWith('/api/documents') ? `That file is too large (${documentsUtil.MAX_MB} MB at most).`
+      : url.startsWith('/api/documents') || url.startsWith('/api/purchases') ? `That file is too large (${documentsUtil.MAX_MB} MB at most).`
       : 'Request is too large.';
     return res.status(413).json({ error: msg });
   }

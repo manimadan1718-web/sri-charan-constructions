@@ -2,6 +2,7 @@
 const ROLE_TABS = {
   entry:     ['supervisor', 'admin'],
   records:   ['owner', 'admin'],
+  purchases: ['supervisor', 'owner', 'admin'],
   summary:   ['owner', 'admin'],
   documents: ['owner', 'admin'],
   payments:  ['supervisor', 'owner', 'admin'],
@@ -9,7 +10,7 @@ const ROLE_TABS = {
   users:     ['admin'],
   logs:      ['owner', 'admin'],
 };
-const TAB_ORDER = ['entry', 'records', 'summary', 'documents', 'payments', 'inventory', 'users', 'logs'];
+const TAB_ORDER = ['entry', 'records', 'purchases', 'summary', 'documents', 'payments', 'inventory', 'users', 'logs'];
 
 /* ── Boot ────────────────────────────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', async () => {
@@ -113,14 +114,27 @@ async function loadDropdownData() {
     const operators = (oRes && oRes.data) || [];
     const sites     = (sRes && sRes.data) || [];
     populateSelect('f-vehicle',  vehicles,  'vehicle_no', 'Select vehicle…');
+    addOtherOption('f-vehicle');
     populateSelect('f-operator', operators, 'name',       'Select operator…');
     populateSelect('f-site',     sites,     'name',       'Select site…');
     populateSelect('e-vehicle',  vehicles,  'vehicle_no', 'Select vehicle…');
+    addOtherOption('e-vehicle');
+    populateSelect('pu-site',    sites,     'name',       'Select site…');
+    populateSelect('pue-site',   sites,     'name',       'Select site…');
+    populateFilterSelect('pu-filter-site', sites, 'name', 'All sites');
     populateSelect('e-operator', operators, 'name',       'Select operator…');
     populateSelect('e-site',     sites,     'name',       'Select site…');
     // Records filters: everything in the inventory — including inactive items,
     // because old records can still belong to them.
     populateFilterSelect('filter-vehicle', vehicles, 'vehicle_no', 'All vehicles');
+    // Vehicles that were typed in by hand ("Others") can be found in the Records filter as well.
+    const me = Auth.currentUser();
+    if (me && (me.role === 'owner' || me.role === 'admin')) {
+      Entries.vehicleNumbers().then(r => {
+        ((r && r.data) || []).forEach(v => extraFilterValues['filter-vehicle'].add(v));
+        renderFilterSelect('filter-vehicle');
+      }).catch(() => { /* the filter simply lists the inventory vehicles */ });
+    }
     populateFilterSelect('filter-site',    sites,    'name',       'All sites');
     populateFilterSelect('filter-type',    distinctTypes(vehicles), 'type', 'All types');
   } catch (e) {
@@ -210,7 +224,8 @@ function toggleCategoryFields(prefix) {
   const isRental = category === 'rental';
 
   vehicleSelect.style.display  = isRental ? 'none' : '';
-  vehicleText.style.display    = isRental ? '' : 'none';
+  vehicleText.style.display    = (isRental || vehicleSelect.value === OTHER_VEHICLE) ? '' : 'none';
+  vehicleText.placeholder      = isRental ? 'Rental vehicle / machine no.' : 'Type the vehicle / machine name';
   operatorSelect.style.display = isRental ? 'none' : '';
   operatorText.style.display   = isRental ? '' : 'none';
 
@@ -226,8 +241,40 @@ function toggleCategoryFields(prefix) {
 
 function getVehicleValue(prefix) {
   const category = document.getElementById(prefix + '-category').value;
-  const el = document.getElementById(prefix + (category === 'rental' ? '-vehicle-text' : '-vehicle'));
-  return el.value.trim();
+  const sel = document.getElementById(prefix + '-vehicle'), txt = document.getElementById(prefix + '-vehicle-text');
+  // A rental vehicle — or "Others" picked in the list — is typed in by hand.
+  if (category === 'rental' || sel.value === OTHER_VEHICLE) return txt.value.trim();
+  return sel.value.trim();
+}
+
+/* ── "Others": a vehicle that is not in the Inventory list can be typed in ───── */
+const OTHER_VEHICLE = '__other__';
+
+function addOtherOption(id) {
+  const sel = document.getElementById(id);
+  if (!sel || [...sel.options].some(o => o.value === OTHER_VEHICLE)) return;
+  const opt = document.createElement('option');
+  opt.value = OTHER_VEHICLE;
+  opt.textContent = 'Others — type the name…';
+  sel.appendChild(opt);
+}
+
+function onVehicleChange(prefix) {
+  if (document.getElementById(prefix + '-category').value === 'rental') return;    // rentals always type the number
+  const sel = document.getElementById(prefix + '-vehicle'), txt = document.getElementById(prefix + '-vehicle-text');
+  const other = sel.value === OTHER_VEHICLE;
+  txt.style.display = other ? '' : 'none';
+  txt.placeholder = 'Type the vehicle / machine name';
+  if (other) txt.focus(); else txt.value = '';
+}
+
+/** Used when an entry is opened for editing: a vehicle that is not in the list shows as "Others" with its name typed in. */
+function setVehicleSelect(prefix, value) {
+  const sel = document.getElementById(prefix + '-vehicle'), txt = document.getElementById(prefix + '-vehicle-text');
+  const inList = value && [...sel.options].some(o => o.value === value && o.value !== OTHER_VEHICLE);
+  if (!value || inList) { sel.value = value || ''; txt.value = ''; }
+  else { sel.value = OTHER_VEHICLE; txt.value = value; }
+  txt.style.display = sel.value === OTHER_VEHICLE ? '' : 'none';
 }
 
 function getOperatorValue(prefix) {
@@ -351,7 +398,7 @@ function showToast(msg, isError = false) {
 }
 
 /* ── Tab ─────────────────────────────────────────────────────────────────────── */
-const TAB_LABELS = { entry: 'Data Entry', records: 'Records', summary: 'Summary', documents: 'Documents', payments: 'Payments', inventory: 'Inventory', users: 'Users', logs: 'Activity Logs' };
+const TAB_LABELS = { entry: 'Data Entry', records: 'Records', purchases: 'Purchases', summary: 'Summary', documents: 'Documents', payments: 'Payments', inventory: 'Inventory', users: 'Users', logs: 'Activity Logs' };
 
 function switchTab(name) {
   // Only open a screen the signed-in role is meant to have (the server enforces this too; this keeps the screen honest).
@@ -378,6 +425,7 @@ function switchTab(name) {
   if (name === 'summary')   loadSummary();
   if (name === 'documents') loadDocuments();
   if (name === 'payments')  initPayments();
+  if (name === 'purchases') initPurchases();
   if (name === 'inventory') loadInventory();
   if (name === 'users')     loadUsers();
   if (name === 'logs')      loadLogs(true);
@@ -660,7 +708,7 @@ function openEditModal(id) {
     document.getElementById('e-vehicle-text').value  = entry.vehicle_no || '';
     document.getElementById('e-operator-text').value = entry.operator || '';
   } else {
-    setSelectValue('e-vehicle',  entry.vehicle_no || '');
+    setVehicleSelect('e', entry.vehicle_no || '');
     setSelectValue('e-operator', entry.operator || '');
   }
   document.getElementById('e-start').value    = entry.start_reading || '';
@@ -1453,6 +1501,12 @@ const SPECIAL_ACTIONS = {
   document_uploaded:   { label: 'Document uploaded',   cls: 'pill-sky'  },
   document_downloaded: { label: 'Document downloaded', cls: 'pill-sky'  },
   payments_added:      { label: 'Payments added',      cls: 'pill-sky'  },
+  document_viewed:     { label: 'Document viewed',     cls: 'pill-sky'  },
+  purchase_created:    { label: 'Purchase added',      cls: 'pill-green' },
+  purchase_updated:    { label: 'Purchase updated',    cls: 'pill-orange' },
+  purchase_deleted:    { label: 'Purchase deleted',    cls: 'pill-red'  },
+  purchase_file_viewed:     { label: 'Purchase file viewed',     cls: 'pill-sky' },
+  purchase_file_downloaded: { label: 'Purchase file downloaded', cls: 'pill-sky' },
   logs_deleted:  { label: 'Logs deleted',  cls: 'pill-orange' },
 };
 function actionMeta(action) {
@@ -2241,7 +2295,7 @@ function renderDocuments() {
       <td>${fmtBadge(d.format)}</td>
       <td class="doc-size">${esc(humanSize(d.size_bytes))}</td>
       <td class="log-time">${fmtDateTime(d.created_at)}<br>${esc(d.uploaded_by_name || '')}</td>
-      <td><button type="button" class="btn btn-green btn-sm" onclick="downloadDocument('${esc(d.id)}')" aria-label="Download ${esc(d.name)}">⬇ Download</button></td>
+      <td><div class="open-btns">${d.viewable ? `<button type="button" class="btn btn-outline btn-sm" onclick="viewDocument('${esc(d.id)}')" aria-label="View ${esc(d.name)}">👁 View</button>` : ''}<button type="button" class="btn btn-green btn-sm" onclick="downloadDocument('${esc(d.id)}')" aria-label="Download ${esc(d.name)}">⬇ Download</button></div></td>
       <td><button type="button" class="btn btn-outline btn-sm" onclick="openDocEdit('${esc(d.id)}')" aria-label="Edit ${esc(d.name)}">✏️ Edit</button></td>
       <td class="admin-only-col"><button type="button" class="btn btn-danger btn-sm" onclick="deleteDocument('${esc(d.id)}')" aria-label="Delete ${esc(d.name)}">🗑</button></td>`;
     body.appendChild(tr);
@@ -2311,6 +2365,23 @@ async function uploadDocument() {
     prog.hidden = true;
   }
 }
+
+/** Opens a file in a NEW tab. The tab is opened straight away (inside the tap, so pop-up blockers allow it) and
+ *  pointed at the file once the server has handed out its short-lived link. */
+async function openInNewTab(getLink) {
+  const w = window.open('about:blank', '_blank');
+  if (w) { try { w.opener = null; w.document.body.textContent = 'Opening the file…'; } catch { /* a blank tab is fine */ } }
+  try {
+    const r = await getLink();
+    if (w) w.location.href = r.url;
+    else showToast('Your browser blocked the new tab. Allow pop-ups for this site, then press View again.', true);
+  } catch (e) {
+    if (w) w.close();
+    showToast('❌ ' + (e.message || 'Could not open the file.'), true);
+  }
+}
+
+function viewDocument(id) { return openInNewTab(() => Documents.viewLink(id)); }
 
 async function downloadDocument(id) {
   try {
@@ -2805,7 +2876,7 @@ function initBrandLink() {
 /* ═══════════════════════════════════════════════════════════════════════════════
    Phone-friendly tables — every cell is given its column title, so on a phone each row reads as a card
    ═══════════════════════════════════════════════════════════════════════════════ */
-const NO_LABEL_HEADS = new Set(['', 'edit', 'delete', 'history', 'download']);   // cells that only hold buttons
+const NO_LABEL_HEADS = new Set(['', 'edit', 'delete', 'history', 'download', 'open', 'actions']);   // cells that only hold buttons
 
 function labelAllTables() {
   document.querySelectorAll('.table-wrap table:not(.log-table)').forEach(table => {
@@ -2855,3 +2926,362 @@ window.addEventListener('unhandledrejection', ev => {
   if (typeof showToast === 'function') showToast('Something went wrong. Please try again.', true);
 });
 
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   PURCHASES — material that arrives at a site.   Net weight = Load weight − Empty weight (kg)
+   Supervisors add · the Owner and Admin see everything · the Admin edits / deletes (with a reason)
+   ═══════════════════════════════════════════════════════════════════════════════ */
+const PU = { inited: false, att: null, uploading: false, saving: false, mine: [], list: [], editing: null, editAtt: undefined, editBusy: false, editUploading: false };
+
+const puMilli = v => {                       // "24,850.5" → 24850500 (thousandths of a kg), or null when it is not a plain weight
+  const t = String(v ?? '').trim().replace(/,/g, '');
+  return /^\d+(\.\d{1,3})?$/.test(t) ? Math.round(parseFloat(t) * 1000) : null;
+};
+const puNum = n => Number(n).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 3 });
+const puKg = n => `${puNum(n)} kg`;
+const puTonnes = n => `${puNum(Number(n) / 1000)} t`;
+
+function puNetCalc(loadV, emptyV) {
+  const L = puMilli(loadV), E = puMilli(emptyV);
+  if (String(loadV).trim() === '' || String(emptyV).trim() === '' || L === null || E === null) return { state: 'wait' };
+  if (L <= E) return { state: 'bad', msg: 'The load weight must be more than the empty weight.' };
+  return { state: 'ok', L, E, net: (L - E) / 1000 };
+}
+
+/** Works out the net weight as the person types (the server works it out again — this is only for show). */
+function updatePuNet(prefix) {
+  const c = puNetCalc(document.getElementById(prefix + '-load').value, document.getElementById(prefix + '-empty').value);
+  const out = document.getElementById(prefix + '-net'), hint = document.getElementById(prefix + '-net-hint');
+  out.value = c.state === 'ok' ? puNum(c.net) : '';
+  out.classList.toggle('is-bad', c.state === 'bad');
+  hint.className = 'form-hint pu-net-hint' + (c.state === 'bad' ? ' bad' : c.state === 'ok' ? ' ok' : '');
+  hint.textContent = c.state === 'ok' ? `${puNum(c.L / 1000)} − ${puNum(c.E / 1000)} = ${puNum(c.net)} kg (${puNum(c.net / 1000)} tonnes)` : c.state === 'bad' ? c.msg : '';
+}
+
+const PU_VEHICLE_RE = /^[A-Za-z0-9][A-Za-z0-9 .,&()\/_-]{1,39}$/;
+const tidy = v => String(v || '').replace(/\s+/g, ' ').trim();
+
+function readPu(prefix) {
+  const g = id => document.getElementById(prefix + '-' + id).value;
+  return {
+    purchase_date: g('date'), site: g('site'), supplier: tidy(g('supplier')), vehicle_no: tidy(g('vehicle')),
+    item_name: tidy(g('item')), load_weight: String(g('load')).trim(), empty_weight: String(g('empty')).trim(),
+  };
+}
+
+/** The same rules the server applies, so mistakes are caught before anything is sent. Returns { id, msg } or null. */
+function checkPu(v) {
+  const tomorrow = (() => { const d = new Date(); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
+  if (!v.purchase_date) return { id: 'date', msg: 'Choose the date of the purchase.' };
+  if (v.purchase_date > tomorrow) return { id: 'date', msg: 'The purchase date cannot be in the future.' };
+  if (!v.site) return { id: 'site', msg: 'Choose the site.' };
+  if (!v.supplier) return { id: 'supplier', msg: 'Enter the supplier.' };
+  if (v.supplier.length > 120) return { id: 'supplier', msg: 'The supplier is too long (120 characters at most).' };
+  if (!v.vehicle_no) return { id: 'vehicle', msg: 'Enter the vehicle number.' };
+  if (v.vehicle_no.length > 40) return { id: 'vehicle', msg: 'The vehicle number is too long (40 characters at most).' };
+  if (!PU_VEHICLE_RE.test(v.vehicle_no)) return { id: 'vehicle', msg: 'The vehicle number can only contain letters, numbers, spaces and - . / & ( ) , _' };
+  if (!v.item_name) return { id: 'item', msg: 'Enter the item name.' };
+  if (v.item_name.length > 120) return { id: 'item', msg: 'The item name is too long (120 characters at most).' };
+  if (v.load_weight === '' || puMilli(v.load_weight) === null) return { id: 'load', msg: 'Enter the load weight in kg (numbers only, up to 3 decimals).' };
+  if (v.empty_weight === '' || puMilli(v.empty_weight) === null) return { id: 'empty', msg: 'Enter the empty weight in kg (numbers only, up to 3 decimals).' };
+  if (puMilli(v.load_weight) > 500000000 || puMilli(v.empty_weight) > 500000000) return { id: 'load', msg: 'A weight cannot be more than 5,00,000 kg.' };
+  if (puMilli(v.load_weight) <= puMilli(v.empty_weight)) return { id: 'load', msg: 'The load weight must be more than the empty weight.' };
+  return null;
+}
+
+function initPurchases() {
+  const me = Auth.currentUser();
+  if (!me) return;
+  const canAdd = me.role === 'supervisor' || me.role === 'admin';
+  const canList = me.role === 'owner' || me.role === 'admin';
+  document.getElementById('pu-form-card').hidden = !canAdd;
+  document.getElementById('pu-mine-card').hidden = me.role !== 'supervisor';
+  document.getElementById('pu-list-card').hidden = !canList;
+  if (!PU.inited) {
+    PU.inited = true;
+    document.getElementById('pu-date').value = today();
+    ['pu', 'pue'].forEach(p => ['load', 'empty'].forEach(k => document.getElementById(`${p}-${k}`).addEventListener('input', () => updatePuNet(p))));
+  }
+  if (canAdd) loadPuSuggestions();
+  if (me.role === 'supervisor') loadPuMine();
+  if (canList) loadPuList();
+}
+
+async function loadPuSuggestions() {
+  try {
+    const r = await Purchases.suggestions();
+    const fill = (id, list) => { document.getElementById(id).innerHTML = (list || []).map(v => `<option value="${esc(v)}"></option>`).join(''); };
+    fill('pu-suppliers', r.suppliers); fill('pu-items', r.items); fill('pu-vehicles', r.vehicles);
+  } catch { /* suggestions are a convenience — typing still works */ }
+}
+
+/* ── The attached file ──────────────────────────────────────────────────────── */
+function puChip(att) {
+  return `${fmtBadge(att.format)} <span class="pu-file-name">${esc(att.filename)}</span> <span class="doc-sub">${esc(humanSize(att.size))}</span>`;
+}
+
+async function sendPuFile(file, ui) {
+  ui.progress.hidden = false; ui.bar.style.width = '0%'; ui.text.textContent = 'Uploading…';
+  try {
+    const r = await Purchases.uploadAttachment(file, f => {
+      ui.bar.style.width = `${Math.round(f * 100)}%`;
+      ui.text.textContent = f >= 1 ? 'Saving the file…' : `Uploading… ${Math.round(f * 100)}%`;
+    });
+    return r.attachment;
+  } finally {
+    ui.progress.hidden = true;
+  }
+}
+const puUi = p => ({ progress: document.getElementById(p + '-progress'), bar: document.getElementById(p + '-progress-bar'), text: document.getElementById(p + '-progress-text') });
+
+async function onPuFileChosen() {
+  const input = document.getElementById('pu-file'), file = input.files[0];
+  const err = document.getElementById('pu-error');
+  if (!file) return;
+  err.textContent = '';
+  dropPuFile();                                           // a new choice replaces the old one
+  PU.uploading = true;
+  try {
+    PU.att = await sendPuFile(file, puUi('pu'));
+    const info = document.getElementById('pu-file-info');
+    info.innerHTML = `${puChip(PU.att)} <button type="button" class="link-btn" onclick="removePuFile()">Remove</button>`;
+    info.hidden = false;
+  } catch (e) {
+    err.textContent = e.message || 'The file could not be attached.';
+    input.value = '';
+  } finally {
+    PU.uploading = false;
+  }
+}
+
+/** Forget the attached file and delete it from storage (it was never saved with a purchase). */
+function dropPuFile() {
+  if (PU.att) Purchases.removeAttachment(PU.att.path).catch(() => {});
+  PU.att = null;
+  document.getElementById('pu-file-info').hidden = true;
+}
+function removePuFile() { dropPuFile(); document.getElementById('pu-file').value = ''; }
+
+function resetPuForm(saved = false) {
+  if (saved) { PU.att = null; document.getElementById('pu-file-info').hidden = true; } else dropPuFile();
+  const site = document.getElementById('pu-site').value;
+  document.getElementById('pu-file').value = '';
+  ['pu-supplier', 'pu-vehicle', 'pu-item', 'pu-load', 'pu-empty'].forEach(id => { document.getElementById(id).value = ''; });
+  document.getElementById('pu-date').value = today();
+  document.getElementById('pu-site').value = saved ? site : '';          // after a save, the site is kept for the next purchase
+  document.getElementById('pu-error').textContent = '';
+  updatePuNet('pu');
+}
+
+async function savePurchase() {
+  if (PU.saving) return;
+  const err = document.getElementById('pu-error');
+  err.textContent = '';
+  if (PU.uploading) { err.textContent = 'Please wait — the file is still uploading.'; return; }
+  const v = readPu('pu');
+  const problem = checkPu(v);
+  if (problem) { err.textContent = problem.msg; document.getElementById('pu-' + problem.id).focus(); return; }
+  const body = { ...v };
+  if (PU.att) body.attachment = { path: PU.att.path, filename: PU.att.filename, size: PU.att.size };
+
+  const btn = document.getElementById('pu-save');
+  PU.saving = true; btn.disabled = true;
+  try {
+    const r = await Purchases.create(body);
+    showToast(`✅ Purchase saved — net weight ${puKg(r.data.net_weight)}.`);
+    resetPuForm(true);
+    loadPuSuggestions();
+    const me = Auth.currentUser();
+    if (me.role === 'supervisor') loadPuMine();
+    if (me.role === 'admin') loadPuList();
+  } catch (e) {
+    err.textContent = e.message || 'Could not save the purchase.';        // the typed values and the attached file stay, so it can be tried again
+  } finally {
+    PU.saving = false; btn.disabled = false;
+  }
+}
+
+/* ── Lists ──────────────────────────────────────────────────────────────────── */
+function puFileCell(r) {
+  if (!r.has_file) return '<span class="doc-sub">—</span>';
+  const view = r.file_viewable ? `<button type="button" class="btn btn-outline btn-sm" onclick="viewPurchaseFile('${esc(r.id)}')" aria-label="View the file of ${esc(r.supplier)}">👁 View</button>` : '';
+  return `<div class="pu-file"><span class="pu-file-name">${esc(r.file_name || 'file')}</span><div class="open-btns">${view}<button type="button" class="btn btn-green btn-sm" onclick="downloadPurchaseFile('${esc(r.id)}')" aria-label="Download the file of ${esc(r.supplier)}">⬇ Download</button></div></div>`;
+}
+
+function puRowHtml(r, full) {
+  return `
+    <td>${esc(fmtDate(r.purchase_date))}</td>
+    <td>${esc(r.site)}</td>
+    <td><strong>${esc(r.supplier)}</strong></td>
+    <td>${esc(r.vehicle_no)}</td>
+    <td>${esc(r.item_name)}</td>
+    ${full ? `<td class="num">${esc(puNum(r.load_weight))}</td><td class="num">${esc(puNum(r.empty_weight))}</td>` : ''}
+    <td class="num"><strong>${esc(puNum(r.net_weight))}</strong></td>
+    <td>${puFileCell(r)}</td>
+    ${full ? `<td class="log-time">${esc(r.created_by_name || '')}<br>${esc(fmtDateTime(r.created_at))}</td>
+    <td class="admin-only-col"><div class="open-btns"><button type="button" class="btn btn-outline btn-sm" onclick="openPuEdit('${esc(r.id)}')" aria-label="Edit the purchase from ${esc(r.supplier)}">✏️ Edit</button><button type="button" class="btn btn-danger btn-sm" onclick="deletePurchase('${esc(r.id)}')" aria-label="Delete the purchase from ${esc(r.supplier)}">🗑</button></div></td>` : ''}`;
+}
+
+async function loadPuMine() {
+  try { PU.mine = (await Purchases.mine()).data || []; } catch (e) { showToast('❌ ' + (e.message || 'Could not load your purchases.'), true); return; }
+  const body = document.getElementById('pu-mine-body');
+  document.getElementById('pu-mine-count').textContent = PU.mine.length ? `${PU.mine.length} saved` : '';
+  body.innerHTML = '';
+  if (!PU.mine.length) { body.innerHTML = '<tr class="empty-row"><td colspan="7">Nothing saved by you yet.</td></tr>'; return; }
+  PU.mine.forEach(r => { const tr = document.createElement('tr'); tr.innerHTML = puRowHtml(r, false); body.appendChild(tr); });
+}
+
+let puListTimer = null;
+function loadPuListDebounced() { clearTimeout(puListTimer); puListTimer = setTimeout(loadPuList, 300); }
+function clearPuFilters() {
+  ['pu-filter-from', 'pu-filter-to', 'pu-filter-site', 'pu-filter-q'].forEach(id => { document.getElementById(id).value = ''; });
+  loadPuList();
+}
+
+let puListSeq = 0;
+async function loadPuList() {
+  const from = document.getElementById('pu-filter-from').value, to = document.getElementById('pu-filter-to').value;
+  if (from && to && from > to) { showToast('The "from" date cannot be after the "to" date.', true); return; }
+  const seq = ++puListSeq;
+  let r;
+  try { r = await Purchases.list({ from, to, site: document.getElementById('pu-filter-site').value, q: document.getElementById('pu-filter-q').value.trim() }); }
+  catch (e) { if (seq === puListSeq) showToast('❌ ' + (e.message || 'Could not load the purchases.'), true); return; }
+  if (seq !== puListSeq) return;                         // a newer search is already on its way
+  PU.list = r.data || [];
+  const body = document.getElementById('pu-body');
+  document.getElementById('pu-count').textContent = r.total_count ? `${r.total_count} purchase${r.total_count === 1 ? '' : 's'}` : '';
+  body.innerHTML = '';
+  const filtered = from || to || document.getElementById('pu-filter-site').value || document.getElementById('pu-filter-q').value.trim();
+  if (!PU.list.length) body.innerHTML = `<tr class="empty-row"><td colspan="11">${filtered ? 'No purchases match these filters.' : 'No purchases yet.'}</td></tr>`;
+  PU.list.forEach(x => { const tr = document.createElement('tr'); tr.innerHTML = puRowHtml(x, true); body.appendChild(tr); });
+  document.getElementById('pu-footer').innerHTML = r.total_count
+    ? `<strong>Net total: ${esc(puKg(r.net_total))}</strong> (${esc(puTonnes(r.net_total))}) across ${r.total_count} purchase${r.total_count === 1 ? '' : 's'}${r.truncated ? ` — showing the newest ${PU.list.length}; narrow the dates to see the rest.` : ''}`
+    : '';
+}
+
+/* ── Opening the attached file ──────────────────────────────────────────────── */
+function viewPurchaseFile(id) { return openInNewTab(() => Purchases.fileLink(id, 'view')); }
+
+async function downloadPurchaseFile(id) {
+  try {
+    const r = await Purchases.fileLink(id, 'download');
+    const a = document.createElement('a');
+    a.href = r.url; a.rel = 'noopener';
+    document.body.appendChild(a); a.click(); a.remove();
+    showToast('⬇ Download started.');
+  } catch (e) {
+    showToast('❌ ' + (e.message || 'Could not start the download.'), true);
+  }
+}
+
+/* ── Admin: edit ────────────────────────────────────────────────────────────── */
+function renderPueFile() {
+  const row = PU.editing, cur = document.getElementById('pue-file-current'), btn = document.getElementById('pue-remove-file');
+  if (PU.editAtt) {                       // a new file waiting to replace the old one
+    cur.innerHTML = `New file (replaces the old one when you save): ${puChip(PU.editAtt)}`; btn.textContent = 'Cancel the new file'; btn.hidden = false;
+  } else if (PU.editAtt === null) {        // the old file is to be removed
+    cur.textContent = 'The file will be removed when you save.'; btn.textContent = 'Keep the file'; btn.hidden = false;
+  } else if (row && row.has_file) {
+    cur.innerHTML = `Current file: ${fmtBadge(row.file_format || 'File')} <span class="pu-file-name">${esc(row.file_name || 'file')}</span>`; btn.textContent = 'Remove the file'; btn.hidden = false;
+  } else {
+    cur.textContent = 'No file attached.'; btn.hidden = true;
+  }
+}
+
+function openPuEdit(id) {
+  const row = PU.list.find(r => String(r.id) === String(id));
+  if (!row) return;
+  PU.editing = row; PU.editAtt = undefined;
+  const set = (k, v) => { document.getElementById('pue-' + k).value = v; };
+  set('date', row.purchase_date); setSelectValue('pue-site', row.site);
+  set('supplier', row.supplier); set('vehicle', row.vehicle_no); set('item', row.item_name);
+  set('load', row.load_weight); set('empty', row.empty_weight);
+  document.getElementById('pue-file').value = '';
+  document.getElementById('pue-error').textContent = '';
+  updatePuNet('pue'); renderPueFile();
+  document.getElementById('pu-edit-overlay').classList.add('open');
+  setTimeout(() => document.getElementById('pue-supplier').focus(), 50);
+}
+
+function closePuEdit() {
+  if (PU.editAtt) Purchases.removeAttachment(PU.editAtt.path).catch(() => {});      // a replacement that was never saved
+  PU.editAtt = undefined; PU.editing = null;
+  document.getElementById('pu-edit-overlay').classList.remove('open');
+}
+
+async function onPueFileChosen() {
+  const input = document.getElementById('pue-file'), file = input.files[0];
+  const err = document.getElementById('pue-error');
+  if (!file) return;
+  err.textContent = '';
+  if (PU.editAtt) { Purchases.removeAttachment(PU.editAtt.path).catch(() => {}); PU.editAtt = undefined; }
+  PU.editUploading = true;
+  try { PU.editAtt = await sendPuFile(file, puUi('pue')); }
+  catch (e) { err.textContent = e.message || 'The file could not be attached.'; }
+  finally { PU.editUploading = false; input.value = ''; renderPueFile(); }
+}
+
+function removePueFile() {
+  if (PU.editAtt) { Purchases.removeAttachment(PU.editAtt.path).catch(() => {}); PU.editAtt = undefined; }
+  else if (PU.editAtt === null) PU.editAtt = undefined;                 // "Keep the file"
+  else PU.editAtt = null;                                              // "Remove the file"
+  renderPueFile();
+}
+
+async function savePuEdit() {
+  const row = PU.editing;
+  if (!row || PU.editBusy) return;
+  const err = document.getElementById('pue-error');
+  err.textContent = '';
+  if (PU.editUploading) { err.textContent = 'Please wait — the file is still uploading.'; return; }
+  const v = readPu('pue');
+  const problem = checkPu(v);
+  if (problem) { err.textContent = problem.msg; document.getElementById('pue-' + problem.id).focus(); return; }
+
+  const net = (puMilli(v.load_weight) - puMilli(v.empty_weight)) / 1000, load = puMilli(v.load_weight) / 1000, empty = puMilli(v.empty_weight) / 1000;
+  const changes = [];
+  if (v.purchase_date !== row.purchase_date) changes.push({ field: 'Date', from: fmtDate(row.purchase_date), to: fmtDate(v.purchase_date) });
+  if (v.site !== row.site)             changes.push({ field: 'Site', from: row.site, to: v.site });
+  if (v.supplier !== row.supplier)     changes.push({ field: 'Supplier', from: row.supplier, to: v.supplier });
+  if (v.vehicle_no !== row.vehicle_no) changes.push({ field: 'Vehicle', from: row.vehicle_no, to: v.vehicle_no });
+  if (v.item_name !== row.item_name)   changes.push({ field: 'Item', from: row.item_name, to: v.item_name });
+  if (load !== row.load_weight)        changes.push({ field: 'Load weight', from: puKg(row.load_weight), to: puKg(load) });
+  if (empty !== row.empty_weight)      changes.push({ field: 'Empty weight', from: puKg(row.empty_weight), to: puKg(empty) });
+  if (net !== row.net_weight)          changes.push({ field: 'Net weight', from: puKg(row.net_weight), to: puKg(net) });
+  if (PU.editAtt)            changes.push({ field: 'Attachment', from: row.file_name || null, to: PU.editAtt.filename });
+  else if (PU.editAtt === null) changes.push({ field: 'Attachment', from: row.file_name || null, to: null });
+  if (!changes.length) { showToast('No changes were made.'); closePuEdit(); return; }
+
+  const reason = await askReason({ title: 'Reason for Changes', intro: 'Please explain why this purchase is being changed. It is saved in the Activity Log.', confirmLabel: 'Confirm & Save', changes });
+  if (!reason) return;
+  const body = { ...v, reason };
+  if (PU.editAtt) body.attachment = { path: PU.editAtt.path, filename: PU.editAtt.filename, size: PU.editAtt.size };
+  else if (PU.editAtt === null) body.remove_attachment = true;
+
+  const btn = document.getElementById('pue-save');
+  PU.editBusy = true; btn.disabled = true;
+  try {
+    await Purchases.update(row.id, body);
+    PU.editAtt = undefined;                                              // the new file now belongs to the purchase
+    closePuEdit();
+    showToast('✅ Purchase updated.');
+    loadPuList();
+  } catch (e) {
+    err.textContent = e.message || 'Could not save the changes.';
+  } finally {
+    PU.editBusy = false; btn.disabled = false;
+  }
+}
+
+async function deletePurchase(id) {
+  const row = PU.list.find(r => String(r.id) === String(id));
+  if (!row) return;
+  const reason = await askReason({
+    title: 'Delete this purchase?',
+    intro: `<strong>${esc(row.supplier)}</strong> · ${esc(row.item_name)} · ${esc(puKg(row.net_weight))} · ${esc(fmtDate(row.purchase_date))}${row.has_file ? '<br>The attached file will be deleted too.' : ''}<br>Please explain why it is being deleted. This is saved in the Activity Log.`,
+    confirmLabel: 'Delete purchase', danger: true,
+  });
+  if (!reason) return;
+  try { await Purchases.remove(row.id, reason); showToast('Purchase deleted.'); loadPuList(); }
+  catch (e) { showToast('❌ ' + (e.message || 'Delete failed.'), true); }
+}

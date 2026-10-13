@@ -127,6 +127,10 @@ const Auth = {
 
 // ── Entries ──────────────────────────────────────────────────────────────────
 const Entries = {
+  // Every vehicle number used in an entry (including ones typed in by hand), for the Records filter.
+  vehicleNumbers() {
+    return apiFetch('/entries/vehicle-numbers');
+  },
   getAll(filters = {}) {
     const params = new URLSearchParams(filters).toString();
     return apiFetch(`/entries${params ? '?' + params : ''}`);
@@ -306,6 +310,10 @@ const Documents = {
   url(id) {
     return apiFetch(`/documents/${encodeURIComponent(id)}/url`);
   },
+  // A link that SHOWS the file (PDF, pictures, text) in a new tab (valid for 2 minutes).
+  viewLink(id) {
+    return apiFetch(`/documents/${encodeURIComponent(id)}/view-link`);
+  },
   remove(id) {
     return apiFetch(`/documents/${encodeURIComponent(id)}`, { method: 'DELETE' });
   },
@@ -331,5 +339,61 @@ const Payments = {
   },
   remove(id, reason) {
     return apiFetch(`/payments/${encodeURIComponent(id)}`, { method: 'DELETE', body: JSON.stringify({ reason }) });
+  },
+};
+
+// ── Purchases (Supervisor adds · Owner + Admin see · Admin edits) ──────────────
+const Purchases = {
+  list(params = {}) {
+    const clean = Object.entries(params).filter(([, v]) => v !== '' && v !== undefined && v !== null);
+    const q = new URLSearchParams(clean).toString();
+    return apiFetch(`/purchases${q ? '?' + q : ''}`);
+  },
+  mine() {
+    return apiFetch('/purchases/mine');
+  },
+  suggestions() {
+    return apiFetch('/purchases/suggestions');
+  },
+  // The file is sent first (as the raw request body; XMLHttpRequest only because it can report progress).
+  // Resolves with { attachment: { path, filename, size, ext, format, viewable } }.
+  uploadAttachment(file, onProgress) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${API_BASE}/purchases/attachment?filename=${encodeURIComponent(file.name)}`);
+      const token = getToken();
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+      xhr.upload.onprogress = ev => { if (ev.lengthComputable && onProgress) onProgress(ev.loaded / ev.total); };
+      xhr.onerror = () => reject(new Error('Cannot reach the server. Check your connection and try again.'));
+      xhr.onabort = () => reject(new Error('The upload was cancelled.'));
+      xhr.onload = () => {
+        let data = null;
+        try { data = JSON.parse(xhr.responseText); } catch { /* not JSON */ }
+        if (xhr.status === 401) { clearToken(); clearUser(); flash('Your session has ended. Please sign in again.'); window.location.href = '/login.html'; return reject(new Error('Session expired. Please log in again.')); }
+        if (xhr.status >= 200 && xhr.status < 300) return resolve(data);
+        const err = new Error((data && data.error) || `Upload failed (${xhr.status}).`);
+        err.status = xhr.status; err.data = data;
+        reject(err);
+      };
+      xhr.send(file);
+    });
+  },
+  // Throw away a file that was attached but never saved with a purchase.
+  removeAttachment(path) {
+    return apiFetch('/purchases/attachment', { method: 'DELETE', body: JSON.stringify({ path }) });
+  },
+  create(payload) {
+    return apiFetch('/purchases', { method: 'POST', body: JSON.stringify(payload) });
+  },
+  update(id, payload) {
+    return apiFetch(`/purchases/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(payload) });
+  },
+  remove(id, reason) {
+    return apiFetch(`/purchases/${encodeURIComponent(id)}`, { method: 'DELETE', body: JSON.stringify({ reason }) });
+  },
+  // mode: 'view' (a 2-minute link that shows the file in a new tab) or 'download'
+  fileLink(id, mode = 'view') {
+    return apiFetch(`/purchases/${encodeURIComponent(id)}/file-link?mode=${mode === 'download' ? 'download' : 'view'}`);
   },
 };

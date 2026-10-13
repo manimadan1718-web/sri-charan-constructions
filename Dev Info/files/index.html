@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Sri Charan Constructions – Site Log</title>
+  <meta name="description" content="Sri Charan Constructions site activity log: daily vehicle and machine entries, records, summaries, documents and payments for authorised staff.">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#1B2433">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="64x64" href="/img/favicon.png">
+  <link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="SCC">
+  <link rel="preload" href="/fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<a class="skip-link" href="#main-content">Skip to main content</a>
+<noscript><div style="padding:14px 16px;background:#FFF1E0;color:#7A3D00;text-align:center;font:600 14px sans-serif">This app needs JavaScript. Please turn it on in your browser settings and reload the page.</div></noscript>
+
+<!-- HEADER + TABS (sticky together) -->
+<div class="app-top">
+<header class="site-header">
+  <a class="brand-link" id="brand-link" href="/" aria-label="Sri Charan Constructions Site Activity Log System — go to the home screen">
+    <div class="logo-box"><img src="/img/logo.png" alt="" width="52" height="52"></div>
+    <div class="brand">
+      <h1>SRI CHARAN CONSTRUCTIONS</h1>
+      <p>Site Activity Log System</p>
+    </div>
+  </a>
+  <div class="header-right">
+    <span class="header-date" id="header-date"></span>
+    <span class="header-user" id="header-user"></span>
+    <button class="btn btn-outline btn-sm logout-btn" onclick="Auth.logout()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>Logout</button>
+  </div>
+<button type="button" class="menu-btn" id="menu-btn" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-menu">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+    <span class="menu-current" id="menu-current">Menu</span>
+  </button>
+</header>
+
+<!-- TABS -->
+<nav class="tabs">
+  <div class="tab active" id="tab-entry" data-roles="supervisor,admin" onclick="switchTab('entry')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg><span>Data Entry</span></div>
+  <div class="tab" id="tab-records" data-roles="owner,admin" onclick="switchTab('records')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><span>Records</span></div>
+  <div class="tab" id="tab-summary" data-roles="owner,admin" onclick="switchTab('summary')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg><span>Summary</span></div>
+  <div class="tab" id="tab-documents" data-roles="owner,admin" onclick="switchTab('documents')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="14" y2="17"/></svg><span>Documents</span></div>
+  <div class="tab" id="tab-payments" data-roles="supervisor,owner,admin" onclick="switchTab('payments')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg><span>Payments</span></div>
+  <div class="tab" id="tab-inventory" data-roles="admin" onclick="switchTab('inventory')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg><span>Inventory</span></div>
+  <div class="tab" id="tab-users" data-roles="admin" onclick="switchTab('users')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>Users</span></div>
+  <div class="tab" id="tab-logs" data-roles="owner,admin" onclick="switchTab('logs')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span>Activity Logs</span></div>
+</nav>
+</div>
+
+<main id="main-content">
+
+<!-- ═══════════════════════════════ DATA ENTRY ═══════════════════════════════ -->
+<div class="section active" id="section-entry">
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1" y="3" width="15" height="13" rx="1"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></span> New Site Entry <span class="badge">Supervisor</span></div>
+      <button class="btn btn-outline btn-sm" onclick="clearForm()">✕ Clear</button>
+    </div>
+
+    <div class="form-grid">
+      <div class="form-group">
+        <label for="f-date">Date *</label>
+        <input type="date" id="f-date">
+      </div>
+      <div class="form-group">
+        <label for="f-site">Site</label>
+        <select id="f-site">
+          <option value="">Select site…</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="f-category">Category *</label>
+        <select id="f-category" onchange="toggleCategoryFields('f')">
+          <option value="own">Own</option>
+          <option value="rental">Rental</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="f-vehicle">Vehicle / Machine No. *</label>
+        <select id="f-vehicle">
+          <option value="">Select vehicle…</option>
+        </select>
+        <input type="text" id="f-vehicle-text" placeholder="Rental vehicle / machine no." style="display:none;" aria-label="Vehicle or machine number (type it)">
+      </div>
+      <div class="form-group">
+        <label for="f-start">Starting Reading / Time</label>
+        <input type="text" id="f-start" placeholder="e.g. 08:00 AM or 1250">
+        <div class="photo-field" data-key="f-start" data-label="Starting reading photo"></div>
+      </div>
+      <div class="form-group">
+        <label for="f-close">Closing Reading / Time</label>
+        <input type="text" id="f-close" placeholder="e.g. 06:00 PM or 1380">
+        <div class="photo-field" data-key="f-close" data-label="Closing reading photo"></div>
+      </div>
+      <div class="form-group">
+        <label for="f-hours">Working Hours / Reading <span style="color:var(--orange);font-weight:400;">(auto-fills)</span></label>
+        <input type="text" id="f-hours" placeholder="Auto-calculated">
+        <span id="calc-hint" class="calc-hint"></span>
+      </div>
+      <div class="form-group">
+        <label for="f-diesel">Diesel (Litres)</label>
+        <input type="number" id="f-diesel" placeholder="0" min="0" step="0.5">
+        <div class="photo-field" data-key="f-diesel" data-label="Diesel photo"></div>
+      </div>
+      <div class="form-group">
+        <label for="f-loads">Loads</label>
+        <input type="number" id="f-loads" placeholder="0" min="0">
+      </div>
+      <div class="form-group">
+        <label for="f-operator">Operator / Driver</label>
+        <select id="f-operator">
+          <option value="">Select operator…</option>
+        </select>
+        <input type="text" id="f-operator-text" placeholder="Driver name" style="display:none;" aria-label="Operator or driver name (type it)">
+      </div>
+      <div class="form-group span-2">
+        <label for="f-remarks">Remarks</label>
+        <textarea id="f-remarks" placeholder="Any notes or observations..."></textarea>
+      </div>
+    </div>
+
+    <div class="lp-section" id="f-lp-section">
+      <div class="lp-head">
+        <div class="lp-title"><strong>Loads breakup</strong> <span class="badge">OPTIONAL</span></div>
+        <div class="lp-total" id="f-lp-total" aria-live="polite"></div>
+      </div>
+      <p class="form-hint lp-hint">Split the loads by where they were unloaded. If you add lines, they must add up to Loads.</p>
+      <div class="lp-rows" id="f-lp-rows"></div>
+      <button type="button" class="btn btn-outline btn-sm" onclick="addLoadPoint('f')">＋ Add unload point</button>
+    </div>
+
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="saveEntry()">💾 Save Entry</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ RECORDS ══════════════════════════════════ -->
+<div class="section" id="section-records">
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span> All Records</div>
+      <div class="rec-actions">
+        <button class="btn btn-outline btn-sm" onclick="clearFilters()">✕ Clear filters</button>
+        <div class="export-menu" id="export-menu">
+          <button type="button" class="btn btn-outline btn-sm" id="export-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="export-pop" onclick="toggleExportMenu(event)">
+            <span id="export-label">⬇ Export</span><span class="caret" aria-hidden="true">▾</span>
+          </button>
+          <div class="export-pop" id="export-pop" role="menu" aria-label="Choose a report format" hidden>
+            <button type="button" role="menuitem" id="export-xlsx" onclick="exportReport('xlsx')">
+              <span class="fmt fmt-xlsx">XLS</span>
+              <span class="fmt-text"><strong>Excel</strong><small>.xlsx · photos shown in the sheet</small></span>
+            </button>
+            <button type="button" role="menuitem" id="export-pdf" onclick="exportReport('pdf')">
+              <span class="fmt fmt-pdf">PDF</span>
+              <span class="fmt-text"><strong>PDF</strong><small>.pdf · print-ready, photos included</small></span>
+            </button>
+            <button type="button" role="menuitem" id="export-csv" onclick="exportReport('csv')">
+              <span class="fmt fmt-csv">CSV</span>
+              <span class="fmt-text"><strong>CSV</strong><small>.csv · text only, photos marked Yes / No</small></span>
+            </button>
+          </div>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="window.print()">🖨 Print</button>
+      </div>
+    </div>
+
+    <!-- Search / filters — vehicle and site lists come from Inventory -->
+    <div class="rec-filters">
+      <div class="rec-filters-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        Search &amp; filter
+        <span class="rec-count" id="records-count"></span>
+      </div>
+      <div class="rec-filters-grid">
+        <div class="filter-field">
+          <label for="filter-date-from">From date</label>
+          <input type="date" id="filter-date-from" onchange="loadRecords()">
+        </div>
+        <div class="filter-field">
+          <label for="filter-date-to">To date</label>
+          <input type="date" id="filter-date-to" onchange="loadRecords()">
+        </div>
+        <div class="filter-field">
+          <label for="filter-category">Category</label>
+          <select id="filter-category" onchange="loadRecords()">
+            <option value="">All categories</option>
+            <option value="own">Own</option>
+            <option value="rental">Rental</option>
+          </select>
+        </div>
+        <div class="filter-field">
+          <label for="filter-type">Type</label>
+          <select id="filter-type" onchange="loadRecords()">
+            <option value="">All types</option>
+          </select>
+        </div>
+        <div class="filter-field">
+          <label for="filter-vehicle">Vehicle / Machine No.</label>
+          <select id="filter-vehicle" onchange="loadRecords()">
+            <option value="">All vehicles</option>
+          </select>
+        </div>
+        <div class="filter-field">
+          <label for="filter-site">Site</label>
+          <select id="filter-site" onchange="loadRecords()">
+            <option value="">All sites</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div id="records-loading" class="loading"><span class="spinner"></span>Loading…</div>
+
+    <div class="table-wrap" id="records-table" style="display:none;">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th><th>Date</th><th>Site</th><th>Category</th><th>Vehicle No.</th>
+            <th>Start</th><th>Close</th><th>Working Hrs</th>
+            <th>Diesel (L)</th><th>Loads</th><th>Operator</th>
+            <th>Remarks</th>
+            <th class="hist-col">History</th><th class="admin-only-col edit-col">Edit</th><th class="admin-only-col del-col">Delete</th>
+          </tr>
+        </thead>
+        <tbody id="records-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ SUMMARY ══════════════════════════════════ -->
+<div class="section" id="section-summary">
+
+  <!-- Auto Stats -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></span> Auto Summary</div>
+      <div class="sum-controls">
+        <select id="sum-range" onchange="onSummaryRangeChange()" aria-label="Period">
+          <option value="all">All time</option>
+          <option value="today">Today</option>
+          <option value="yesterday">Yesterday</option>
+          <option value="7">Last 7 days</option>
+          <option value="30">Last 30 days</option>
+          <option value="custom">Custom range…</option>
+        </select>
+        <div class="export-menu rm">
+          <button type="button" class="btn btn-outline btn-sm rm-btn" aria-haspopup="menu" aria-expanded="false"><span class="rm-label">⬇ Export</span><span class="caret" aria-hidden="true">▾</span></button>
+          <div class="export-pop" role="menu" aria-label="Choose a report format" hidden>
+            <button type="button" role="menuitem" data-rm-kind="summary" data-rm-format="xlsx"><span class="fmt fmt-xlsx">XLS</span><span class="fmt-text"><strong>Excel</strong><small>.xlsx · this period</small></span></button>
+            <button type="button" role="menuitem" data-rm-kind="summary" data-rm-format="pdf"><span class="fmt fmt-pdf">PDF</span><span class="fmt-text"><strong>PDF</strong><small>.pdf · print-ready</small></span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="sum-custom" id="sum-custom" hidden>
+      <label>From <input type="date" id="sum-from" onchange="loadSummary()" aria-label="From date"></label>
+      <label>To <input type="date" id="sum-to" onchange="loadSummary()" aria-label="To date"></label>
+    </div>
+    <p class="sum-range-text" id="sum-range-text"></p>
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-label">Total Entries</div><div class="stat-val" id="s-entries">–</div><div class="stat-unit">records</div></div>
+      <div class="stat-card"><div class="stat-label">Total Diesel</div><div class="stat-val" id="s-diesel">–</div><div class="stat-unit">Litres</div></div>
+      <div class="stat-card"><div class="stat-label">Total Loads</div><div class="stat-val" id="s-loads">–</div><div class="stat-unit">trips</div></div>
+      <div class="stat-card"><div class="stat-label">Vehicles with loads</div><div class="stat-val" id="s-vehicles">–</div><div class="stat-unit">vehicles</div></div>
+    </div>
+  </div>
+
+  <!-- Per-Vehicle Breakdown -->
+  <div class="card">
+    <div class="card-title" style="margin-bottom:14px;"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1" y="3" width="15" height="13" rx="1"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></span> Per-Vehicle Breakdown</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Vehicle No.</th><th>Entries</th><th>Total Diesel (L)</th><th>Total Loads</th></tr>
+        </thead>
+        <tbody id="vehicle-summary-body"></tbody>
+      </table>
+    </div>
+    <p class="form-hint">Only vehicles that have loads are listed. The totals at the top count every entry in the period.</p>
+  </div>
+
+</div><!-- /summary -->
+
+<!-- ═══════════════════════════════ DOCUMENTS (Owner + Admin) ═══════════════ -->
+<div class="section" id="section-documents">
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="14" y2="17"/></svg></span> Upload a document <span class="badge">OWNER · ADMIN</span></div>
+    </div>
+    <div class="form-grid two-col">
+      <div class="form-group">
+        <label for="doc-name">Document name *</label>
+        <input type="text" id="doc-name" maxlength="120" placeholder="e.g. Work order – VK Hill Phase 2" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label for="doc-category">Type of document *</label>
+        <select id="doc-category"><option value="">Select type…</option></select>
+      </div>
+      <div class="form-group">
+        <label for="doc-site">Site <span class="reason-hint">(optional)</span></label>
+        <select id="doc-site"><option value="">—</option></select>
+      </div>
+      <div class="form-group">
+        <label for="doc-notes">Notes <span class="reason-hint">(optional)</span></label>
+        <input type="text" id="doc-notes" maxlength="500" placeholder="e.g. GST included, valid till 31 Dec" autocomplete="off">
+      </div>
+      <div class="form-group span-2">
+        <label for="doc-file">File *</label>
+        <input type="file" id="doc-file" class="doc-file" onchange="onDocFileChosen()">
+        <div class="doc-file-info" id="doc-file-info" hidden></div>
+        <p class="form-hint" id="doc-hint">Any file type — PDF, Word, Excel, pictures, drawings and more.</p>
+      </div>
+    </div>
+    <div class="doc-progress" id="doc-progress" hidden><div class="doc-bar"><span id="doc-progress-bar"></span></div><small id="doc-progress-text"></small></div>
+    <div class="form-error" id="doc-error" role="alert"></div>
+    <div class="btn-group">
+      <button type="button" class="btn btn-primary" id="doc-upload-btn" onclick="uploadDocument()">⬆ Upload document</button>
+      <button type="button" class="btn btn-outline" onclick="resetDocForm()">✕ Clear</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></span> Stored documents</div>
+      <span class="doc-count" id="doc-count"></span>
+    </div>
+    <div class="log-filters">
+      <select id="doc-filter-category" onchange="loadDocuments()" aria-label="Filter by type"><option value="">All types</option></select>
+      <input type="text" id="doc-search" placeholder="Search name, file, site or notes…" oninput="loadDocumentsDebounced()" autocomplete="off" aria-label="Search documents">
+      <button type="button" class="btn btn-outline btn-sm" onclick="clearDocFilters()">Clear</button>
+    </div>
+    <div class="table-wrap">
+      <table class="doc-table">
+        <thead><tr><th>Document</th><th>Type</th><th>Format</th><th>Size</th><th>Uploaded</th><th>Download</th><th>Edit</th><th class="admin-only-col">Delete</th></tr></thead>
+        <tbody id="documents-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ PAYMENTS (Supervisor adds · Owner + Admin see) ═══ -->
+<div class="section" id="section-payments">
+  <div class="sub-tabs" role="tablist" aria-label="Payment types">
+    <button type="button" class="sub-tab active" role="tab" id="paytab-weekly" aria-selected="true" aria-controls="pay-panel-weekly" onclick="showPayTab('weekly')">Weekly payments <small>(food, etc.)</small></button>
+    <button type="button" class="sub-tab" role="tab" id="paytab-monthly" aria-selected="false" aria-controls="pay-panel-monthly" onclick="showPayTab('monthly')">Monthly payments <small>(salary, etc.)</small></button>
+  </div>
+  <div id="pay-panel-weekly" role="tabpanel" aria-labelledby="paytab-weekly"></div>
+  <div id="pay-panel-monthly" role="tabpanel" aria-labelledby="paytab-monthly" hidden></div>
+</div>
+
+<!-- ═══════════════════════════════ INVENTORY (Admin) ═════════════════════════ -->
+<div class="section" id="section-inventory">
+
+  <div class="sub-tabs" role="tablist" aria-label="Inventory sections">
+    <button type="button" class="sub-tab active" role="tab" id="invtab-vehicles" aria-selected="true" aria-controls="inv-panel-vehicles" onclick="showInvTab('vehicles')">Vehicles / Machines <span class="count" id="inv-count-vehicles">0</span></button>
+    <button type="button" class="sub-tab" role="tab" id="invtab-sites" aria-selected="false" aria-controls="inv-panel-sites" onclick="showInvTab('sites')">Sites <span class="count" id="inv-count-sites">0</span></button>
+    <button type="button" class="sub-tab" role="tab" id="invtab-operators" aria-selected="false" aria-controls="inv-panel-operators" onclick="showInvTab('operators')">Operators / Drivers <span class="count" id="inv-count-operators">0</span></button>
+  </div>
+
+  <div class="card inv-panel" id="inv-panel-vehicles" role="tabpanel" aria-labelledby="invtab-vehicles">
+    <div class="card-header">
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1" y="3" width="15" height="13" rx="1"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></span> Vehicles / Machines <span class="badge">Admin</span></div>
+      <div class="export-menu rm ">
+        <button type="button" class="btn btn-outline btn-sm rm-btn" aria-haspopup="menu" aria-expanded="false"><span class="rm-label">⬇ Export</span><span class="caret" aria-hidden="true">▾</span></button>
+        <div class="export-pop" role="menu" aria-label="Choose a report format" hidden>
+          <button type="button" role="menuitem" data-rm-kind="inventory:vehicles" data-rm-format="xlsx"><span class="fmt fmt-xlsx">XLS</span><span class="fmt-text"><strong>Excel</strong><small>.xlsx · the whole vehicle list</small></span></button>
+          <button type="button" role="menuitem" data-rm-kind="inventory:vehicles" data-rm-format="pdf"><span class="fmt fmt-pdf">PDF</span><span class="fmt-text"><strong>PDF</strong><small>.pdf · print-ready vehicle list</small></span></button>
+        </div>
+      </div>
+    </div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label for="inv-vehicle-no">Vehicle / Machine No. *</label>
+        <input type="text" id="inv-vehicle-no" placeholder="e.g. KA 05 AB 1234">
+      </div>
+      <div class="form-group">
+        <label for="inv-vehicle-type">Type</label>
+        <input type="text" id="inv-vehicle-type" placeholder="e.g. Tipper, JCB, Roller">
+      </div>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="addVehicle()">＋ Add Vehicle</button>
+    </div>
+
+    <div class="table-wrap" style="margin-top:18px;">
+      <table>
+        <thead><tr><th>Vehicle No.</th><th>Type</th><th>Status</th><th>Edit</th><th>Delete</th></tr></thead>
+        <tbody id="vehicles-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card inv-panel" id="inv-panel-sites" role="tabpanel" aria-labelledby="invtab-sites" hidden>
+    <div class="card-header">
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></span> Sites <span class="badge">Admin</span></div>
+      <div class="export-menu rm ">
+        <button type="button" class="btn btn-outline btn-sm rm-btn" aria-haspopup="menu" aria-expanded="false"><span class="rm-label">⬇ Export</span><span class="caret" aria-hidden="true">▾</span></button>
+        <div class="export-pop" role="menu" aria-label="Choose a report format" hidden>
+          <button type="button" role="menuitem" data-rm-kind="inventory:sites" data-rm-format="xlsx"><span class="fmt fmt-xlsx">XLS</span><span class="fmt-text"><strong>Excel</strong><small>.xlsx · the whole site list</small></span></button>
+          <button type="button" role="menuitem" data-rm-kind="inventory:sites" data-rm-format="pdf"><span class="fmt fmt-pdf">PDF</span><span class="fmt-text"><strong>PDF</strong><small>.pdf · print-ready site list</small></span></button>
+        </div>
+      </div>
+    </div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label for="inv-site-name">Site Name *</label>
+        <input type="text" id="inv-site-name" placeholder="e.g. VK Hill Phase 2">
+      </div>
+      <div class="form-group">
+        <label for="inv-site-location">Location</label>
+        <input type="text" id="inv-site-location" placeholder="Optional">
+      </div>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="addSite()">＋ Add Site</button>
+    </div>
+
+    <div class="table-wrap" style="margin-top:18px;">
+      <table>
+        <thead><tr><th>Site Name</th><th>Location</th><th>Status</th><th>Edit</th><th>Delete</th></tr></thead>
+        <tbody id="sites-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card inv-panel" id="inv-panel-operators" role="tabpanel" aria-labelledby="invtab-operators" hidden>
+    <div class="card-header">
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span> Operators / Drivers <span class="badge">Admin</span></div>
+      <div class="export-menu rm ">
+        <button type="button" class="btn btn-outline btn-sm rm-btn" aria-haspopup="menu" aria-expanded="false"><span class="rm-label">⬇ Export</span><span class="caret" aria-hidden="true">▾</span></button>
+        <div class="export-pop" role="menu" aria-label="Choose a report format" hidden>
+          <button type="button" role="menuitem" data-rm-kind="inventory:operators" data-rm-format="xlsx"><span class="fmt fmt-xlsx">XLS</span><span class="fmt-text"><strong>Excel</strong><small>.xlsx · the whole operator list</small></span></button>
+          <button type="button" role="menuitem" data-rm-kind="inventory:operators" data-rm-format="pdf"><span class="fmt fmt-pdf">PDF</span><span class="fmt-text"><strong>PDF</strong><small>.pdf · print-ready operator list</small></span></button>
+        </div>
+      </div>
+    </div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label for="inv-operator-name">Name *</label>
+        <input type="text" id="inv-operator-name" placeholder="Full name">
+      </div>
+      <div class="form-group">
+        <label for="inv-operator-phone">Phone</label>
+        <input type="text" id="inv-operator-phone" placeholder="Optional">
+      </div>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="addOperator()">＋ Add Operator</button>
+    </div>
+
+    <div class="table-wrap" style="margin-top:18px;">
+      <table>
+        <thead><tr><th>Name</th><th>Phone</th><th>Status</th><th>Edit</th><th>Delete</th></tr></thead>
+        <tbody id="operators-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- /inventory -->
+
+<!-- ═══════════════════════════════ USERS (Admin) ══════════════════════════════ -->
+<div class="section" id="section-users">
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg></span> Create User <span class="badge">Admin</span></div>
+    </div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label for="u-name">Name *</label>
+        <input type="text" id="u-name" placeholder="Full name">
+      </div>
+      <div class="form-group">
+        <label for="u-pin">PIN *</label>
+        <input type="password" id="u-pin" placeholder="4–10 characters" maxlength="10" autocomplete="new-password">
+      </div>
+      <div class="form-group">
+        <label for="u-role">Role *</label>
+        <select id="u-role">
+          <option value="supervisor">Supervisor — Data Entry only</option>
+          <option value="owner">Owner — Reports only</option>
+          <option value="admin">Admin — Full access</option>
+        </select>
+      </div>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="createUser()">＋ Create User</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></span> All Users</div>
+      <div class="export-menu rm ">
+        <button type="button" class="btn btn-outline btn-sm rm-btn" aria-haspopup="menu" aria-expanded="false"><span class="rm-label">⬇ Export</span><span class="caret" aria-hidden="true">▾</span></button>
+        <div class="export-pop" role="menu" aria-label="Choose a report format" hidden>
+          <button type="button" role="menuitem" data-rm-kind="users" data-rm-format="xlsx"><span class="fmt fmt-xlsx">XLS</span><span class="fmt-text"><strong>Excel</strong><small>.xlsx · includes deleted users</small></span></button>
+          <button type="button" role="menuitem" data-rm-kind="users" data-rm-format="pdf"><span class="fmt fmt-pdf">PDF</span><span class="fmt-text"><strong>PDF</strong><small>.pdf · includes deleted users</small></span></button>
+        </div>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Edit</th><th>Delete</th></tr></thead>
+        <tbody id="users-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- /users -->
+
+<!-- ═══════════════════════════════ ACTIVITY LOGS (Owner + Admin) ═════════════ -->
+<div class="section" id="section-logs">
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span> Activity Logs <span class="badge">Audit trail</span></div>
+      <div class="rec-actions">
+        <button class="btn btn-outline btn-sm" onclick="loadLogs(true)">↻ Refresh</button>
+        <div class="export-menu rm ">
+        <button type="button" class="btn btn-outline btn-sm rm-btn" aria-haspopup="menu" aria-expanded="false"><span class="rm-label">⬇ Export</span><span class="caret" aria-hidden="true">▾</span></button>
+        <div class="export-pop" role="menu" aria-label="Choose a report format" hidden>
+          <button type="button" role="menuitem" data-rm-kind="logs" data-rm-format="xlsx"><span class="fmt fmt-xlsx">XLS</span><span class="fmt-text"><strong>Excel</strong><small id="log-note-xlsx">.xlsx · all matching entries</small></span></button>
+          <button type="button" role="menuitem" data-rm-kind="logs" data-rm-format="pdf"><span class="fmt fmt-pdf">PDF</span><span class="fmt-text"><strong>PDF</strong><small id="log-note-pdf">.pdf · all matching entries</small></span></button>
+        </div>
+      </div>
+      </div>
+    </div>
+
+    <div class="log-filters">
+      <select id="log-category" onchange="loadLogs(true)" title="Type of activity" aria-label="Filter by type of activity">
+        <option value="">All activity</option>
+        <option value="auth">Login &amp; logout</option>
+        <option value="entry">Data entries</option>
+        <option value="summary">Summaries</option>
+        <option value="inventory">Inventory</option>
+        <option value="user">Users</option>
+        <option value="document">Documents</option>
+        <option value="payment">Payments</option>
+        <option value="system">System (log clean-ups)</option>
+      </select>
+      <input type="date" id="log-from" onchange="loadLogs(true)" title="From date" aria-label="From date">
+      <input type="date" id="log-to" onchange="loadLogs(true)" title="To date" aria-label="To date">
+      <input type="text" id="log-q" placeholder="Search person, vehicle, reason…" oninput="loadLogsDebounced()" aria-label="Search the activity log">
+      <button class="btn btn-outline btn-sm" onclick="clearLogFilters()">Clear</button>
+    </div>
+
+    <div class="log-bar" id="log-bar" hidden>
+      <span id="log-bar-text"></span>
+      <button type="button" class="link-btn" id="log-bar-matching" hidden onclick="selectAllMatchingLogs()"></button>
+      <span class="grow"></span>
+      <button type="button" class="btn btn-danger btn-sm" id="log-bar-delete" onclick="deleteSelectedLogs()">🗑 Delete selected</button>
+      <button type="button" class="btn btn-outline btn-sm" onclick="clearLogSelection()">Clear selection</button>
+    </div>
+
+    <div class="table-wrap">
+      <table class="log-table" id="logs-table">
+        <thead>
+          <tr><th class="lg-select"><input type="checkbox" id="log-select-all" aria-label="Select all shown" onchange="toggleSelectAllLogs(this.checked)"></th><th>When</th><th>Who</th><th>Activity</th><th>Details</th><th>IP / Device</th><th class="lg-del"><span class="sr-only">Delete</span></th></tr>
+        </thead>
+        <tbody id="logs-body"></tbody>
+      </table>
+    </div>
+    <div class="log-more">
+      <span id="logs-count"></span>
+      <button class="btn btn-outline btn-sm" id="logs-more-btn" style="display:none;" onclick="loadLogs(false)">Load more</button>
+    </div>
+  </div>
+</div><!-- /logs -->
+</main>
+
+<!-- ═══════════════════════════════ EDIT ENTRY MODAL (Admin) ══════════════════ -->
+<div class="modal-overlay" id="edit-modal-overlay">
+  <div class="modal-card">
+    <div class="card-header">
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span> Edit Entry</div>
+      <button class="btn btn-outline btn-sm" onclick="closeEditModal()">✕ Close</button>
+    </div>
+
+    <input type="hidden" id="e-id">
+    <div class="form-grid">
+      <div class="form-group">
+        <label for="e-date">Date *</label>
+        <input type="date" id="e-date">
+      </div>
+      <div class="form-group">
+        <label for="e-site">Site</label>
+        <select id="e-site">
+          <option value="">Select site…</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="e-category">Category *</label>
+        <select id="e-category" onchange="toggleCategoryFields('e')">
+          <option value="own">Own</option>
+          <option value="rental">Rental</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="e-vehicle">Vehicle / Machine No. *</label>
+        <select id="e-vehicle">
+          <option value="">Select vehicle…</option>
+        </select>
+        <input type="text" id="e-vehicle-text" placeholder="Rental vehicle / machine no." style="display:none;" aria-label="Vehicle or machine number (type it)">
+      </div>
+      <div class="form-group">
+        <label for="e-start">Starting Reading / Time</label>
+        <input type="text" id="e-start">
+        <div class="photo-field" data-key="e-start" data-label="Starting reading photo"></div>
+      </div>
+      <div class="form-group">
+        <label for="e-close">Closing Reading / Time</label>
+        <input type="text" id="e-close">
+        <div class="photo-field" data-key="e-close" data-label="Closing reading photo"></div>
+      </div>
+      <div class="form-group">
+        <label for="e-hours">Working Hours / Reading</label>
+        <input type="text" id="e-hours">
+      </div>
+      <div class="form-group">
+        <label for="e-diesel">Diesel (Litres)</label>
+        <input type="number" id="e-diesel" min="0" step="0.5">
+        <div class="photo-field" data-key="e-diesel" data-label="Diesel photo"></div>
+      </div>
+      <div class="form-group">
+        <label for="e-loads">Loads</label>
+        <input type="number" id="e-loads" min="0">
+      </div>
+      <div class="form-group">
+        <label for="e-operator">Operator / Driver</label>
+        <select id="e-operator">
+          <option value="">Select operator…</option>
+        </select>
+        <input type="text" id="e-operator-text" placeholder="Driver name" style="display:none;" aria-label="Operator or driver name (type it)">
+      </div>
+      <div class="form-group full">
+        <label for="e-remarks">Remarks</label>
+        <textarea id="e-remarks"></textarea>
+      </div>
+    </div>
+
+    <div class="lp-section" id="e-lp-section">
+      <div class="lp-head">
+        <div class="lp-title"><strong>Loads breakup</strong> <span class="badge">OPTIONAL</span></div>
+        <div class="lp-total" id="e-lp-total" aria-live="polite"></div>
+      </div>
+      <p class="form-hint lp-hint">Split the loads by where they were unloaded. If you add lines, they must add up to Loads.</p>
+      <div class="lp-rows" id="e-lp-rows"></div>
+      <button type="button" class="btn btn-outline btn-sm" onclick="addLoadPoint('e')">＋ Add unload point</button>
+    </div>
+
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="submitEditEntry()">💾 Save Changes</button>
+      <button class="btn btn-outline" onclick="closeEditModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ ENTRY HISTORY ══════════════════════════════ -->
+<div class="modal-overlay" id="history-modal-overlay" onclick="if(event.target===this) closeHistory()">
+  <div class="modal-card modal-narrow" role="dialog" aria-modal="true" aria-labelledby="history-title">
+    <div class="card-header">
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span> <span id="history-title">Entry History</span></div>
+      <button class="btn btn-outline btn-sm" onclick="closeHistory()">✕ Close</button>
+    </div>
+    <div class="history-entry" id="history-entry"></div>
+    <div id="history-body"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ REASON FOR CHANGES ═════════════════════════ -->
+<div class="modal-overlay modal-top" id="reason-modal-overlay">
+  <div class="modal-card modal-small" role="dialog" aria-modal="true" aria-labelledby="reason-title">
+    <div class="card-header">
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span> <span id="reason-title">Reason for Changes</span></div>
+    </div>
+    <p class="reason-intro" id="reason-intro"></p>
+    <div id="reason-changes"></div>
+    <div class="form-group" style="margin-top:16px;">
+      <label for="reason-text">Reason <span style="color:var(--brick);">*</span> <span class="reason-hint">(minimum 10 characters)</span></label>
+      <textarea id="reason-text" maxlength="500" placeholder="e.g. Diesel quantity corrected as per fuel slip"></textarea>
+      <div class="reason-meta"><span id="reason-error" role="alert"></span><span id="reason-count">0 / 10 minimum</span></div>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-primary" id="reason-confirm" disabled>Confirm &amp; Save</button>
+      <button class="btn btn-outline" id="reason-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ READING PHOTO VIEWER ═══════════════════════ -->
+<div class="modal-overlay modal-top photo-viewer" id="photo-modal-overlay" onclick="if(event.target===this) closePhotoViewer()">
+  <div class="modal-card photo-card" role="dialog" aria-modal="true" aria-labelledby="photo-title">
+    <div class="card-header">
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></span> <span id="photo-title">Reading photo</span></div>
+      <div class="photo-actions">
+        <a class="btn btn-outline btn-sm" id="photo-open" target="_blank" rel="noopener" hidden>Open full size ↗</a>
+        <button class="btn btn-outline btn-sm" onclick="closePhotoViewer()">✕ Close</button>
+      </div>
+    </div>
+    <div class="photo-stage">
+      <img id="photo-img" alt="" hidden>
+      <div class="photo-msg" id="photo-msg" role="status"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ EDIT INVENTORY ITEM (Admin) ═══════════════ -->
+<div class="modal-overlay" id="inv-edit-overlay" onclick="if(event.target===this) closeInvEdit()">
+  <div class="modal-card modal-small" role="dialog" aria-modal="true" aria-labelledby="inv-edit-title">
+    <div class="card-header">
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></span> <span id="inv-edit-title">Edit</span></div>
+      <button type="button" class="btn btn-outline btn-sm" onclick="closeInvEdit()">✕ Close</button>
+    </div>
+    <div class="form-grid one-col">
+      <div class="form-group"><label id="inv-edit-l1" for="inv-edit-f1">Name *</label><input type="text" id="inv-edit-f1" maxlength="80" autocomplete="off"></div>
+      <div class="form-group"><label id="inv-edit-l2" for="inv-edit-f2">Details</label><input type="text" id="inv-edit-f2" maxlength="80" autocomplete="off"></div>
+    </div>
+    <p class="form-hint" id="inv-edit-hint"></p>
+    <div class="form-error" id="inv-edit-error" role="alert"></div>
+    <div class="btn-group">
+      <button type="button" class="btn btn-primary" id="inv-edit-save" onclick="saveInvEdit()">💾 Save Changes</button>
+      <button type="button" class="btn btn-outline" onclick="closeInvEdit()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ EDIT USER (Admin) ═════════════════════════ -->
+<div class="modal-overlay" id="user-edit-overlay" onclick="if(event.target===this) closeUserEdit()">
+  <div class="modal-card modal-small" role="dialog" aria-modal="true" aria-labelledby="user-edit-title">
+    <div class="card-header">
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></span> <span id="user-edit-title">Edit user</span></div>
+      <button type="button" class="btn btn-outline btn-sm" onclick="closeUserEdit()">✕ Close</button>
+    </div>
+    <div class="form-grid two-col">
+      <div class="form-group span-2"><label for="ue-name">Name *</label><input type="text" id="ue-name" maxlength="80" autocomplete="off"></div>
+      <div class="form-group">
+        <label for="ue-role">Role</label>
+        <select id="ue-role">
+          <option value="supervisor">Supervisor — Data Entry only</option>
+          <option value="owner">Owner — Reports only</option>
+          <option value="admin">Admin — Full access</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="ue-active">Status</label>
+        <select id="ue-active"><option value="true">Active — can log in</option><option value="false">Inactive — cannot log in</option></select>
+      </div>
+      <div class="form-group span-2">
+        <label for="ue-pin">New PIN <span class="reason-hint">(optional — leave empty to keep the current PIN)</span></label>
+        <input type="password" id="ue-pin" placeholder="4–10 characters" maxlength="10" autocomplete="new-password">
+      </div>
+    </div>
+    <p class="form-hint" id="ue-self-note" hidden>This is your own account, so you cannot change your role or switch yourself off.</p>
+    <div class="form-error" id="ue-error" role="alert"></div>
+    <div class="btn-group">
+      <button type="button" class="btn btn-primary" id="ue-save" onclick="saveUserEdit()">💾 Save Changes</button>
+      <button type="button" class="btn btn-outline" onclick="closeUserEdit()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ CONFIRM A DELETE ══════════════════════════ -->
+<div class="modal-overlay modal-top is-danger" id="danger-overlay">
+  <div class="modal-card modal-small" role="alertdialog" aria-modal="true" aria-labelledby="danger-title" aria-describedby="danger-msg">
+    <div class="card-header">
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg></span> <span id="danger-title">Delete?</span></div>
+    </div>
+    <p class="reason-intro" id="danger-msg"></p>
+    <div class="form-group" id="danger-type-wrap" hidden>
+      <label for="danger-type">Type <strong>DELETE</strong> to confirm</label>
+      <input type="text" id="danger-type" autocomplete="off" autocapitalize="characters" spellcheck="false">
+    </div>
+    <div class="btn-group">
+      <button type="button" class="btn btn-danger-solid" id="danger-ok">Delete</button>
+      <button type="button" class="btn btn-outline" id="danger-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ EDIT DOCUMENT ═══════════════════════════════ -->
+<div class="modal-overlay" id="doc-edit-overlay" onclick="if(event.target===this) closeDocEdit()">
+  <div class="modal-card modal-small" role="dialog" aria-modal="true" aria-labelledby="doc-edit-title">
+    <div class="card-header">
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></span> <span id="doc-edit-title">Edit document</span></div>
+      <button type="button" class="btn btn-outline btn-sm" onclick="closeDocEdit()">✕ Close</button>
+    </div>
+    <div class="form-grid one-col">
+      <div class="form-group"><label for="de-name">Document name *</label><input type="text" id="de-name" maxlength="120" autocomplete="off"></div>
+      <div class="form-group"><label for="de-category">Type of document *</label><select id="de-category"></select></div>
+      <div class="form-group"><label for="de-site">Site</label><select id="de-site"><option value="">—</option></select></div>
+      <div class="form-group"><label for="de-notes">Notes</label><input type="text" id="de-notes" maxlength="500" autocomplete="off"></div>
+    </div>
+    <p class="form-hint">Only the details change — the stored file stays exactly as it was uploaded.</p>
+    <div class="form-error" id="de-error" role="alert"></div>
+    <div class="btn-group">
+      <button type="button" class="btn btn-primary" id="de-save" onclick="saveDocEdit()">💾 Save Changes</button>
+      <button type="button" class="btn btn-outline" onclick="closeDocEdit()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ EDIT PAYMENT (Admin) ════════════════════════ -->
+<div class="modal-overlay" id="pay-edit-overlay" onclick="if(event.target===this) closePayEdit()">
+  <div class="modal-card modal-small" role="dialog" aria-modal="true" aria-labelledby="pay-edit-title">
+    <div class="card-header">
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></span> <span id="pay-edit-title">Edit payment</span></div>
+      <button type="button" class="btn btn-outline btn-sm" onclick="closePayEdit()">✕ Close</button>
+    </div>
+    <p class="pay-edit-period" id="pay-edit-period"></p>
+    <div class="form-grid one-col">
+      <div class="form-group"><label for="pe-name">Employee name *</label><input type="text" id="pe-name" maxlength="80" list="pay-employees" autocomplete="off"></div>
+      <div class="form-group"><label for="pe-days">Days worked *</label><input type="number" id="pe-days" min="0" step="0.5" inputmode="decimal"></div>
+      <div class="form-group"><label for="pe-amount">Amount (₹) *</label><input type="number" id="pe-amount" min="0" step="0.01" inputmode="decimal"></div>
+    </div>
+    <div class="form-error" id="pe-error" role="alert"></div>
+    <div class="btn-group">
+      <button type="button" class="btn btn-primary" id="pe-save" onclick="savePayEdit()">💾 Save Changes</button>
+      <button type="button" class="btn btn-outline" onclick="closePayEdit()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<datalist id="unload-points-list"></datalist>
+<datalist id="pay-employees"></datalist>
+
+<!-- ═══════════════════════════════ MOBILE MENU ═══════════════════════════════ -->
+<div class="mobile-menu-overlay" id="menu-overlay" hidden></div>
+<aside class="mobile-menu" id="mobile-menu" aria-label="Main menu" hidden>
+  <div class="mm-head">
+    <div class="mm-user" id="mm-user"></div>
+    <button type="button" class="mm-close" id="mm-close" aria-label="Close menu">✕</button>
+  </div>
+  <nav class="mm-nav" id="mm-nav" aria-label="Sections"></nav>
+  <div class="mm-foot">
+    <button type="button" class="btn btn-outline" onclick="Auth.logout()">Log out</button>
+    <footer class="site-footer">
+      <span>&copy; <span data-year>2026</span> Sri Charan Constructions</span>
+      <a href="/privacy.html">Privacy Policy</a>
+      <span data-contact="email" hidden></span>
+      <span data-contact="phone" hidden></span>
+    </footer>
+  </div>
+</aside>
+
+<div class="net-banner" id="net-banner" role="status" aria-live="polite" hidden></div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<footer class="site-footer app-footer">
+  <span>&copy; <span data-year>2026</span> Sri Charan Constructions</span>
+  <a href="/privacy.html">Privacy Policy</a>
+  <span data-contact="email" hidden></span>
+  <span data-contact="phone" hidden></span>
+</footer>
+<script src="/js/site.js"></script>
+<script src="/js/api.js"></script>
+<script src="/js/app.js"></script>
+<script src="/js/pwa.js"></script>
+</body>
+</html>

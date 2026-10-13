@@ -216,6 +216,23 @@ router.get('/unload-points', requireRole('supervisor', 'admin'), async (req, res
   }
 });
 
+// ── GET /api/entries/vehicle-numbers  (Owner + Admin) — every vehicle number used in an entry ──
+// So the Records filter can also find vehicles that were typed in by hand ("Others"), not only inventory ones.
+router.get('/vehicle-numbers', requireRole('owner', 'admin'), async (req, res) => {
+  try {
+    const { data, error } = await fetchAll(() => supabase.from('entries').select('vehicle_no').order('vehicle_no', { ascending: true }).order('id', { ascending: true }), 50000);
+    if (error) throw error;
+    const seen = new Set(), out = [];
+    for (const r of data || []) {
+      const k = String(r.vehicle_no || '').trim().toLowerCase();
+      if (k && !seen.has(k)) { seen.add(k); out.push(String(r.vehicle_no).trim()); }
+    }
+    res.json({ success: true, data: out });
+  } catch (err) {
+    return serverError(res, err, 'GET /entries/vehicle-numbers');
+  }
+});
+
 // ── POST /api/entries  (Supervisor + Admin — "Data Entry") ──────────────────
 router.post('/', requireRole('supervisor', 'admin'), async (req, res) => {
   let createdId = null;

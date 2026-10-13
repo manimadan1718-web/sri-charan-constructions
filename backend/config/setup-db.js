@@ -217,11 +217,39 @@ CREATE UNIQUE INDEX IF NOT EXISTS payments_unique_person_period ON payments(pay_
 CREATE INDEX IF NOT EXISTS idx_payments_period  ON payments(pay_type, period_start DESC);
 CREATE INDEX IF NOT EXISTS idx_payments_creator ON payments(created_by_id, created_at DESC);
 
+-- Purchases: material that arrives at a site. Net weight = Load weight − Empty weight (in kg).
+CREATE TABLE IF NOT EXISTS purchases (
+  id               UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  purchase_date    DATE NOT NULL,
+  site             TEXT NOT NULL,
+  supplier         TEXT NOT NULL,
+  vehicle_no       TEXT NOT NULL,
+  item_name        TEXT NOT NULL,
+  load_weight      NUMERIC(12,3) NOT NULL CHECK (load_weight  >= 0),
+  empty_weight     NUMERIC(12,3) NOT NULL CHECK (empty_weight >= 0),
+  net_weight       NUMERIC(12,3) NOT NULL CHECK (net_weight > 0),
+  CONSTRAINT purchases_net_is_load_minus_empty CHECK (net_weight = load_weight - empty_weight),
+  attachment_path  TEXT,                      -- the private file (weighbridge slip, invoice …)
+  attachment_name  TEXT,
+  attachment_size  BIGINT,
+  attachment_ext   TEXT,
+  created_by_id    TEXT,
+  created_by_name  TEXT,
+  created_at       TIMESTAMPTZ DEFAULT NOW(),
+  updated_at       TIMESTAMPTZ,
+  updated_by_name  TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS purchases_attachment_unique ON purchases(attachment_path) WHERE attachment_path IS NOT NULL;   -- one file belongs to one purchase
+CREATE INDEX IF NOT EXISTS idx_purchases_date    ON purchases(purchase_date DESC, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_purchases_site    ON purchases(site);
+CREATE INDEX IF NOT EXISTS idx_purchases_creator ON purchases(created_by_id, created_at DESC);
+
 -- Locked down like every other table: only this app's server (secret key) can reach them.
 ALTER TABLE load_points ENABLE ROW LEVEL SECURITY;
 ALTER TABLE documents   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE payments    ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON TABLE load_points, documents, payments FROM anon, authenticated;
+ALTER TABLE purchases   ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE load_points, documents, payments, purchases FROM anon, authenticated;
 
 -- The private bucket for documents (the app also creates it by itself on first start).
 INSERT INTO storage.buckets (id, name, public) VALUES ('documents', 'documents', false) ON CONFLICT (id) DO NOTHING;

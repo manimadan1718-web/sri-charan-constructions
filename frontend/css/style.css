@@ -1281,3 +1281,35 @@ body.menu-open { overflow: hidden; }
 /* Text on the sign-in page is never smaller than 12 px, and small brand text on phones uses the darker orange (readable contrast) */
 .login-foot, .login-tagline, .login-field label { font-size: 12px; }
 @media (max-width: 960px) { .brand h1 { color: var(--hazard-deep); } }
+
+/* ═══ Purchases · View buttons ═══ */
+.open-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.pu-file { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; min-width: 0; }
+.pu-file-name { font-weight: 600; overflow-wrap: anywhere; }
+.pu-table td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pu-table th:nth-child(n+6):nth-child(-n+8) { text-align: right; }
+input.pu-net { background: #F3F5F9; font-weight: 800; color: var(--ink); cursor: default; }
+input.pu-net.is-bad { border-color: #B4372A; }
+.pu-net-hint { min-height: 1.3em; }
+.pu-net-hint.ok  { color: #1D7A46; font-weight: 600; }
+.pu-net-hint.bad { color: #B4372A; font-weight: 600; }
+.pu-footer { margin-top: 14px; font-size: 14px; color: var(--steel); }
+.pu-footer strong { color: var(--ink); }
+.pu-filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.pu-filters input[type="text"] { flex: 1 1 220px; min-width: 0; }
+#pu-edit-overlay .modal-card { max-width: 720px; }
+
+/* On phones the admin-only columns must stay hidden for everyone else (the card layout would otherwise show them) */
+@media (max-width: 720px) {
+  body:not(.is-admin) .table-wrap table:not(.log-table) tbody td.admin-only-col { display: none !important; }
+  .open-btns { justify-content: flex-end; }
+  .pu-file { align-items: flex-end; text-align: right; }
+  .pu-filters > * { flex: 1 1 100%; }
+}
+.pu-table th, .pu-table td { padding-left: 9px; padding-right: 9px; }
+.pu-table .pu-file-name { max-width: 170px; }
+@media (max-width: 720px) {
+  .pu-filters > input[type="date"] { flex: 1 1 calc(50% - 10px); }
+  .pu-table .pu-file-name { max-width: none; }
+}
+

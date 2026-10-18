@@ -191,7 +191,8 @@ router.get('/summary-stats', requirePerm('summary.view'), async (req, res) => {
   try {
     const range = summaryRange(req.query);
     if (range.error) return res.status(400).json({ error: range.error });
-    res.json({ success: true, data: await summaryFor(range) });
+    const site = typeof req.query.site === 'string' ? req.query.site.trim().slice(0, 100) : '';      // a single site (or "__none__" for entries with no site)
+    res.json({ success: true, data: await summaryFor({ ...range, site }) });
   } catch (err) {
     return serverError(res, err, 'GET /entries/summary-stats');
   }

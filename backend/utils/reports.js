@@ -13,6 +13,7 @@
  */
 const path = require('path');
 const supabase = require('../config/supabase');
+const { parseWorkingMinutes, hoursFromMinutes } = require('./workHours');
 const photos = require('./photos');
 const { fmtDateDMY } = require('./activity');
 const lp = require('./loadPoints');
@@ -76,6 +77,7 @@ function toRow(e, i) {
     close: e.close_reading || '',
     closePhoto: photos.isReadingPath(e.close_photo) ? e.close_photo : null,
     hours: e.working_hours || '',
+    hoursMin: parseWorkingMinutes(e.working_hours),
     diesel: Number(e.diesel) || 0,
     dieselPhoto: photos.isReadingPath(e.diesel_photo) ? e.diesel_photo : null,
     loads: parseInt(e.loads, 10) || 0,
@@ -151,7 +153,8 @@ function buildCsv(rows) {
     r.hours, r.diesel, r.hadDieselPhoto ? 'Yes' : 'No', r.loads, r.unload, r.operator, r.remarks,
   ]);
   // The same closing line the Excel and PDF reports have: the totals under Vehicle No., Diesel and Loads.
-  const total = rows.length ? [['', '', '', 'Total', '', '', '', '', '', Number(rows.reduce((a, r) => a + r.diesel, 0).toFixed(2)), '', rows.reduce((a, r) => a + r.loads, 0), '', '', '']] : [];
+  const hrsTotal = hoursFromMinutes(rows.reduce((a, r) => a + (r.hoursMin || 0), 0));
+  const total = rows.length ? [['', '', '', 'Total', '', '', '', '', rows.some(r => r.hoursMin !== null) ? hrsTotal : '', Number(rows.reduce((a, r) => a + r.diesel, 0).toFixed(2)), '', rows.reduce((a, r) => a + r.loads, 0), '', '', '']] : [];
   const csv = [headers, ...lines, ...total].map(l => l.map(csvEscape).join(',')).join('\n');
   return Buffer.from('\uFEFF' + csv, 'utf8');   // BOM so Excel reads accents/₹ correctly
 }
@@ -281,12 +284,17 @@ async function buildXlsx(rows, meta, thumbs) {
     totalRow.getCell(dI).value = { formula: `SUM(${colLetter('diesel')}${firstData}:${colLetter('diesel')}${lastData})`, result: rows.reduce((a, r) => a + r.diesel, 0) };
     totalRow.getCell(lI).value = { formula: `SUM(${colLetter('loads')}${firstData}:${colLetter('loads')}${lastData})`, result: rows.reduce((a, r) => a + r.loads, 0) };
     totalRow.getCell(dI).numFmt = '0.00';
+    const hI = XL_COLS.findIndex(c => c.key === 'hours') + 1;
+    if (rows.some(r => r.hoursMin !== null)) {              // the hours column holds text, so the total is worked out here (not a SUM formula)
+      totalRow.getCell(hI).value = hoursFromMinutes(rows.reduce((a, r) => a + (r.hoursMin || 0), 0));
+      totalRow.getCell(hI).numFmt = '0.0#';
+    }
     for (let i = 1; i <= lastCol; i++) {
       const cell = totalRow.getCell(i);
       cell.font = { name: 'Calibri', size: 11, bold: true, color: argb(COLORS.ink) };
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: argb('FFF3E6') };
       cell.border = { top: { style: 'medium', color: argb(COLORS.orange) }, bottom: thin };
-      if (i === dI || i === lI) cell.alignment = { horizontal: 'right', vertical: 'middle', indent: 1 };
+      if (i === dI || i === lI || i === hI) cell.alignment = { horizontal: 'right', vertical: 'middle', indent: 1 };
       else cell.alignment = { vertical: 'middle', indent: 1 };
     }
     totalRow.height = 24;
@@ -405,6 +413,7 @@ async function buildPdf(rows, meta, thumbs) {
     doc.font('Helvetica-Bold').fontSize(8).fillColor(hex(COLORS.ink));
     const ci = k => PDF_COLS.findIndex(c => c.key === k);
     doc.text('Total', x0[ci('vehicle')] + PAD, y + 5.5, { width: PDF_COLS[ci('vehicle')].w, lineBreak: false });
+    if (rows.some(r => r.hoursMin !== null)) doc.text(String(hoursFromMinutes(rows.reduce((a, r) => a + (r.hoursMin || 0), 0))), x0[ci('hours')] + PAD, y + 5.5, { width: PDF_COLS[ci('hours')].w - PAD * 2, align: 'left', lineBreak: false });
     doc.text(rows.reduce((a, r) => a + r.diesel, 0).toFixed(2), x0[ci('diesel')] + PAD, y + 5.5, { width: PDF_COLS[ci('diesel')].w - PAD * 2, align: 'right', lineBreak: false });
     doc.text(String(rows.reduce((a, r) => a + r.loads, 0)), x0[ci('loads')] + PAD, y + 5.5, { width: PDF_COLS[ci('loads')].w - PAD * 2, align: 'right', lineBreak: false });
   }

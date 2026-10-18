@@ -587,6 +587,24 @@ function renderRecordsTable(entries) {
   });
 }
 
+/* ── Working hours ───────────────────────────────────────────────────────────── */
+// Entries store working hours as text ("8 hrs", "8 hrs 30 mins", "6.8", "8:30"). This reads them the SAME way the server does
+// (backend/utils/workHours.js): whole minutes, or null when it is not a length of time ("130 km", "No work", more than a day).
+const WH = '(?:h|hr|hrs|hour|hours)', WM = '(?:m|min|mins|minute|minutes)';
+const WH_DECIMAL = new RegExp(`^(\\d+(?:\\.\\d+)?)\\s*${WH}?$`, 'i'), WH_HM = new RegExp(`^(\\d+)\\s*${WH}\\s*(\\d+)\\s*${WM}$`, 'i');
+const WH_MIN = new RegExp(`^(\\d+)\\s*${WM}$`, 'i'), WH_CLOCK = /^(\d{1,2}):([0-5]\d)$/;
+function parseWorkingMinutes(text) {
+  const t = String(text == null ? '' : text).trim();
+  if (!t) return null;
+  let m, min = null;
+  if ((m = WH_DECIMAL.exec(t))) min = Math.round(parseFloat(m[1]) * 60);
+  else if ((m = WH_HM.exec(t))) min = parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+  else if ((m = WH_MIN.exec(t))) min = parseInt(m[1], 10);
+  else if ((m = WH_CLOCK.exec(t))) min = parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+  return min !== null && Number.isFinite(min) && min <= 24 * 60 ? min : null;
+}
+const fmtHours = n => Number(n).toLocaleString('en-IN', { minimumFractionDigits: 1, maximumFractionDigits: 2 });
+
 /** The totals under the Records table (and in print): what is listed above, added up. */
 function renderRecordsTotals(entries, from, to) {
   const box = document.getElementById('records-totals');
@@ -598,6 +616,10 @@ function renderRecordsTotals(entries, from, to) {
   document.getElementById('rt-range').textContent = dates.length ? (dates[0] === dates[dates.length - 1] ? fmtDate(dates[0]) : `${fmtDate(dates[0])} – ${fmtDate(dates[dates.length - 1])}`) : '';
   document.getElementById('rt-diesel').textContent = diesel.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   document.getElementById('rt-loads').textContent = loads.toLocaleString('en-IN');
+  // working hours: only entries whose hours really are a length of time are added up (not "130 km", not "No work")
+  const mins = entries.map(e => parseWorkingMinutes(e.working_hours)).filter(m => m !== null);
+  document.getElementById('rt-hours').textContent = mins.length ? fmtHours(Math.round(mins.reduce((a, m) => a + m, 0) / 60 * 100) / 100) : '0.0';
+  document.getElementById('rt-hours-note').textContent = mins.length === entries.length ? 'Hours' : `Hours · from ${mins.length} of ${entries.length} entries`;
   box.hidden = false;
 }
 
@@ -864,10 +886,14 @@ let summarySeq = 0;
 async function loadSummary() {
   const period = summaryPeriod();
   if (period.from && period.to && period.from > period.to) { showToast('The "from" date cannot be after the "to" date.', true); return; }
-  document.getElementById('sum-range-text').textContent = `Showing: ${summaryRangeText(period)}`;
+  const siteSel = document.getElementById('sum-site');
+  const site = siteSel.value;
+  const siteName = siteSel.selectedIndex > 0 ? siteSel.options[siteSel.selectedIndex].textContent : '';
+  document.getElementById('sum-range-text').textContent = `Showing: ${summaryRangeText(period)}${site ? ` · Site: ${siteName}` : ' · All sites'}`;
   const filters = {};
   if (period.from) filters.from = period.from;
   if (period.to)   filters.to   = period.to;
+  if (site)        filters.site = site;
 
   const seq = ++summarySeq;
   try {
@@ -877,19 +903,56 @@ async function loadSummary() {
     document.getElementById('s-entries').textContent  = s.total_entries  ?? '–';
     document.getElementById('s-diesel').textContent   = s.total_diesel   ?? '–';
     document.getElementById('s-loads').textContent    = s.total_loads    ?? '–';
-    document.getElementById('s-vehicles').textContent = s.vehicles_with_loads ?? '–';
+    document.getElementById('s-hours').textContent    = s.total_hours === undefined ? '–' : fmtHours(s.total_hours);
+    document.getElementById('s-hours-note').textContent = s.hours_entries === undefined || s.hours_entries === s.total_entries ? 'hours' : `hours · from ${s.hours_entries} of ${s.total_entries} entries`;
+    fillSummarySites(s.sites || [], site, siteName);
     renderVehicleBreakdown(s.vehicles || []);
+    renderSiteBreakdown(s.sites || [], !site);
   } catch (e) {
     if (seq !== summarySeq) return;
-    document.getElementById('vehicle-summary-body').innerHTML = `<tr class="empty-row"><td colspan="4">${esc(e.message || 'Could not load the summary.')}</td></tr>`;
+    document.getElementById('vehicle-summary-body').innerHTML = `<tr class="empty-row"><td colspan="5">${esc(e.message || 'Could not load the summary.')}</td></tr>`;
   }
+}
+
+/** The site list follows the period (every site that has entries in it), and keeps the chosen site even if it has none right now. */
+function fillSummarySites(sites, chosen, chosenName) {
+  const sel = document.getElementById('sum-site');
+  const opts = ['<option value="">All sites</option>'].concat(sites.map(x => `<option value="${esc(x.value)}">${esc(x.site)}</option>`));
+  if (chosen && !sites.some(x => x.value === chosen)) opts.push(`<option value="${esc(chosen)}">${esc(chosenName || chosen)}</option>`);
+  sel.innerHTML = opts.join('');
+  sel.value = chosen || '';
+}
+
+function pickSummarySite(value) {
+  document.getElementById('sum-site').value = value;
+  loadSummary();
+  document.getElementById('section-summary').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/** Site-wise table: shown only while "All sites" is chosen. */
+function renderSiteBreakdown(sites, show) {
+  const card = document.getElementById('sum-sites-card'), tbody = document.getElementById('site-summary-body');
+  card.hidden = !show;
+  tbody.innerHTML = '';
+  if (!show) return;
+  if (!sites.length) { tbody.innerHTML = '<tr class="empty-row"><td colspan="5">No entries in this period.</td></tr>'; return; }
+  sites.forEach(x => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><button type="button" class="link-btn" onclick="pickSummarySite('${esc(x.value)}')" aria-label="Show only ${esc(x.site)}"><strong>${esc(x.site)}</strong></button></td>
+      <td>${esc(x.entries)}</td>
+      <td>${esc(x.diesel)}</td>
+      <td>${esc(x.loads)}</td>
+      <td>${esc(fmtHours(x.hours))}</td>`;
+    tbody.appendChild(tr);
+  });
 }
 
 function renderVehicleBreakdown(list) {
   const tbody = document.getElementById('vehicle-summary-body');
   tbody.innerHTML = '';
   if (!list.length) {
-    tbody.innerHTML = '<tr class="empty-row"><td colspan="4">No vehicles with loads in this period.</td></tr>';
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="5">No vehicles with loads or working hours in this period.</td></tr>';
     return;
   }
   list.forEach(v => {
@@ -898,7 +961,8 @@ function renderVehicleBreakdown(list) {
       <td><strong>${esc(v.vehicle_no)}</strong></td>
       <td>${esc(v.entries)}</td>
       <td>${esc(v.diesel)}</td>
-      <td>${esc(v.loads)}</td>`;
+      <td>${esc(v.loads)}</td>
+      <td>${esc(fmtHours(v.hours))}</td>`;
     tbody.appendChild(tr);
   });
 }
@@ -1360,7 +1424,7 @@ async function runTableReport(kind, format, itemEl) {
   else if (group === 'summary') {
     const per = summaryPeriod();
     if (per.from && per.to && per.from > per.to) { showToast('The "from" date cannot be after the "to" date.', true); return; }
-    call = () => Reports.summary({ format, from: per.from || undefined, to: per.to || undefined }); name = 'summary';
+    call = () => Reports.summary({ format, from: per.from || undefined, to: per.to || undefined, site: document.getElementById('sum-site').value || undefined }); name = 'summary';
   }
   else return;
 

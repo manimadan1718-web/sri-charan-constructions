@@ -1342,10 +1342,11 @@ body:not(.can-permissions-manage) .perm-permissions-manage { display: none !impo
 /* Records: order selector and the totals under the table */
 .rec-order { display: inline-flex; align-items: center; gap: 8px; margin-left: 14px; font-size: 13px; font-weight: 600; color: var(--steel); }
 .rec-order select { min-height: 36px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; font: inherit; color: var(--ink); }
-.records-totals { margin-top: 18px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.records-totals { margin-top: 18px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .records-totals[hidden] { display: none; }
+@media (max-width: 1100px) { .records-totals { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 720px) { .records-totals { grid-template-columns: 1fr; } .rec-order { margin-left: 0; width: 100%; justify-content: space-between; } }
-@media print { .rec-order { display: none !important; } .records-totals { break-inside: avoid; grid-template-columns: repeat(3, 1fr); } .stat-card { border: 1px solid #ccc; } }
+@media print { .rec-order { display: none !important; } .records-totals { break-inside: avoid; grid-template-columns: repeat(4, 1fr); } .stat-card { border: 1px solid #ccc; } }
 
 /* Nothing switched on for this person */
 .center-card { text-align: center; padding: 40px 24px; }
@@ -1386,3 +1387,11 @@ body:not(.can-permissions-manage) .perm-permissions-manage { display: none !impo
 @media (max-width: 720px) { .perm-group { padding: 4px 10px 8px; } }
 @media (max-width: 960px), (pointer: coarse) { .rec-order select { min-height: 44px; } }
 
+/* Summary: the Site selector beside the period; the per-site table's site names are buttons */
+.sum-controls #sum-site { min-width: 250px; max-width: 360px; }
+.sum-controls select { min-height: 40px; }
+#site-summary-body .link-btn { padding: 10px 0; text-align: left; color: var(--ink); background: none; border: 0; cursor: pointer; font: inherit; }
+#site-summary-body .link-btn:hover strong, #site-summary-body .link-btn:focus-visible strong { color: var(--hazard-deep); text-decoration: underline; }
+#sum-sites-card[hidden] { display: none; }
+@media (max-width: 720px) { .sum-controls #sum-site { max-width: none; width: 100%; } }
+@media (max-width: 960px), (pointer: coarse) { .sum-controls select { min-height: 44px; } }

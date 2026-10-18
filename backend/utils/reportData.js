@@ -244,24 +244,34 @@ const rangeText = ({ from, to }) => {
 };
 const SUMMARY_COLUMNS = [
   { key: 'n', header: '#', width: 6, weight: 4, align: 'right' },
-  { key: 'vehicle', header: 'Vehicle No.', width: 26, weight: 24, bold: true },
-  { key: 'entries', header: 'Entries', width: 12, weight: 10, align: 'right' },
-  { key: 'diesel', header: 'Total diesel (L)', width: 18, weight: 14, align: 'right' },
-  { key: 'loads', header: 'Total loads', width: 14, weight: 12, align: 'right' },
+  { key: 'vehicle', header: 'Vehicle No.', width: 26, weight: 22, bold: true },
+  { key: 'entries', header: 'Entries', width: 12, weight: 9, align: 'right' },
+  { key: 'diesel', header: 'Total diesel (L)', width: 18, weight: 13, align: 'right' },
+  { key: 'loads', header: 'Total loads', width: 14, weight: 11, align: 'right' },
+  { key: 'hours', header: 'Total working hours', width: 20, weight: 15, align: 'right' },
 ];
+const fmtHrs = n => Number(n).toLocaleString('en-IN', { minimumFractionDigits: 1, maximumFractionDigits: 2 });
 
 async function summaryReport(range) {
   const s = await summaryFor(range);
-  const rows = s.vehicles.map((v, i) => ({ n: i + 1, vehicle: v.vehicle_no, entries: v.entries, diesel: v.diesel, loads: v.loads }));
+  const sum = (list, k) => list.reduce((a, v) => a + (parseFloat(v[k]) || 0), 0);
+  const rows = s.vehicles.map((v, i) => ({ n: i + 1, vehicle: v.vehicle_no, entries: v.entries, diesel: v.diesel, loads: v.loads, hours: fmtHrs(v.hours) }));
   if (rows.length) {
     rows.push({
-      n: '', vehicle: 'TOTAL (vehicles listed)', entries: s.vehicles.reduce((a, v) => a + v.entries, 0),
-      diesel: s.vehicles.reduce((a, v) => a + parseFloat(v.diesel), 0).toFixed(2), loads: s.vehicles.reduce((a, v) => a + v.loads, 0),
+      n: '', vehicle: 'TOTAL (vehicles listed)', entries: sum(s.vehicles, 'entries'),
+      diesel: sum(s.vehicles, 'diesel').toFixed(2), loads: sum(s.vehicles, 'loads'), hours: fmtHrs(Math.round(sum(s.vehicles, 'hours') * 100) / 100),
     });
+  }
+  // With no site chosen, the report also carries the site-wise summary underneath.
+  if (s.site === null && s.sites.length) {
+    rows.push({ n: '', vehicle: '', entries: '', diesel: '', loads: '', hours: '' });
+    rows.push({ n: '', vehicle: 'SITE-WISE SUMMARY', entries: 'Entries', diesel: 'Diesel (L)', loads: 'Loads', hours: 'Working hours' });
+    s.sites.forEach((x, i) => rows.push({ n: i + 1, vehicle: x.site, entries: x.entries, diesel: x.diesel, loads: x.loads, hours: fmtHrs(x.hours) }));
+    rows.push({ n: '', vehicle: 'TOTAL (all sites)', entries: s.total_entries, diesel: s.total_diesel, loads: s.total_loads, hours: fmtHrs(s.total_hours) });
   }
   return {
     title: 'Summary', sheet: 'Summary', columns: SUMMARY_COLUMNS, rows,
-    subtitle: `Period: ${rangeText(s.range)}  ·  Only vehicles with loads are listed  ·  All entries in the period: ${s.total_entries} entries, ${s.total_diesel} L diesel, ${s.total_loads} loads`,
+    subtitle: `Period: ${rangeText(s.range)}  ·  Site: ${s.site === null ? 'All sites' : s.site}  ·  Vehicles with loads or working hours are listed  ·  All entries: ${s.total_entries} entries, ${s.total_diesel} L diesel, ${s.total_loads} loads, ${fmtHrs(s.total_hours)} working hours`,
     realRows: s.vehicles.length,
   };
 }

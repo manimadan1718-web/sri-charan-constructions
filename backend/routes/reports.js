@@ -135,6 +135,7 @@ router.post('/summary', requirePerm('summary.view'), (req, res) => {
   const body = req.body || {};
   const range = summaryRange(body);
   if (range.error) return res.status(400).json({ error: range.error });
+  range.site = typeof body.site === 'string' ? body.site.trim().slice(0, 100) : '';
   return serveTableReport(req, res, { format: body.format, filePrefix: 'summary', category: 'entry', load: () => reportData.summaryReport(range) });
 });
 

@@ -249,6 +249,7 @@
       <div class="stat-card"><div class="stat-label">Records</div><div class="stat-val" id="rt-count">–</div><div class="stat-unit" id="rt-range"></div></div>
       <div class="stat-card"><div class="stat-label">Total Diesel</div><div class="stat-val" id="rt-diesel">–</div><div class="stat-unit">Litres</div></div>
       <div class="stat-card"><div class="stat-label">Total Loads</div><div class="stat-val" id="rt-loads">–</div><div class="stat-unit">Loads</div></div>
+      <div class="stat-card"><div class="stat-label">Total Working Hours</div><div class="stat-val" id="rt-hours">–</div><div class="stat-unit" id="rt-hours-note">Hours</div></div>
     </div>
   </div>
 </div>
@@ -261,6 +262,9 @@
     <div class="card-header">
       <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></span> Auto Summary</div>
       <div class="sum-controls">
+        <select id="sum-site" onchange="loadSummary()" aria-label="Site">
+          <option value="">All sites</option>
+        </select>
         <select id="sum-range" onchange="onSummaryRangeChange()" aria-label="Period">
           <option value="all">All time</option>
           <option value="today">Today</option>
@@ -287,7 +291,7 @@
       <div class="stat-card"><div class="stat-label">Total Entries</div><div class="stat-val" id="s-entries">–</div><div class="stat-unit">records</div></div>
       <div class="stat-card"><div class="stat-label">Total Diesel</div><div class="stat-val" id="s-diesel">–</div><div class="stat-unit">Litres</div></div>
       <div class="stat-card"><div class="stat-label">Total Loads</div><div class="stat-val" id="s-loads">–</div><div class="stat-unit">trips</div></div>
-      <div class="stat-card"><div class="stat-label">Vehicles with loads</div><div class="stat-val" id="s-vehicles">–</div><div class="stat-unit">vehicles</div></div>
+      <div class="stat-card"><div class="stat-label">Total Working Hours</div><div class="stat-val" id="s-hours">–</div><div class="stat-unit" id="s-hours-note">hours</div></div>
     </div>
   </div>
 
@@ -297,12 +301,26 @@
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>Vehicle No.</th><th>Entries</th><th>Total Diesel (L)</th><th>Total Loads</th></tr>
+          <tr><th>Vehicle No.</th><th>Entries</th><th>Total Diesel (L)</th><th>Total Loads</th><th>Total Working Hours</th></tr>
         </thead>
         <tbody id="vehicle-summary-body"></tbody>
       </table>
     </div>
-    <p class="form-hint">Only vehicles that have loads are listed. The totals at the top count every entry in the period.</p>
+    <p class="form-hint">Only vehicles that have loads or working hours are listed. The totals at the top count every entry in the period.</p>
+  </div>
+
+  <!-- Site-wise summary (only while "All sites" is chosen — picking a site shows just that site) -->
+  <div class="card" id="sum-sites-card">
+    <div class="card-title" style="margin-bottom:14px;"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></span> Site-wise Summary</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Site</th><th>Entries</th><th>Total Diesel (L)</th><th>Total Loads</th><th>Total Working Hours</th></tr>
+        </thead>
+        <tbody id="site-summary-body"></tbody>
+      </table>
+    </div>
+    <p class="form-hint">Press a site name to see only that site's summary, with its own per-vehicle breakdown.</p>
   </div>
 
 </div><!-- /summary -->

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const supabase = require('../config/supabase');
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireAuth, requirePerm, hasPerm } = require('../middleware/auth');
 const { logActivity, cleanReason, reasonError } = require('../utils/activity');
 const { serverError } = require('../utils/http');
 const { fetchAll } = require('../utils/db');
@@ -24,7 +24,7 @@ function sendError(res, err, where) {
 const isUniqueViolation = err => !!err && (err.code === '23505' || /duplicate key/i.test(String(err.message || '')));
 
 // ── GET /api/payments?type=weekly|monthly  (Owner + Admin) — every saved line, newest period first ──
-router.get('/', requireRole('owner', 'admin'), async (req, res) => {
+router.get('/', requirePerm('payments.view'), async (req, res) => {
   try {
     const type = req.query.type;
     if (type !== undefined && !pay.TYPES.includes(type)) return res.status(400).json({ error: 'type must be weekly or monthly.' });
@@ -43,7 +43,7 @@ router.get('/', requireRole('owner', 'admin'), async (req, res) => {
 });
 
 // ── GET /api/payments/mine  (Supervisor + Admin) — what THIS person saved recently (read-only) ──
-router.get('/mine', requireRole('supervisor', 'admin'), async (req, res) => {
+router.get('/mine', requirePerm('payments.add'), async (req, res) => {
   try {
     const { data, error } = await supabase.from('payments').select('*').eq('created_by_id', String(req.user.id))
       .order('created_at', { ascending: false }).order('id', { ascending: false }).range(0, 99);
@@ -56,7 +56,7 @@ router.get('/mine', requireRole('supervisor', 'admin'), async (req, res) => {
 });
 
 // ── GET /api/payments/employees  (Supervisor + Admin) — names used before, for the type-ahead list ──
-router.get('/employees', requireRole('supervisor', 'admin'), async (req, res) => {
+router.get('/employees', requirePerm('payments.add'), async (req, res) => {
   try {
     const { data, error } = await supabase.from('payments').select('employee_name, created_at').order('created_at', { ascending: false }).range(0, 1999);
     if (error) throw error;
@@ -76,7 +76,7 @@ router.get('/employees', requireRole('supervisor', 'admin'), async (req, res) =>
 // ── POST /api/payments  (Supervisor + Admin) ─────────────────────────────────
 // { pay_type: 'weekly' | 'monthly', period: 'YYYY-MM-DD' (any day of the week) | 'YYYY-MM', items: [{ employee_name, days_worked, amount }] }
 // All lines are saved together, or none are.
-router.post('/', requireRole('supervisor', 'admin'), async (req, res) => {
+router.post('/', requirePerm('payments.add'), async (req, res) => {
   try {
     const b = req.body || {};
     if (!pay.TYPES.includes(b.pay_type)) return res.status(400).json({ error: 'Choose Weekly or Monthly.' });
@@ -124,7 +124,7 @@ router.post('/', requireRole('supervisor', 'admin'), async (req, res) => {
 });
 
 // ── PUT /api/payments/:id  (Admin only; a written reason is needed, like for entries) ──
-router.put('/:id', requireRole('admin'), async (req, res) => {
+router.put('/:id', requirePerm('payments.edit'), async (req, res) => {
   try {
     if (!ID_RE.test(req.params.id)) return res.status(404).json({ error: 'Payment not found.' });
     const { data: before, error: getErr } = await supabase.from('payments').select('*').eq('id', req.params.id).maybeSingle();
@@ -172,7 +172,7 @@ router.put('/:id', requireRole('admin'), async (req, res) => {
 });
 
 // ── DELETE /api/payments/:id  (Admin only; needs a written reason) ───────────
-router.delete('/:id', requireRole('admin'), async (req, res) => {
+router.delete('/:id', requirePerm('payments.edit'), async (req, res) => {
   try {
     if (!ID_RE.test(req.params.id)) return res.status(404).json({ error: 'Payment not found.' });
     const rErr = reasonError(req.body && req.body.reason, 'delete a payment');

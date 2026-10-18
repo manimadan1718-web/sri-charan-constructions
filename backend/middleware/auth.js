@@ -2,11 +2,30 @@ require('dotenv').config();
 const jwt = require('jsonwebtoken');
 const supabase = require('../config/supabase');
 const { logActivity } = require('../utils/activity');
+const { effectivePermissions } = require('../utils/permissions');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
+// The permissions column is added by run-in-supabase-5-permissions.sql. Until that has been run the app must keep working
+// exactly as before (everybody gets their role's defaults), so a missing column is detected and remembered for a minute.
+let permissionsColumn = true, columnCheckedAt = 0;
+const isMissingPermissionsColumn = err => !!err && /permissions/i.test(String(err.message || '')) && /(column|schema cache|does not exist)/i.test(String(err.message || ''));
+
+async function loadUserRow(id) {
+  if (!permissionsColumn && Date.now() - columnCheckedAt < 60000) {
+    return supabase.from('users').select('id, name, role, active').eq('id', id).maybeSingle();
+  }
+  const r = await supabase.from('users').select('id, name, role, active, permissions').eq('id', id).maybeSingle();
+  if (r.error && isMissingPermissionsColumn(r.error)) {
+    permissionsColumn = false; columnCheckedAt = Date.now();
+    return supabase.from('users').select('id, name, role, active').eq('id', id).maybeSingle();
+  }
+  permissionsColumn = true;
+  return r;
+}
+
 /**
- * Requires a valid Bearer token. On success, attaches req.user = { id, name, role }.
+ * Requires a valid Bearer token. On success, attaches req.user = { id, name, role, permissions }.
  *
  * The user is re-checked in the database on every request so that
  * deactivating/deleting a user or changing their role takes effect immediately
@@ -27,18 +46,14 @@ async function requireAuth(req, res, next) {
   }
 
   try {
-    const { data: user, error } = await supabase
-      .from('users')
-      .select('id, name, role, active')
-      .eq('id', payload.id)
-      .maybeSingle();
+    const { data: user, error } = await loadUserRow(payload.id);
 
     if (error) throw error;
     if (!user || user.active === false) {
       return res.status(401).json({ error: 'This account is no longer active. Please log in again.' });
     }
 
-    req.user = { id: user.id, name: user.name, role: user.role };
+    req.user = { id: user.id, name: user.name, role: user.role, permissions: effectivePermissions(user.role, user.permissions) };
     next();
   } catch (err) {
     console.error('requireAuth:', err.message);
@@ -65,4 +80,27 @@ function requireRole(...roles) {
   };
 }
 
-module.exports = { requireAuth, requireRole, JWT_SECRET };
+/**
+ * Use AFTER requireAuth. Allows the request when the person has AT LEAST ONE of the listed permissions.
+ * e.g. requirePerm('records.view')  or  requirePerm('records.view', 'logs.view')
+ */
+function requirePerm(...keys) {
+  return async (req, res, next) => {
+    const have = (req.user && req.user.permissions) || [];
+    if (!keys.some(k => have.includes(k))) {
+      await logActivity(req, {
+        category: 'auth', action: 'access_denied',
+        entityLabel: `${req.method} ${String(req.originalUrl || '').split('?')[0]}`.slice(0, 150),
+      });
+      return res.status(403).json({ error: 'You do not have permission to do this.' });
+    }
+    next();
+  };
+}
+
+/** Called once a save to users.permissions has worked, so the app stops assuming the column is missing. */
+const markPermissionsColumnReady = () => { permissionsColumn = true; };
+
+const hasPerm = (req, key) => !!(req.user && req.user.permissions && req.user.permissions.includes(key));
+
+module.exports = { requireAuth, requireRole, requirePerm, hasPerm, markPermissionsColumnReady, JWT_SECRET };

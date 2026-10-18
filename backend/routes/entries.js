@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const supabase = require('../config/supabase');
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireAuth, requirePerm, hasPerm } = require('../middleware/auth');
 const {
   logActivity, cleanReason, reasonError, entryDiff, entrySnapshot, entryLabel,
 } = require('../utils/activity');
@@ -131,9 +131,11 @@ async function withPoints(build) {
 }
 
 // ── GET /api/entries  (Owner + Admin — "Records" & "Summary" reports) ───────
-router.get('/', requireRole('owner', 'admin'), async (req, res) => {
+router.get('/', requirePerm('records.view'), async (req, res) => {
   try {
     const { date, date_from, date_to, vehicle, site, month, vehicle_no, site_name, category, type } = req.query;
+    // order=asc → oldest first (a ledger / report reads best this way); anything else → newest first, as before
+    const oldestFirst = req.query.order === 'asc';
 
     if (category && !['own', 'rental'].includes(category)) return res.status(400).json({ error: 'category must be "own" or "rental".' });
     let monthRange = null;
@@ -157,7 +159,7 @@ router.get('/', requireRole('owner', 'admin'), async (req, res) => {
 
     const build = cols => {
       let query = supabase.from('entries').select(cols)
-        .order('date', { ascending: false }).order('created_at', { ascending: false }).order('id', { ascending: false });
+        .order('date', { ascending: oldestFirst }).order('created_at', { ascending: oldestFirst }).order('id', { ascending: oldestFirst });
       if (date)      query = query.eq('date', date);
       if (date_from) query = query.gte('date', date_from);
       if (date_to)   query = query.lte('date', date_to);
@@ -185,7 +187,7 @@ router.get('/', requireRole('owner', 'admin'), async (req, res) => {
 // ── GET /api/entries/summary-stats  (Owner + Admin) ─────────────────────────
 // ?from=YYYY-MM-DD&to=YYYY-MM-DD (either may be left out), or the older ?month=YYYY-MM.
 // Totals count every entry; the per-vehicle list shows only vehicles that have loads.
-router.get('/summary-stats', requireRole('owner', 'admin'), async (req, res) => {
+router.get('/summary-stats', requirePerm('summary.view'), async (req, res) => {
   try {
     const range = summaryRange(req.query);
     if (range.error) return res.status(400).json({ error: range.error });
@@ -196,7 +198,7 @@ router.get('/summary-stats', requireRole('owner', 'admin'), async (req, res) => 
 });
 
 // ── GET /api/entries/unload-points  (Supervisor + Admin) — names used before, for the type-ahead list ──
-router.get('/unload-points', requireRole('supervisor', 'admin'), async (req, res) => {
+router.get('/unload-points', requirePerm('entry.add'), async (req, res) => {
   try {
     const { data, error } = await supabase.from('load_points').select('point_name, created_at')
       .order('created_at', { ascending: false }).range(0, 1999);
@@ -218,7 +220,7 @@ router.get('/unload-points', requireRole('supervisor', 'admin'), async (req, res
 
 // ── GET /api/entries/vehicle-numbers  (Owner + Admin) — every vehicle number used in an entry ──
 // So the Records filter can also find vehicles that were typed in by hand ("Others"), not only inventory ones.
-router.get('/vehicle-numbers', requireRole('owner', 'admin'), async (req, res) => {
+router.get('/vehicle-numbers', requirePerm('records.view'), async (req, res) => {
   try {
     const { data, error } = await fetchAll(() => supabase.from('entries').select('vehicle_no').order('vehicle_no', { ascending: true }).order('id', { ascending: true }), 50000);
     if (error) throw error;
@@ -234,7 +236,7 @@ router.get('/vehicle-numbers', requireRole('owner', 'admin'), async (req, res) =
 });
 
 // ── POST /api/entries  (Supervisor + Admin — "Data Entry") ──────────────────
-router.post('/', requireRole('supervisor', 'admin'), async (req, res) => {
+router.post('/', requirePerm('entry.add'), async (req, res) => {
   let createdId = null;
   try {
     const parsed = parseEntryBody(req.body);
@@ -296,7 +298,7 @@ router.post('/', requireRole('supervisor', 'admin'), async (req, res) => {
 // ── PUT /api/entries/:id  (Admin only — edit an existing entry) ─────────────
 // Every real change needs a written reason (10+ characters) and is recorded in
 // the activity log together with exactly what changed.
-router.put('/:id', requireRole('admin'), async (req, res) => {
+router.put('/:id', requirePerm('records.edit'), async (req, res) => {
   const { id } = req.params;
   let snapshot = null; // the entry as it was, used to roll back on failure
   let entryChanged = false;
@@ -410,7 +412,7 @@ router.put('/:id', requireRole('admin'), async (req, res) => {
 });
 
 // ── DELETE /api/entries/:id  (Admin only — needs a written reason) ───────────
-router.delete('/:id', requireRole('admin'), async (req, res) => {
+router.delete('/:id', requirePerm('records.delete'), async (req, res) => {
   try {
     const { id } = req.params;
 

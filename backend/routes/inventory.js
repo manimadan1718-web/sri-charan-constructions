@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const supabase = require('../config/supabase');
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireAuth, requirePerm } = require('../middleware/auth');
 const { logActivity, simpleDiff, simpleSnapshot } = require('../utils/activity');
 const { serverError } = require('../utils/http');
 
@@ -37,7 +37,7 @@ function crud({ table, path, label, orderBy, required, fields, uniqueMsg, entity
   });
 
   // POST — Admin only
-  router.post(`/${path}`, requireRole('admin'), async (req, res) => {
+  router.post(`/${path}`, requirePerm('inventory.manage'), async (req, res) => {
     try {
       const row = {};
       fields.forEach(f => { if (req.body[f] !== undefined) row[f] = clean(req.body[f]) || null; });
@@ -59,7 +59,7 @@ function crud({ table, path, label, orderBy, required, fields, uniqueMsg, entity
   });
 
   // PUT — Admin only (edit fields / toggle active)
-  router.put(`/${path}/:id`, requireRole('admin'), async (req, res) => {
+  router.put(`/${path}/:id`, requirePerm('inventory.manage'), async (req, res) => {
     try {
       const updates = {};
       fields.forEach(f => { if (req.body[f] !== undefined) updates[f] = clean(req.body[f]) || null; });
@@ -92,7 +92,7 @@ function crud({ table, path, label, orderBy, required, fields, uniqueMsg, entity
   });
 
   // DELETE — Admin only
-  router.delete(`/${path}/:id`, requireRole('admin'), async (req, res) => {
+  router.delete(`/${path}/:id`, requirePerm('inventory.manage'), async (req, res) => {
     try {
       const { data: before } = await supabase.from(table).select('*').eq('id', req.params.id).maybeSingle();
       const { error } = await supabase.from(table).delete().eq('id', req.params.id);

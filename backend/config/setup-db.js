@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS users (
   pin         TEXT NOT NULL,          -- bcrypt hash (uniqueness is enforced by the API)
   role        TEXT NOT NULL CHECK (role IN ('supervisor','owner','admin')),
   active      BOOLEAN DEFAULT true,
+  permissions JSONB NOT NULL DEFAULT '{}'::jsonb,   -- extras ON / OFF for this person, on top of the role
   created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 

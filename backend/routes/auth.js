@@ -5,6 +5,7 @@ const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 const supabase = require('../config/supabase');
 const { requireAuth, JWT_SECRET } = require('../middleware/auth');
+const { effectivePermissions } = require('../utils/permissions');
 const { matchesPin, isHashed, hashPin } = require('../utils/pin');
 const { logActivity } = require('../utils/activity');
 
@@ -81,7 +82,7 @@ router.post('/login', loginLimiter, async (req, res) => {
     res.json({
       success: true,
       token,
-      user: { id: user.id, name: user.name, role: user.role },
+      user: { id: user.id, name: user.name, role: user.role, permissions: effectivePermissions(user.role, user.permissions) },
     });
   } catch (err) {
     console.error('POST /auth/login:', err.message);

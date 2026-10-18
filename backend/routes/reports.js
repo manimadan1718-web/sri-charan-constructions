@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireAuth, requirePerm, hasPerm } = require('../middleware/auth');
 const { logActivity } = require('../utils/activity');
 const reports = require('../utils/reports');
 const tableReports = require('../utils/tableReports');
@@ -24,7 +24,7 @@ let active = 0;
 // ── POST /api/reports/entries  (Owner + Admin) ───────────────────────────────
 // Body: { format: 'csv' | 'xlsx' | 'pdf', ids: [entry ids, in the order shown on screen], filtersText?: '…' }
 // The report contains exactly the records the person is looking at.
-router.post('/entries', requireRole('owner', 'admin'), async (req, res) => {
+router.post('/entries', requirePerm('records.export'), async (req, res) => {
   const body = req.body || {};
   const fmt = FORMATS[body.format];
   if (!fmt) return res.status(400).json({ error: 'Choose Excel, PDF or CSV.' });
@@ -119,19 +119,19 @@ async function serveTableReport(req, res, { format, filePrefix, category, load }
 }
 
 // ── POST /api/reports/inventory  (Admin) — { type: 'vehicles' | 'sites' | 'operators', format } ──
-router.post('/inventory', requireRole('admin'), (req, res) => {
+router.post('/inventory', requirePerm('inventory.manage'), (req, res) => {
   const { type, format } = req.body || {};
   if (!Object.prototype.hasOwnProperty.call(reportData.INVENTORY, type)) return res.status(400).json({ error: 'Choose Vehicles, Sites or Operators.' });
   return serveTableReport(req, res, { format, filePrefix: type, category: 'inventory', load: () => reportData.inventoryReport(type) });
 });
 
 // ── POST /api/reports/users  (Admin) — { format } — includes deleted users and who/when for every change ──
-router.post('/users', requireRole('admin'), (req, res) => {
+router.post('/users', requirePerm('users.manage'), (req, res) => {
   return serveTableReport(req, res, { format: (req.body || {}).format, filePrefix: 'users', category: 'user', load: () => reportData.usersReport() });
 });
 
 // ── POST /api/reports/summary  (Owner + Admin) — { format, from?, to? } — the Summary screen as Excel / PDF ──
-router.post('/summary', requireRole('owner', 'admin'), (req, res) => {
+router.post('/summary', requirePerm('summary.view'), (req, res) => {
   const body = req.body || {};
   const range = summaryRange(body);
   if (range.error) return res.status(400).json({ error: range.error });
@@ -139,7 +139,7 @@ router.post('/summary', requireRole('owner', 'admin'), (req, res) => {
 });
 
 // ── POST /api/reports/logs  (Owner + Admin) — { format, ids?: [...] | filters?: {...} } ──
-router.post('/logs', requireRole('owner', 'admin'), (req, res) => {
+router.post('/logs', requirePerm('logs.view'), (req, res) => {
   const body = req.body || {};
   let ids = null, filters = {};
   if (Array.isArray(body.ids)) {

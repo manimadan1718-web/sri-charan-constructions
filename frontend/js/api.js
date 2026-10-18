@@ -314,6 +314,10 @@ const Documents = {
   viewLink(id) {
     return apiFetch(`/documents/${encodeURIComponent(id)}/view-link`);
   },
+  // The same kind of link, for the print view (recorded in the Activity Log as a print).
+  printLink(id) {
+    return apiFetch(`/documents/${encodeURIComponent(id)}/view-link?purpose=print`);
+  },
   remove(id) {
     return apiFetch(`/documents/${encodeURIComponent(id)}`, { method: 'DELETE' });
   },
@@ -395,5 +399,19 @@ const Purchases = {
   // mode: 'view' (a 2-minute link that shows the file in a new tab) or 'download'
   fileLink(id, mode = 'view') {
     return apiFetch(`/purchases/${encodeURIComponent(id)}/file-link?mode=${mode === 'download' ? 'download' : 'view'}`);
+  },
+};
+
+// ── Permissions (Admin) ────────────────────────────────────────────────────────
+const Permissions = {
+  get() {
+    return apiFetch('/permissions');
+  },
+  // permissions: EVERY permission the person should have after the change; reason: why (10+ characters)
+  save(id, permissions, reason) {
+    return apiFetch(`/permissions/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify({ permissions, reason }) });
+  },
+  reset(id, reason) {
+    return apiFetch(`/permissions/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify({ reset: true, reason }) });
   },
 };

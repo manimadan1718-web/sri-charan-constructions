@@ -150,7 +150,9 @@ function buildCsv(rows) {
     r.date, r.site, r.category, r.vehicle, r.start, r.hadStartPhoto ? 'Yes' : 'No', r.close, r.hadClosePhoto ? 'Yes' : 'No',
     r.hours, r.diesel, r.hadDieselPhoto ? 'Yes' : 'No', r.loads, r.unload, r.operator, r.remarks,
   ]);
-  const csv = [headers, ...lines].map(l => l.map(csvEscape).join(',')).join('\n');
+  // The same closing line the Excel and PDF reports have: the totals under Vehicle No., Diesel and Loads.
+  const total = rows.length ? [['', '', '', 'Total', '', '', '', '', '', Number(rows.reduce((a, r) => a + r.diesel, 0).toFixed(2)), '', rows.reduce((a, r) => a + r.loads, 0), '', '', '']] : [];
+  const csv = [headers, ...lines, ...total].map(l => l.map(csvEscape).join(',')).join('\n');
   return Buffer.from('\uFEFF' + csv, 'utf8');   // BOM so Excel reads accents/₹ correctly
 }
 

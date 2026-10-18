@@ -1,16 +1,35 @@
-/* ── Role → Tab access map ──────────────────────────────────────────────────── */
-const ROLE_TABS = {
-  entry:     ['supervisor', 'admin'],
-  records:   ['owner', 'admin'],
-  purchases: ['supervisor', 'owner', 'admin'],
-  summary:   ['owner', 'admin'],
-  documents: ['owner', 'admin'],
-  payments:  ['supervisor', 'owner', 'admin'],
-  inventory: ['admin'],
-  users:     ['admin'],
-  logs:      ['owner', 'admin'],
+/* ── Permissions → Tabs ─────────────────────────────────────────────────────── */
+// What a person may do is decided by the SERVER (their role, plus anything the Admin switched on or off for them) and
+// sent when they sign in. A tab is shown when the person has ANY of the permissions listed for it.
+const TAB_PERMS = {
+  entry:       ['entry.add'],
+  records:     ['records.view'],
+  purchases:   ['purchases.add', 'purchases.view'],
+  summary:     ['summary.view'],
+  documents:   ['documents.view'],
+  payments:    ['payments.add', 'payments.view'],
+  inventory:   ['inventory.manage'],
+  users:       ['users.manage'],
+  logs:        ['logs.view'],
+  permissions: ['permissions.manage'],
 };
-const TAB_ORDER = ['entry', 'records', 'purchases', 'summary', 'documents', 'payments', 'inventory', 'users', 'logs'];
+const TAB_ORDER = ['entry', 'records', 'purchases', 'summary', 'documents', 'payments', 'inventory', 'users', 'logs', 'permissions'];
+const ALL_PERMS = ['entry.add', 'records.view', 'records.export', 'records.edit', 'records.delete', 'purchases.add', 'purchases.view', 'purchases.edit', 'summary.view',
+  'documents.view', 'documents.print', 'documents.upload', 'documents.delete', 'payments.add', 'payments.view', 'payments.edit', 'inventory.manage', 'logs.view', 'logs.delete', 'users.manage', 'permissions.manage'];
+// Only used when the server has not sent a list (a session that started before permissions existed): the role's defaults.
+const ROLE_FALLBACK = {
+  admin: ALL_PERMS,
+  owner: ['records.view', 'records.export', 'purchases.view', 'summary.view', 'documents.view', 'documents.print', 'documents.upload', 'payments.view', 'logs.view'],
+  supervisor: ['entry.add', 'purchases.add', 'payments.add'],
+};
+function myPerms() {
+  const u = Auth.currentUser();
+  if (!u) return [];
+  return Array.isArray(u.permissions) ? u.permissions : (ROLE_FALLBACK[u.role] || []);
+}
+const can = key => myPerms().includes(key);
+const canTab = name => !!TAB_PERMS[name] && TAB_PERMS[name].some(can);
+const visibleTabs = () => TAB_ORDER.filter(canTab);
 
 /* ── Boot ────────────────────────────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', async () => {
@@ -32,7 +51,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const user = Auth.currentUser();
   if (!user) { Auth.logout(); return; }
 
-  applyRoleUI(user.role);
+  applyPermUI();
   initMobileMenu(user);
   initBrandLink();
   initTableLabels();
@@ -55,19 +74,22 @@ document.addEventListener('DOMContentLoaded', async () => {
   initLoadPoints();
   loadUnloadPoints();
 
-  const firstTab = TAB_ORDER.find(t => ROLE_TABS[t].includes(user.role)) || 'entry';
-  switchTab(firstTab);
+  const firstTab = visibleTabs()[0];
+  if (firstTab) switchTab(firstTab);
+  else document.getElementById('section-noaccess').classList.add('active');       // nothing has been switched on for this person
 });
 
 /* ── Role-based UI ───────────────────────────────────────────────────────────── */
 function capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
 
-function applyRoleUI(role) {
-  document.querySelectorAll('.tab[data-roles]').forEach(tab => {
-    const roles = tab.dataset.roles.split(',');
-    tab.style.display = roles.includes(role) ? '' : 'none';
+function applyPermUI() {
+  document.querySelectorAll('.tab[data-perms]').forEach(tab => {
+    tab.style.display = tab.dataset.perms.split(',').some(can) ? '' : 'none';
   });
-  document.body.classList.toggle('is-admin', role === 'admin');
+  const me = Auth.currentUser();
+  document.body.classList.toggle('is-admin', !!me && me.role === 'admin');
+  // one class per permission, so the stylesheet can hide what a person may not use  (e.g. body.can-records-edit)
+  ALL_PERMS.forEach(k => document.body.classList.toggle('can-' + k.replace(/\./g, '-'), can(k)));
 }
 
 /* ── Helpers ─────────────────────────────────────────────────────────────────── */
@@ -129,7 +151,7 @@ async function loadDropdownData() {
     populateFilterSelect('filter-vehicle', vehicles, 'vehicle_no', 'All vehicles');
     // Vehicles that were typed in by hand ("Others") can be found in the Records filter as well.
     const me = Auth.currentUser();
-    if (me && (me.role === 'owner' || me.role === 'admin')) {
+    if (can('records.view')) {
       Entries.vehicleNumbers().then(r => {
         ((r && r.data) || []).forEach(v => extraFilterValues['filter-vehicle'].add(v));
         renderFilterSelect('filter-vehicle');
@@ -398,12 +420,12 @@ function showToast(msg, isError = false) {
 }
 
 /* ── Tab ─────────────────────────────────────────────────────────────────────── */
-const TAB_LABELS = { entry: 'Data Entry', records: 'Records', purchases: 'Purchases', summary: 'Summary', documents: 'Documents', payments: 'Payments', inventory: 'Inventory', users: 'Users', logs: 'Activity Logs' };
+const TAB_LABELS = { entry: 'Data Entry', records: 'Records', purchases: 'Purchases', summary: 'Summary', documents: 'Documents', payments: 'Payments', inventory: 'Inventory', users: 'Users', logs: 'Activity Logs', permissions: 'Permissions' };
 
 function switchTab(name) {
   // Only open a screen the signed-in role is meant to have (the server enforces this too; this keeps the screen honest).
   const me = Auth.currentUser();
-  if (!ROLE_TABS[name] || !me || !ROLE_TABS[name].includes(me.role)) return;
+  if (!me || !canTab(name)) return;
 
   document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
   const tabEl = document.getElementById('tab-' + name);
@@ -426,6 +448,7 @@ function switchTab(name) {
   if (name === 'documents') loadDocuments();
   if (name === 'payments')  initPayments();
   if (name === 'purchases') initPurchases();
+  if (name === 'permissions') initPermissions();
   if (name === 'inventory') loadInventory();
   if (name === 'users')     loadUsers();
   if (name === 'logs')      loadLogs(true);
@@ -511,7 +534,7 @@ async function loadRecords() {
   if (fCat)  filters.category   = fCat;
 
   try {
-    const res = await Entries.getAll(filters);
+    const res = await Entries.getAll({ ...filters, order: document.getElementById('records-order').value });     // oldest first unless asked otherwise
     if (seq !== recordsRequestSeq) return; // a newer request superseded this one
     currentRecords = res.data || [];
     // With no filter on, this is the complete list — learn any vehicles / sites that aren't in Inventory.
@@ -521,6 +544,7 @@ async function loadRecords() {
     document.getElementById('records-count').textContent =
       `${n} record${n === 1 ? '' : 's'}${Object.keys(filters).length ? ' match your filters' : ''}`;
     renderRecordsTable(currentRecords);
+    renderRecordsTotals(currentRecords, fFrom, fTo);
     loadHistoryCounts(seq);
   } catch (e) {
     if (seq !== recordsRequestSeq) return;
@@ -533,11 +557,11 @@ async function loadRecords() {
 
 function renderRecordsTable(entries) {
   const tbody   = document.getElementById('records-body');
-  const isAdmin = document.body.classList.contains('is-admin');
+  const canEdit = can('records.edit'), canDelete = can('records.delete');
   tbody.innerHTML = '';
 
   if (!entries.length) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="${isAdmin ? 15 : 13}">No records found.</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="${13 + (canEdit ? 1 : 0) + (canDelete ? 1 : 0)}">No records found.</td></tr>`;
     return;
   }
 
@@ -557,10 +581,24 @@ function renderRecordsTable(entries) {
       <td>${esc(e.operator) || '–'}</td>
       <td style="max-width:200px;white-space:normal;">${esc(e.remarks) || '–'}</td>
       <td class="hist-col"><button class="btn btn-outline btn-sm hist-btn" data-id="${esc(e.id)}" onclick="openHistory(this.dataset.id)" title="View history">${CLOCK_SVG}<span class="hist-count"></span></button></td>
-      ${isAdmin ? `<td class="edit-col"><button class="btn btn-outline btn-sm" onclick="openEditModal('${esc(e.id)}')">✏️</button></td>
-      <td class="del-col"><button class="btn btn-danger btn-sm" onclick="deleteEntry('${esc(e.id)}')">🗑</button></td>` : ''}`;
+      ${canEdit ? `<td class="edit-col"><button class="btn btn-outline btn-sm" onclick="openEditModal('${esc(e.id)}')" aria-label="Edit this entry">✏️</button></td>` : ''}
+      ${canDelete ? `<td class="del-col"><button class="btn btn-danger btn-sm" onclick="deleteEntry('${esc(e.id)}')" aria-label="Delete this entry">🗑</button></td>` : ''}`;
     tbody.appendChild(tr);
   });
+}
+
+/** The totals under the Records table (and in print): what is listed above, added up. */
+function renderRecordsTotals(entries, from, to) {
+  const box = document.getElementById('records-totals');
+  if (!entries.length) { box.hidden = true; return; }
+  const diesel = entries.reduce((a, e) => a + (Number(e.diesel) || 0), 0);
+  const loads = entries.reduce((a, e) => a + (parseInt(e.loads, 10) || 0), 0);
+  const dates = entries.map(e => e.date).filter(Boolean).sort();
+  document.getElementById('rt-count').textContent = String(entries.length);
+  document.getElementById('rt-range').textContent = dates.length ? (dates[0] === dates[dates.length - 1] ? fmtDate(dates[0]) : `${fmtDate(dates[0])} – ${fmtDate(dates[dates.length - 1])}`) : '';
+  document.getElementById('rt-diesel').textContent = diesel.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  document.getElementById('rt-loads').textContent = loads.toLocaleString('en-IN');
+  box.hidden = false;
 }
 
 function clearFilters() {
@@ -1502,6 +1540,8 @@ const SPECIAL_ACTIONS = {
   document_downloaded: { label: 'Document downloaded', cls: 'pill-sky'  },
   payments_added:      { label: 'Payments added',      cls: 'pill-sky'  },
   document_viewed:     { label: 'Document viewed',     cls: 'pill-sky'  },
+  document_printed:    { label: 'Document printed',    cls: 'pill-sky'  },
+  permissions_changed: { label: 'Permissions changed', cls: 'pill-orange' },
   purchase_created:    { label: 'Purchase added',      cls: 'pill-green' },
   purchase_updated:    { label: 'Purchase updated',    cls: 'pill-orange' },
   purchase_deleted:    { label: 'Purchase deleted',    cls: 'pill-red'  },
@@ -1621,7 +1661,7 @@ let logsShown = 0, logsTotal = 0, logsSeq = 0, logsDebounce = null;
 let logSel = new Set();            // ids ticked in the list
 let logAllMatching = false;        // "select all N matching the filters"
 const PROTECTED_LOG_ACTION = 'logs_deleted';
-const isAdminUser = () => { const u = Auth.currentUser(); return !!u && u.role === 'admin'; };
+const isAdminUser = () => can('logs.delete');      // (the name is historical) — only people who may delete log entries see tick-boxes and delete buttons
 
 function loadLogsDebounced() {
   clearTimeout(logsDebounce);
@@ -2114,7 +2154,7 @@ function pointsMini(e) {
 
 async function loadUnloadPoints() {
   const u = Auth.currentUser();
-  if (!u || !['supervisor', 'admin'].includes(u.role)) return;
+  if (!u || !can('entry.add')) return;
   try {
     const res = await Entries.unloadPoints();
     document.getElementById('unload-points-list').innerHTML = (res.data || []).map(n => `<option value="${esc(n)}"></option>`).join('');
@@ -2295,9 +2335,9 @@ function renderDocuments() {
       <td>${fmtBadge(d.format)}</td>
       <td class="doc-size">${esc(humanSize(d.size_bytes))}</td>
       <td class="log-time">${fmtDateTime(d.created_at)}<br>${esc(d.uploaded_by_name || '')}</td>
-      <td><div class="open-btns">${d.viewable ? `<button type="button" class="btn btn-outline btn-sm" onclick="viewDocument('${esc(d.id)}')" aria-label="View ${esc(d.name)}">👁 View</button>` : ''}<button type="button" class="btn btn-green btn-sm" onclick="downloadDocument('${esc(d.id)}')" aria-label="Download ${esc(d.name)}">⬇ Download</button></div></td>
-      <td><button type="button" class="btn btn-outline btn-sm" onclick="openDocEdit('${esc(d.id)}')" aria-label="Edit ${esc(d.name)}">✏️ Edit</button></td>
-      <td class="admin-only-col"><button type="button" class="btn btn-danger btn-sm" onclick="deleteDocument('${esc(d.id)}')" aria-label="Delete ${esc(d.name)}">🗑</button></td>`;
+      <td><div class="open-btns">${d.viewable ? `<button type="button" class="btn btn-outline btn-sm" onclick="viewDocument('${esc(d.id)}')" aria-label="View ${esc(d.name)}">👁 View</button>` : ''}${can('documents.print') ? `<button type="button" class="btn btn-outline btn-sm" onclick="printDocument('${esc(d.id)}')" aria-label="Print ${esc(d.name)}">🖨 Print</button>` : ''}<button type="button" class="btn btn-green btn-sm" onclick="downloadDocument('${esc(d.id)}')" aria-label="Download ${esc(d.name)}">⬇ Download</button></div></td>
+      ${can('documents.upload') ? `<td><button type="button" class="btn btn-outline btn-sm" onclick="openDocEdit('${esc(d.id)}')" aria-label="Edit ${esc(d.name)}">✏️ Edit</button></td>` : ''}
+      ${can('documents.delete') ? `<td><button type="button" class="btn btn-danger btn-sm" onclick="deleteDocument('${esc(d.id)}')" aria-label="Delete ${esc(d.name)}">🗑</button></td>` : ''}`;
     body.appendChild(tr);
   });
 }
@@ -2383,6 +2423,28 @@ async function openInNewTab(getLink) {
 
 function viewDocument(id) { return openInNewTab(() => Documents.viewLink(id)); }
 
+/** Opens the print view in a new tab: the document, ready to print, with the browser's print window (paper size, orientation, scale). */
+async function printDocument(id) {
+  const d = DOC.list.find(x => String(x.id) === String(id));
+  if (d && !d.viewable) {
+    showToast(`${d.format || 'This kind of'} files cannot be printed from the browser. Download it and print it from its own program (for example Word or Excel).`, true);
+    return;
+  }
+  const w = window.open('about:blank', '_blank');                  // opened inside the tap, so pop-up blockers allow it
+  if (w) { try { w.opener = null; w.document.body.textContent = 'Preparing the print view…'; } catch { /* a blank tab is fine */ } }
+  try {
+    const r = await Documents.printLink(id);
+    const token = new URL(r.url, location.origin).searchParams.get('t');
+    const ext = ((d && d.original_filename) || '').split('.').pop().toLowerCase();
+    const page = `/print.html?t=${encodeURIComponent(token)}&n=${encodeURIComponent(d ? d.name : 'Document')}&e=${encodeURIComponent(ext)}`;
+    if (w) w.location.href = page;
+    else showToast('Your browser blocked the new tab. Allow pop-ups for this site, then press Print again.', true);
+  } catch (e) {
+    if (w) w.close();
+    showToast('❌ ' + (e.message || 'Could not open the print view.'), true);
+  }
+}
+
 async function downloadDocument(id) {
   try {
     const r = await Documents.url(id);
@@ -2455,9 +2517,8 @@ const PAY = { tab: 'weekly', built: false, lists: { weekly: [], monthly: [] }, m
 const PAY_MAX_DAYS = { weekly: 7, monthly: 31 };
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const inr = n => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const payRole = () => (Auth.currentUser() || {}).role;
-const payCanAdd  = () => ['supervisor', 'admin'].includes(payRole());
-const payCanView = () => ['owner', 'admin'].includes(payRole());
+const payCanAdd  = () => can('payments.add');
+const payCanView = () => can('payments.view');
 
 /** Monday–Sunday week that contains a date (local calendar maths, no time-zone surprises). */
 function weekRange(dateStr) {
@@ -2491,7 +2552,7 @@ function payPanelHtml(t) {
         <button type="button" class="btn btn-outline" onclick="resetPayForm('${t}')">✕ Clear</button>
       </div>
     </div>`;
-  const mine = payRole() !== 'supervisor' ? '' : `
+  const mine = !(payCanAdd() && !payCanView()) ? '' : `          <!-- only for people who can add but not see everybody's -->
     <div class="card">
       <div class="card-header"><div class="card-title"><span class="ic">${IC}</span> Recently saved by you</div></div>
       <div class="table-wrap"><table>
@@ -2499,7 +2560,7 @@ function payPanelHtml(t) {
         <tbody id="pay-${t}-mine"></tbody>
       </table></div>
     </div>`;
-  const admin = payRole() === 'admin';
+  const admin = can('payments.edit');
   const list = !payCanView() ? '' : `
     <div class="card">
       <div class="card-header"><div class="card-title"><span class="ic">${IC}</span> Saved ${week ? 'weekly' : 'monthly'} payments</div><span class="doc-count" id="pay-${t}-count"></span></div>
@@ -2712,7 +2773,7 @@ function renderPayList(t, rebuildPeriods = false) {
   }
   const q = document.getElementById(`pay-${t}-search`).value.trim().toLowerCase();
   const rows = all.filter(r => (!sel.value || r.period_start === sel.value) && (!q || r.employee_name.toLowerCase().includes(q)));
-  const admin = payRole() === 'admin';
+  const admin = can('payments.edit');
   body.innerHTML = rows.length ? rows.map(r => `
     <tr>
       <td>${esc(payPeriodLabel(t, r.period_start, r.period_end))}</td>
@@ -2807,7 +2868,7 @@ function initMobileMenu(user) {
 
   document.getElementById('mm-user').innerHTML = `${esc(user.name)}<small>${esc(capitalize(user.role))}</small>`;
   nav.innerHTML = '';
-  TAB_ORDER.filter(t => ROLE_TABS[t].includes(user.role)).forEach(t => {
+  visibleTabs().forEach(t => {
     const item = document.createElement('button');
     item.type = 'button';
     item.className = 'mm-item';
@@ -2865,7 +2926,7 @@ function initBrandLink() {
     if (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.button === 1) return;      // let "open in new tab" work
     ev.preventDefault();
     const me = Auth.currentUser();
-    const home = TAB_ORDER.find(t => me && ROLE_TABS[t].includes(me.role)) || 'entry';
+    const home = visibleTabs()[0] || 'entry';
     closeMobileMenu(false);
     switchTab(home);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -2992,10 +3053,10 @@ function checkPu(v) {
 function initPurchases() {
   const me = Auth.currentUser();
   if (!me) return;
-  const canAdd = me.role === 'supervisor' || me.role === 'admin';
-  const canList = me.role === 'owner' || me.role === 'admin';
+  const canAdd = can('purchases.add');
+  const canList = can('purchases.view');
   document.getElementById('pu-form-card').hidden = !canAdd;
-  document.getElementById('pu-mine-card').hidden = me.role !== 'supervisor';
+  document.getElementById('pu-mine-card').hidden = !(canAdd && !canList);          // "recently saved by you" for people who cannot see the full list
   document.getElementById('pu-list-card').hidden = !canList;
   if (!PU.inited) {
     PU.inited = true;
@@ -3003,7 +3064,7 @@ function initPurchases() {
     ['pu', 'pue'].forEach(p => ['load', 'empty'].forEach(k => document.getElementById(`${p}-${k}`).addEventListener('input', () => updatePuNet(p))));
   }
   if (canAdd) loadPuSuggestions();
-  if (me.role === 'supervisor') loadPuMine();
+  if (canAdd && !canList) loadPuMine();
   if (canList) loadPuList();
 }
 
@@ -3091,9 +3152,7 @@ async function savePurchase() {
     showToast(`✅ Purchase saved — net weight ${puKg(r.data.net_weight)}.`);
     resetPuForm(true);
     loadPuSuggestions();
-    const me = Auth.currentUser();
-    if (me.role === 'supervisor') loadPuMine();
-    if (me.role === 'admin') loadPuList();
+    if (can('purchases.view')) loadPuList(); else loadPuMine();
   } catch (e) {
     err.textContent = e.message || 'Could not save the purchase.';        // the typed values and the attached file stay, so it can be tried again
   } finally {
@@ -3119,7 +3178,7 @@ function puRowHtml(r, full) {
     <td class="num"><strong>${esc(puNum(r.net_weight))}</strong></td>
     <td>${puFileCell(r)}</td>
     ${full ? `<td class="log-time">${esc(r.created_by_name || '')}<br>${esc(fmtDateTime(r.created_at))}</td>
-    <td class="admin-only-col"><div class="open-btns"><button type="button" class="btn btn-outline btn-sm" onclick="openPuEdit('${esc(r.id)}')" aria-label="Edit the purchase from ${esc(r.supplier)}">✏️ Edit</button><button type="button" class="btn btn-danger btn-sm" onclick="deletePurchase('${esc(r.id)}')" aria-label="Delete the purchase from ${esc(r.supplier)}">🗑</button></div></td>` : ''}`;
+    ${can('purchases.edit') ? `<td><div class="open-btns"><button type="button" class="btn btn-outline btn-sm" onclick="openPuEdit('${esc(r.id)}')" aria-label="Edit the purchase from ${esc(r.supplier)}">✏️ Edit</button><button type="button" class="btn btn-danger btn-sm" onclick="deletePurchase('${esc(r.id)}')" aria-label="Delete the purchase from ${esc(r.supplier)}">🗑</button></div></td>` : ''}` : ''}`;
 }
 
 async function loadPuMine() {
@@ -3152,7 +3211,7 @@ async function loadPuList() {
   document.getElementById('pu-count').textContent = r.total_count ? `${r.total_count} purchase${r.total_count === 1 ? '' : 's'}` : '';
   body.innerHTML = '';
   const filtered = from || to || document.getElementById('pu-filter-site').value || document.getElementById('pu-filter-q').value.trim();
-  if (!PU.list.length) body.innerHTML = `<tr class="empty-row"><td colspan="11">${filtered ? 'No purchases match these filters.' : 'No purchases yet.'}</td></tr>`;
+  if (!PU.list.length) body.innerHTML = `<tr class="empty-row"><td colspan="${10 + (can('purchases.edit') ? 1 : 0)}">${filtered ? 'No purchases match these filters.' : 'No purchases yet.'}</td></tr>`;
   PU.list.forEach(x => { const tr = document.createElement('tr'); tr.innerHTML = puRowHtml(x, true); body.appendChild(tr); });
   document.getElementById('pu-footer').innerHTML = r.total_count
     ? `<strong>Net total: ${esc(puKg(r.net_total))}</strong> (${esc(puTonnes(r.net_total))}) across ${r.total_count} purchase${r.total_count === 1 ? '' : 's'}${r.truncated ? ` — showing the newest ${PU.list.length}; narrow the dates to see the rest.` : ''}`
@@ -3284,4 +3343,163 @@ async function deletePurchase(id) {
   if (!reason) return;
   try { await Purchases.remove(row.id, reason); showToast('Purchase deleted.'); loadPuList(); }
   catch (e) { showToast('❌ ' + (e.message || 'Delete failed.'), true); }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   PERMISSIONS (Admin) — choose what each person can see and do
+   ═══════════════════════════════════════════════════════════════════════════════ */
+const PERM = { data: null, id: null, wanted: new Set(), busy: false };
+
+async function initPermissions() { await loadPermissions(); }
+
+async function loadPermissions() {
+  try { PERM.data = await Permissions.get(); }
+  catch (e) { showToast('❌ ' + (e.message || 'Could not load the permissions.'), true); return; }
+  document.getElementById('perm-setup').hidden = PERM.data.column_ready !== false;
+  renderPermPeople();
+  const keep = PERM.id && permPerson(PERM.id);
+  if (keep) selectPermPerson(PERM.id); else { PERM.id = null; document.getElementById('perm-editor').innerHTML = '<p class="perm-empty">Choose a person on the left to see and change what they can do.</p>'; }
+}
+
+const permPerson = id => (PERM.data ? PERM.data.users : []).find(u => String(u.id) === String(id));
+const permCatalog = key => PERM.data.catalog.find(c => c.key === key);
+const permDefaults = role => PERM.data.role_defaults[role] || [];
+
+function renderPermPeople() {
+  const box = document.getElementById('perm-people');
+  box.innerHTML = PERM.data.users.map(u => {
+    const tags = [
+      u.active ? '' : '<span class="perm-tag perm-tag-gray">Inactive</span>',
+      u.role === 'admin' ? '<span class="perm-tag perm-tag-gray">Everything</span>' : '',
+      u.extra && u.extra.length ? `<span class="perm-tag perm-tag-extra">+${u.extra.length} extra</span>` : '',
+      u.removed && u.removed.length ? `<span class="perm-tag perm-tag-removed">−${u.removed.length} removed</span>` : '',
+    ].join('');
+    return `<button type="button" class="perm-person${String(u.id) === String(PERM.id) ? ' active' : ''}" role="option" aria-selected="${String(u.id) === String(PERM.id)}" data-id="${esc(u.id)}" onclick="selectPermPerson('${esc(u.id)}')">
+      <span class="perm-person-name">${esc(u.name)}</span>
+      <span class="perm-person-meta"><span class="pill ${ROLE_PILL[u.role] || 'pill-gray'}">${esc(capitalize(u.role))}</span>${tags}</span>
+    </button>`;
+  }).join('') || '<p class="perm-empty">No people yet.</p>';
+}
+
+function selectPermPerson(id) {
+  const u = permPerson(id);
+  if (!u) return;
+  PERM.id = u.id;
+  PERM.wanted = new Set(u.effective);
+  renderPermPeople();
+  renderPermEditor();
+}
+
+/** What the person would see if the choices on screen were saved. */
+const permTabsPreview = () => TAB_ORDER.filter(t => TAB_PERMS[t].some(k => PERM.wanted.has(k))).map(t => TAB_LABELS[t]);
+
+function permChanges() {
+  const u = permPerson(PERM.id), now = new Set(u.effective), out = [];
+  PERM.data.catalog.forEach(c => {
+    if (now.has(c.key) !== PERM.wanted.has(c.key)) out.push({ field: `${c.group} › ${c.label}`, from: now.has(c.key) ? 'On' : 'Off', to: PERM.wanted.has(c.key) ? 'On' : 'Off' });
+  });
+  return out;
+}
+
+function renderPermEditor() {
+  const u = permPerson(PERM.id), box = document.getElementById('perm-editor');
+  if (!u) return;
+  if (u.role === 'admin') {
+    box.innerHTML = `<h3 class="perm-editor-title">${esc(u.name)} <span class="pill ${ROLE_PILL.admin}">Admin</span></h3>
+      <p class="perm-empty">An Admin always has every permission, so there is nothing to switch on or off here.</p>`;
+    return;
+  }
+  const defaults = new Set(permDefaults(u.role));
+  const groups = PERM.data.groups.map(g => {
+    const rows = PERM.data.catalog.filter(c => c.group === g).map(c => {
+      const on = PERM.wanted.has(c.key);
+      const locked = c.admin_only;
+      const tag = locked ? '<span class="perm-tag perm-tag-gray">Admins only</span>'
+        : on && !defaults.has(c.key) ? '<span class="perm-tag perm-tag-extra">Extra</span>'
+        : !on && defaults.has(c.key) ? '<span class="perm-tag perm-tag-removed">Removed</span>' : '';
+      return `<label class="perm-row${locked ? ' locked' : ''}">
+        <input type="checkbox" data-key="${esc(c.key)}" ${on ? 'checked' : ''} ${locked ? 'disabled' : ''} onchange="onPermToggle(this)">
+        <span class="perm-text"><strong>${esc(c.label)}</strong><small>${esc(c.desc)}${c.requires ? ` Needs “${esc(permCatalog(c.requires).label)}”.` : ''}</small></span>
+        ${tag}
+      </label>`;
+    }).join('');
+    return `<fieldset class="perm-group"><legend>${esc(g)}</legend>${rows}</fieldset>`;
+  }).join('');
+  const changes = permChanges();
+  box.innerHTML = `
+    <div class="perm-editor-head">
+      <h3 class="perm-editor-title">${esc(u.name)} <span class="pill ${ROLE_PILL[u.role] || 'pill-gray'}">${esc(capitalize(u.role))}</span>${u.active ? '' : ' <span class="perm-tag perm-tag-gray">Inactive</span>'}</h3>
+      <p class="perm-preview" id="perm-preview"></p>
+    </div>
+    ${groups}
+    <div class="form-error" id="perm-error" role="alert"></div>
+    <div class="btn-group perm-actions">
+      <button type="button" class="btn btn-primary" id="perm-save" onclick="savePermissions()" ${changes.length ? '' : 'disabled'}>💾 Save changes</button>
+      <button type="button" class="btn btn-outline" id="perm-discard" onclick="selectPermPerson('${esc(u.id)}')" ${changes.length ? '' : 'disabled'}>Discard</button>
+      <button type="button" class="btn btn-outline" id="perm-reset" onclick="resetPermissions()">↺ Back to ${esc(capitalize(u.role))} defaults</button>
+    </div>`;
+  updatePermPreview();
+}
+
+function updatePermPreview() {
+  const el = document.getElementById('perm-preview');
+  if (!el) return;
+  const tabs = permTabsPreview();
+  el.innerHTML = tabs.length ? `They will see these tabs: <strong>${esc(tabs.join(' · '))}</strong>` : '<strong>They will see no tabs at all</strong> — they would just be told to ask an Admin.';
+}
+
+/** Ticking a feature also ticks what it needs; unticking one also unticks what needs it. */
+function onPermToggle(input) {
+  const key = input.dataset.key, on = input.checked, notes = [];
+  if (on) {
+    let req = permCatalog(key).requires;
+    while (req && !PERM.wanted.has(req)) { PERM.wanted.add(req); notes.push(permCatalog(req).label); req = permCatalog(req).requires; }
+    PERM.wanted.add(key);
+  } else {
+    const drop = k => PERM.data.catalog.filter(c => c.requires === k).forEach(c => { if (PERM.wanted.delete(c.key)) { notes.push(c.label); drop(c.key); } });
+    PERM.wanted.delete(key); drop(key);
+  }
+  const u = permPerson(PERM.id);
+  renderPermEditor();
+  const e = document.getElementById('perm-error');
+  if (notes.length && e) e.textContent = on ? `Also switched on: ${notes.join(', ')} (needed for this).` : `Also switched off: ${notes.join(', ')} (they depend on it).`;
+  const el = document.querySelector(`#perm-editor input[data-key="${key}"]`);
+  if (el) el.focus();
+}
+
+async function savePermissions() {
+  const u = permPerson(PERM.id);
+  if (!u || PERM.busy) return;
+  const changes = permChanges();
+  if (!changes.length) { showToast('No changes were made.'); return; }
+  const reason = await askReason({ title: 'Reason for Changes', intro: `Please explain why <strong>${esc(u.name)}</strong>'s permissions are being changed. It is saved in the Activity Log.`, confirmLabel: 'Confirm & Save', changes });
+  if (!reason) return;
+  await sendPermissions(u, () => Permissions.save(u.id, [...PERM.wanted], reason), `✅ Permissions saved for ${u.name}.`);
+}
+
+async function resetPermissions() {
+  const u = permPerson(PERM.id);
+  if (!u || PERM.busy) return;
+  const defaults = new Set(permDefaults(u.role)), now = new Set(u.effective), changes = [];
+  PERM.data.catalog.forEach(c => { if (defaults.has(c.key) !== now.has(c.key)) changes.push({ field: `${c.group} › ${c.label}`, from: now.has(c.key) ? 'On' : 'Off', to: defaults.has(c.key) ? 'On' : 'Off' }); });
+  if (!changes.length) { showToast(`${u.name} already has exactly the ${capitalize(u.role)} defaults.`); return; }
+  const reason = await askReason({ title: `Back to ${capitalize(u.role)} defaults`, intro: `Please explain why <strong>${esc(u.name)}</strong> is being put back to the ${esc(capitalize(u.role))} defaults. It is saved in the Activity Log.`, confirmLabel: 'Confirm & Reset', changes });
+  if (!reason) return;
+  await sendPermissions(u, () => Permissions.reset(u.id, reason), `✅ ${u.name} is back to the ${capitalize(u.role)} defaults.`);
+}
+
+async function sendPermissions(u, call, okMessage) {
+  PERM.busy = true;
+  const err = document.getElementById('perm-error');
+  try {
+    await call();
+    showToast(okMessage);
+    await loadPermissions();
+  } catch (e) {
+    if (err) err.textContent = e.message || 'Could not save the permissions.';
+    else showToast('❌ ' + (e.message || 'Could not save the permissions.'), true);
+  } finally {
+    PERM.busy = false;
+  }
 }

@@ -2,7 +2,7 @@ const express = require('express');
 const rateLimit = require('express-rate-limit');
 const router = express.Router();
 const supabase = require('../config/supabase');
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireAuth, requirePerm, hasPerm } = require('../middleware/auth');
 const { logActivity, cleanReason, reasonError, fmtDateDMY } = require('../utils/activity');
 const { serverError } = require('../utils/http');
 const { fetchAll } = require('../utils/db');
@@ -41,7 +41,7 @@ function sendError(res, err, where) {
 const termOf = v => (typeof v === 'string' ? v.replace(/[,()%*\\"]/g, ' ').trim().slice(0, 60) : '');
 
 // ── GET /api/purchases?from=&to=&site=&q=&limit=   (Owner + Admin) ────────────
-router.get('/', requireRole('owner', 'admin'), async (req, res) => {
+router.get('/', requirePerm('purchases.view'), async (req, res) => {
   try {
     const { from, to } = req.query;
     if (from && !pur.validDate(from)) return res.status(400).json({ error: 'The "from" date is not valid.' });
@@ -72,7 +72,7 @@ router.get('/', requireRole('owner', 'admin'), async (req, res) => {
 });
 
 // ── GET /api/purchases/mine  (Supervisor + Admin) — what THIS person saved recently ──
-router.get('/mine', requireRole('supervisor', 'admin'), async (req, res) => {
+router.get('/mine', requirePerm('purchases.add'), async (req, res) => {
   try {
     const { data, error } = await supabase.from('purchases').select('*').eq('created_by_id', String(req.user.id))
       .order('created_at', { ascending: false }).order('id', { ascending: false }).range(0, 49);
@@ -85,7 +85,7 @@ router.get('/mine', requireRole('supervisor', 'admin'), async (req, res) => {
 });
 
 // ── GET /api/purchases/suggestions  (Supervisor + Admin) — suppliers, items and vehicles used before ──
-router.get('/suggestions', requireRole('supervisor', 'admin'), async (req, res) => {
+router.get('/suggestions', requirePerm('purchases.add'), async (req, res) => {
   try {
     const { data, error } = await supabase.from('purchases').select('supplier, item_name, vehicle_no, created_at')
       .order('created_at', { ascending: false }).range(0, 1999);
@@ -108,7 +108,7 @@ router.get('/suggestions', requireRole('supervisor', 'admin'), async (req, res) 
 
 // ── POST /api/purchases/attachment?filename=   (Supervisor + Admin) ──────────
 // Body = the raw file bytes. The file is stored privately and a reference is returned; the purchase is saved afterwards.
-router.post('/attachment', requireRole('supervisor', 'admin'), uploadLimiter, rawFile, async (req, res) => {
+router.post('/attachment', requirePerm('purchases.add'), uploadLimiter, rawFile, async (req, res) => {
   try {
     const buf = req.body;
     if (!Buffer.isBuffer(buf) || !buf.length) return res.status(400).json({ error: 'Choose a file to attach.' });
@@ -129,7 +129,7 @@ router.post('/attachment', requireRole('supervisor', 'admin'), uploadLimiter, ra
 });
 
 // ── DELETE /api/purchases/attachment  { path }  (Supervisor + Admin) — drop a file that was attached but never saved ──
-router.delete('/attachment', requireRole('supervisor', 'admin'), async (req, res) => {
+router.delete('/attachment', requirePerm('purchases.add'), async (req, res) => {
   try {
     const path = req.body && req.body.path;
     if (!docs.isValidPurchasePath(path) || docs.purchasePathOwner(path) !== docs.safeUid(req.user.id)) {
@@ -159,7 +159,7 @@ async function checkAttachment(att, req) {
 const descr = r => `${r.supplier} · ${r.item_name} · ${pur.kg(r.net_weight)}`;
 
 // ── POST /api/purchases  (Supervisor + Admin) ─────────────────────────────────
-router.post('/', requireRole('supervisor', 'admin'), async (req, res) => {
+router.post('/', requirePerm('purchases.add'), async (req, res) => {
   try {
     const parsed = pur.parsePurchase(req.body);
     if (parsed.error) return res.status(400).json({ error: parsed.error });
@@ -203,7 +203,7 @@ router.post('/', requireRole('supervisor', 'admin'), async (req, res) => {
 
 // ── PUT /api/purchases/:id  (Admin only; a written reason is needed) ──────────
 // Body: the fields, plus optionally  attachment: { path, filename, size }  to replace the file, or  remove_attachment: true.
-router.put('/:id', requireRole('admin'), async (req, res) => {
+router.put('/:id', requirePerm('purchases.edit'), async (req, res) => {
   try {
     if (!ID_RE.test(req.params.id)) return res.status(404).json({ error: 'Purchase not found.' });
     const { data: before, error: getErr } = await supabase.from('purchases').select('*').eq('id', req.params.id).maybeSingle();
@@ -262,7 +262,7 @@ router.put('/:id', requireRole('admin'), async (req, res) => {
 });
 
 // ── DELETE /api/purchases/:id  (Admin only; needs a written reason) ───────────
-router.delete('/:id', requireRole('admin'), async (req, res) => {
+router.delete('/:id', requirePerm('purchases.edit'), async (req, res) => {
   try {
     if (!ID_RE.test(req.params.id)) return res.status(404).json({ error: 'Purchase not found.' });
     const rErr = reasonError(req.body && req.body.reason, 'delete a purchase');
@@ -293,14 +293,14 @@ router.delete('/:id', requireRole('admin'), async (req, res) => {
 
 // ── GET /api/purchases/:id/file-link?mode=view|download ───────────────────────
 // Owner + Admin: any purchase.  Supervisor: only purchases they saved themselves.
-router.get('/:id/file-link', requireRole('owner', 'admin', 'supervisor'), async (req, res) => {
+router.get('/:id/file-link', requirePerm('purchases.view', 'purchases.add'), async (req, res) => {
   try {
     if (!ID_RE.test(req.params.id)) return res.status(404).json({ error: 'Purchase not found.' });
     const mode = req.query.mode === 'download' ? 'download' : 'view';
     const { data: p, error } = await supabase.from('purchases').select('*').eq('id', req.params.id).maybeSingle();
     if (error) throw error;
     if (!p) return res.status(404).json({ error: 'Purchase not found.' });
-    if (req.user.role === 'supervisor' && String(p.created_by_id) !== String(req.user.id)) {
+    if (!hasPerm(req, 'purchases.view') && String(p.created_by_id) !== String(req.user.id)) {      // without the full list, only their own purchases
       return res.status(403).json({ error: 'You can only open files from purchases you saved yourself.' });
     }
     if (!p.attachment_path) return res.status(404).json({ error: 'This purchase has no attached file.' });

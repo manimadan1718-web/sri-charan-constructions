@@ -1,7 +1,7 @@
 const express = require('express');
 const rateLimit = require('express-rate-limit');
 const router = express.Router();
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireAuth, requirePerm, hasPerm } = require('../middleware/auth');
 const photos = require('../utils/photos');
 
 router.use(requireAuth);
@@ -20,7 +20,7 @@ const rawImage = express.raw({ type: photos.MIME_TYPES, limit: photos.MAX_BYTES 
 
 // ── POST /api/uploads/reading  (Supervisor + Admin) ──────────────────────────
 // Body = the raw image bytes, Content-Type = image/jpeg | image/png | image/webp.
-router.post('/reading', requireRole('supervisor', 'admin'), uploadLimiter, rawImage, async (req, res) => {
+router.post('/reading', requirePerm('entry.add'), uploadLimiter, rawImage, async (req, res) => {
   try {
     const buf = req.body;
     const kind = photos.detectImage(buf);
@@ -38,7 +38,7 @@ router.post('/reading', requireRole('supervisor', 'admin'), uploadLimiter, rawIm
 
 // ── GET /api/uploads/reading/url?path=…  (Owner + Admin — people who can open Records) ──
 // Returns a link that stops working after 10 minutes. Only photos attached to an entry can be opened.
-router.get('/reading/url', requireRole('owner', 'admin'), async (req, res) => {
+router.get('/reading/url', requirePerm('records.view'), async (req, res) => {
   try {
     const { path } = req.query;
     if (!photos.isReadingPath(path)) return res.status(400).json({ error: 'That is not a valid photo.' });
@@ -55,7 +55,7 @@ router.get('/reading/url', requireRole('owner', 'admin'), async (req, res) => {
 // Throws away a photo that was uploaded but never saved with an entry (the person removed it or
 // cleared the form). Only pending/ photos can be deleted here. A photo attached to an entry lives in
 // readings/ — it is evidence, and nothing in the app can delete it (even if it was later replaced).
-router.delete('/reading', requireRole('supervisor', 'admin'), async (req, res) => {
+router.delete('/reading', requirePerm('entry.add'), async (req, res) => {
   try {
     const path = req.body && req.body.path;
     if (!photos.isPendingPath(path)) return res.status(400).json({ error: 'That is not a photo that can be discarded.' });

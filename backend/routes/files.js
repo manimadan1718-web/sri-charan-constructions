@@ -2,6 +2,13 @@ const express = require('express');
 const router = express.Router();
 const fileView = require('../utils/fileView');
 
+// HEAD /api/files/view?t=…  — "is this link still good?" without reading the file (used by the print view)
+router.head('/view', (req, res) => {
+  const d = fileView.readLink(req.query.t);
+  if (!d) return res.status(401).end();
+  res.status(200).set('Cache-Control', 'private, no-store').end();
+});
+
 // GET /api/files/view?t=…  — no sign-in header is possible when a link opens in a new tab, so the short-lived,
 // single-file token inside the link is what authorises it (it is only ever handed to a signed-in, allowed person).
 router.get('/view', async (req, res) => {

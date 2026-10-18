@@ -348,9 +348,12 @@ tbody tr:hover td      { background: #FFFAF4; }
   }
   #records-table thead th.hist-col, #records-table thead th.edit-col, #records-table thead th.del-col { background: #F8FAFC; }
   #records-table .hist-col { right: 0; box-shadow: -10px 0 10px -10px rgba(16,24,40,.18); }
-  body.is-admin #records-table .hist-col { right: calc(var(--act-w) * 2); }   /* History | Edit | Delete */
-  body.is-admin #records-table .edit-col { right: var(--act-w); }
-  body.is-admin #records-table .del-col  { right: 0; }
+  /* History is always there; Edit and Delete are pinned next to it only for people who have them */
+  body.can-records-edit #records-table .hist-col, body.can-records-delete #records-table .hist-col { right: var(--act-w); }
+  body.can-records-edit.can-records-delete #records-table .hist-col { right: calc(var(--act-w) * 2); }
+  body.can-records-edit #records-table .edit-col { right: 0; }
+  body.can-records-edit.can-records-delete #records-table .edit-col { right: var(--act-w); }
+  body.can-records-delete #records-table .del-col { right: 0; }
   #records-body tr:hover td.hist-col, #records-body tr:hover td.edit-col, #records-body tr:hover td.del-col { background: #FFFAF4; }
 }
 
@@ -1312,4 +1315,74 @@ input.pu-net.is-bad { border-color: #B4372A; }
   .pu-filters > input[type="date"] { flex: 1 1 calc(50% - 10px); }
   .pu-table .pu-file-name { max-width: none; }
 }
+
+/* ═══ Permissions: anything marked  perm-<permission>  is hidden from people who do not have that permission ═══ */
+body:not(.can-entry-add) .perm-entry-add { display: none !important; }
+body:not(.can-records-view) .perm-records-view { display: none !important; }
+body:not(.can-records-export) .perm-records-export { display: none !important; }
+body:not(.can-records-edit) .perm-records-edit { display: none !important; }
+body:not(.can-records-delete) .perm-records-delete { display: none !important; }
+body:not(.can-purchases-add) .perm-purchases-add { display: none !important; }
+body:not(.can-purchases-view) .perm-purchases-view { display: none !important; }
+body:not(.can-purchases-edit) .perm-purchases-edit { display: none !important; }
+body:not(.can-summary-view) .perm-summary-view { display: none !important; }
+body:not(.can-documents-view) .perm-documents-view { display: none !important; }
+body:not(.can-documents-print) .perm-documents-print { display: none !important; }
+body:not(.can-documents-upload) .perm-documents-upload { display: none !important; }
+body:not(.can-documents-delete) .perm-documents-delete { display: none !important; }
+body:not(.can-payments-add) .perm-payments-add { display: none !important; }
+body:not(.can-payments-view) .perm-payments-view { display: none !important; }
+body:not(.can-payments-edit) .perm-payments-edit { display: none !important; }
+body:not(.can-inventory-manage) .perm-inventory-manage { display: none !important; }
+body:not(.can-logs-view) .perm-logs-view { display: none !important; }
+body:not(.can-logs-delete) .perm-logs-delete { display: none !important; }
+body:not(.can-users-manage) .perm-users-manage { display: none !important; }
+body:not(.can-permissions-manage) .perm-permissions-manage { display: none !important; }
+
+/* Records: order selector and the totals under the table */
+.rec-order { display: inline-flex; align-items: center; gap: 8px; margin-left: 14px; font-size: 13px; font-weight: 600; color: var(--steel); }
+.rec-order select { min-height: 36px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; font: inherit; color: var(--ink); }
+.records-totals { margin-top: 18px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.records-totals[hidden] { display: none; }
+@media (max-width: 720px) { .records-totals { grid-template-columns: 1fr; } .rec-order { margin-left: 0; width: 100%; justify-content: space-between; } }
+@media print { .rec-order { display: none !important; } .records-totals { break-inside: avoid; grid-template-columns: repeat(3, 1fr); } .stat-card { border: 1px solid #ccc; } }
+
+/* Nothing switched on for this person */
+.center-card { text-align: center; padding: 40px 24px; }
+.center-card h2 { margin-bottom: 10px; }
+
+/* ═══ Permissions screen ═══ */
+.perm-warning { margin: 14px 0; padding: 14px 16px; border-radius: 10px; background: #FFF1E0; color: #7A3D00; font-size: 14px; font-weight: 600; }
+.perm-warning[hidden] { display: none; }
+.perm-layout { display: grid; grid-template-columns: minmax(220px, 300px) minmax(0, 1fr); gap: 22px; margin-top: 16px; align-items: start; }
+.perm-people { display: flex; flex-direction: column; gap: 8px; }
+.perm-person { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; width: 100%; min-height: 56px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: #fff; color: var(--ink); text-align: left; cursor: pointer; font-family: inherit; }
+.perm-person:hover { border-color: var(--hazard); }
+.perm-person.active { border-color: var(--hazard); background: var(--hazard-tint); box-shadow: 0 0 0 2px rgba(226,116,10,.18); }
+.perm-person:focus-visible { outline: 3px solid rgba(226,116,10,.5); outline-offset: 2px; }
+.perm-person-name { font-weight: 700; font-size: 15px; overflow-wrap: anywhere; }
+.perm-person-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.perm-tag { display: inline-block; padding: 2px 9px; border-radius: 99px; font-size: 11.5px; font-weight: 700; }
+.perm-tag-extra { background: #E7F5EC; color: #1D7A46; }
+.perm-tag-removed { background: #FBEAE7; color: #B4372A; }
+.perm-tag-gray { background: #EEF1F6; color: var(--steel); }
+.perm-editor { min-width: 0; }
+.perm-empty { padding: 22px; border: 1px dashed var(--line); border-radius: 12px; color: var(--steel); text-align: center; }
+.perm-editor-head { margin-bottom: 14px; }
+.perm-editor-title { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 19px; margin-bottom: 6px; }
+.perm-preview { padding: 10px 14px; border-radius: 10px; background: var(--paper); font-size: 14px; color: var(--ink); }
+.perm-group { margin: 0 0 14px; padding: 4px 14px 8px; border: 1px solid var(--line); border-radius: 12px; }
+.perm-group legend { padding: 0 8px; font-size: 12px; font-weight: 800; letter-spacing: .6px; text-transform: uppercase; color: var(--hazard-deep); }
+.perm-row { display: flex; align-items: flex-start; gap: 12px; min-height: 56px; padding: 10px 2px; border-bottom: 1px solid #EEF1F6; cursor: pointer; }
+.perm-row:last-child { border-bottom: 0; }
+.perm-row input[type="checkbox"] { flex-shrink: 0; width: 24px; height: 24px; margin-top: 2px; accent-color: var(--hazard); cursor: pointer; }
+.perm-row.locked { opacity: .6; cursor: not-allowed; }
+.perm-row.locked input { cursor: not-allowed; }
+.perm-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.perm-text strong { font-size: 14.5px; }
+.perm-text small { font-size: 12.5px; color: var(--steel); line-height: 1.4; }
+.perm-actions { margin-top: 10px; }
+@media (max-width: 860px) { .perm-layout { grid-template-columns: 1fr; } .perm-people { flex-direction: row; flex-wrap: wrap; } .perm-person { width: auto; flex: 1 1 200px; } }
+@media (max-width: 720px) { .perm-group { padding: 4px 10px 8px; } }
+@media (max-width: 960px), (pointer: coarse) { .rec-order select { min-height: 44px; } }
 

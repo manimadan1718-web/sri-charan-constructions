@@ -1,14 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const supabase = require('../config/supabase');
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireAuth, requirePerm } = require('../middleware/auth');
 const { isMissingTable, logActivity } = require('../utils/activity');
 const { serverError } = require('../utils/http');
 const lq = require('../utils/logQuery');
 
 // Owner + Admin can READ the log. There is no way to edit a log row. Only an Admin can delete rows
 // (to clear test data), and every deletion leaves a record of its own that cannot be deleted.
-router.use(requireAuth, requireRole('owner', 'admin'));
+router.use(requireAuth);
 
 const ID_RE = /^[0-9A-Za-z_-]{8,64}$/;
 
@@ -24,7 +24,7 @@ function fail(res, err, where) {
 }
 
 // ── GET /api/logs ─ filters: category, q, from, to, limit, offset ───────────
-router.get('/', async (req, res) => {
+router.get('/', requirePerm('logs.view'), async (req, res) => {
   try {
     const { category, q, from, to } = req.query;
     const limit  = Math.min(Math.max(parseInt(req.query.limit, 10)  || 50, 1), 200);
@@ -46,7 +46,7 @@ router.get('/', async (req, res) => {
 });
 
 // ── GET /api/logs/entry/:id ─ full history of one entry (newest first) ──────
-router.get('/entry/:id', async (req, res) => {
+router.get('/entry/:id', requirePerm('records.view', 'logs.view'), async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('activity_logs')
@@ -63,7 +63,7 @@ router.get('/entry/:id', async (req, res) => {
 });
 
 // ── POST /api/logs/entry-counts ─ { ids: [...] } → how many times each was edited ──
-router.post('/entry-counts', async (req, res) => {
+router.post('/entry-counts', requirePerm('records.view', 'logs.view'), async (req, res) => {
   try {
     const ids = Array.isArray(req.body && req.body.ids)
       ? [...new Set(req.body.ids.filter(x => typeof x === 'string' && x.length <= 64))].slice(0, 5000)
@@ -91,7 +91,7 @@ router.post('/entry-counts', async (req, res) => {
 //       { filters: { category, q, from, to } } → delete everything matching the filters ({} = everything)
 // Deleting more than one row needs  confirm: "DELETE"  (the screen asks the person to type it).
 // The "logs deleted" record is never removed, and a new one is written for every clean-up.
-router.delete('/', requireRole('admin'), async (req, res) => {
+router.delete('/', requirePerm('logs.delete'), async (req, res) => {
   try {
     const body = req.body || {};
     let ids = null, filters = null;

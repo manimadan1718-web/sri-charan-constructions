@@ -4,5 +4,6 @@ User-agent: *
 Disallow: /api/
 Disallow: /index.html
 Disallow: /offline.html
+Disallow: /print.html
 Allow: /login.html
 Allow: /privacy.html

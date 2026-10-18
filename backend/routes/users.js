@@ -2,7 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const router = express.Router();
 const supabase = require('../config/supabase');
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireAuth, requirePerm, hasPerm } = require('../middleware/auth');
 const { validatePin, isWeakPin, WEAK_PIN_MESSAGE, hashPin, matchesPin } = require('../utils/pin');
 const { logActivity } = require('../utils/activity');
 const { serverError } = require('../utils/http');
@@ -19,7 +19,7 @@ const isMissingTrackingColumn = err =>
   !!err && TRACK_COLS.some(c => String(err.message || '').includes(c)) && /(column|schema cache)/i.test(String(err.message || ''));
 
 // All routes here are Admin-only.
-router.use(requireAuth, requireRole('admin'));
+router.use(requireAuth, requirePerm('users.manage'));
 
 /** What the browser is allowed to see of a user — never the PIN or its hash. */
 const publicUser = u => ({ id: u.id, name: u.name, role: u.role, active: u.active, created_at: u.created_at });

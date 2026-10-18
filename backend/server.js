@@ -33,6 +33,7 @@ const reportsRouter   = require('./routes/reports');
 const documentsRouter = require('./routes/documents');
 const paymentsRouter  = require('./routes/payments');
 const purchasesRouter = require('./routes/purchases');
+const permissionsRouter = require('./routes/permissions');
 const filesRouter     = require('./routes/files');
 const documentsUtil   = require('./utils/documents');
 const { ensureBucket } = require('./utils/photos');
@@ -102,7 +103,7 @@ app.use(express.json({ limit: '200kb' }));   // the app only ever sends JSON, so
 // The message is JSON so the frontend can show it instead of failing to parse it.
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 300,
+  max: parseInt(process.env.API_RATE_LIMIT, 10) || 300,       // requests per address per 15 minutes (the default is right for real use)
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests. Please wait a few minutes and try again.' },
@@ -164,6 +165,7 @@ app.use('/api/reports',   reportsRouter);
 app.use('/api/documents', documentsRouter);
 app.use('/api/payments',  paymentsRouter);
 app.use('/api/purchases', purchasesRouter);
+app.use('/api/permissions', permissionsRouter);
 app.use('/api/files',     filesRouter);        // short-lived "view" links (no sign-in header possible in a new tab)
 
 // Health check

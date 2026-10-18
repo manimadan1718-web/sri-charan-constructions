@@ -2,7 +2,7 @@ const express = require('express');
 const rateLimit = require('express-rate-limit');
 const router = express.Router();
 const supabase = require('../config/supabase');
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireAuth, requirePerm, hasPerm } = require('../middleware/auth');
 const { logActivity } = require('../utils/activity');
 const { serverError } = require('../utils/http');
 const { fetchAll } = require('../utils/db');
@@ -36,7 +36,7 @@ function sendError(res, err, where) {
 const META = () => ({ categories: docs.CATEGORIES, max_mb: docs.MAX_MB, blocked: [...docs.BLOCKED_EXT].sort() });
 
 // ── GET /api/documents  (Owner + Admin) ──────────────────────────────────────
-router.get('/', requireRole('owner', 'admin'), async (req, res) => {
+router.get('/', requirePerm('documents.view'), async (req, res) => {
   try {
     const category = typeof req.query.category === 'string' ? req.query.category : '';
     if (category && !docs.CATEGORIES.includes(category)) return res.status(400).json({ error: 'Unknown document type.' });
@@ -57,7 +57,7 @@ router.get('/', requireRole('owner', 'admin'), async (req, res) => {
 
 // ── POST /api/documents?name=&category=&filename=&site=&notes=   (Owner + Admin) ─────
 // Body = the raw file bytes.
-router.post('/', requireRole('owner', 'admin'), uploadLimiter, rawFile, async (req, res) => {
+router.post('/', requirePerm('documents.upload'), uploadLimiter, rawFile, async (req, res) => {
   let path = null;
   try {
     const buf = req.body;
@@ -104,7 +104,7 @@ router.post('/', requireRole('owner', 'admin'), uploadLimiter, rawFile, async (r
 });
 
 // ── PUT /api/documents/:id  (Owner + Admin) — rename / retype / change site or notes ──
-router.put('/:id', requireRole('owner', 'admin'), async (req, res) => {
+router.put('/:id', requirePerm('documents.upload'), async (req, res) => {
   try {
     if (!ID_RE.test(req.params.id)) return res.status(404).json({ error: 'Document not found.' });
     const b = req.body || {};
@@ -140,7 +140,7 @@ router.put('/:id', requireRole('owner', 'admin'), async (req, res) => {
 });
 
 // ── GET /api/documents/:id/url  (Owner + Admin) — a 10-minute DOWNLOAD link ──────────
-router.get('/:id/url', requireRole('owner', 'admin'), async (req, res) => {
+router.get('/:id/url', requirePerm('documents.view'), async (req, res) => {
   try {
     if (!ID_RE.test(req.params.id)) return res.status(404).json({ error: 'Document not found.' });
     const { data: d, error } = await supabase.from('documents').select('*').eq('id', req.params.id).maybeSingle();
@@ -156,7 +156,7 @@ router.get('/:id/url', requireRole('owner', 'admin'), async (req, res) => {
 });
 
 // ── GET /api/documents/:id/view-link  (Owner + Admin) — a 2-minute link that SHOWS the file in a new tab ──
-router.get('/:id/view-link', requireRole('owner', 'admin'), async (req, res) => {
+router.get('/:id/view-link', requirePerm('documents.view'), async (req, res) => {
   try {
     if (!ID_RE.test(req.params.id)) return res.status(404).json({ error: 'Document not found.' });
     const { data: d, error } = await supabase.from('documents').select('*').eq('id', req.params.id).maybeSingle();
@@ -164,7 +164,13 @@ router.get('/:id/view-link', requireRole('owner', 'admin'), async (req, res) => 
     if (!d) return res.status(404).json({ error: 'Document not found.' });
     if (!fileView.isViewable(d.ext)) return res.status(415).json({ error: `${docs.formatLabel(d.ext)} files cannot be previewed here. Use Download instead.` });
     if (!(await docs.downloadUrl(d.storage_path, 'x'))) return res.status(404).json({ error: 'The file could not be found.' });   // is it really there?
-    await logActivity(req, { category: 'document', action: 'document_viewed', entityType: 'document', entityId: d.id, entityLabel: d.name });
+    // "print" opens the print view (it needs its own permission) and is recorded as a print, not just a view
+    const printing = req.query.purpose === 'print';
+    if (printing && !hasPerm(req, 'documents.print')) {
+      await logActivity(req, { category: 'auth', action: 'access_denied', entityLabel: 'GET /api/documents/:id/view-link?purpose=print' });
+      return res.status(403).json({ error: 'You do not have permission to do this.' });
+    }
+    await logActivity(req, { category: 'document', action: printing ? 'document_printed' : 'document_viewed', entityType: 'document', entityId: d.id, entityLabel: d.name });
     res.json({ success: true, url: fileView.makeLink(d.storage_path, d.original_filename || d.name, d.ext, req.user.id), expires_in: fileView.VIEW_SECONDS });
   } catch (err) {
     sendError(res, err, 'GET /documents/:id/view-link');
@@ -172,7 +178,7 @@ router.get('/:id/view-link', requireRole('owner', 'admin'), async (req, res) => 
 });
 
 // ── DELETE /api/documents/:id  (Admin only) ───────────────────────────────────
-router.delete('/:id', requireRole('admin'), async (req, res) => {
+router.delete('/:id', requirePerm('documents.delete'), async (req, res) => {
   try {
     if (!ID_RE.test(req.params.id)) return res.status(404).json({ error: 'Document not found.' });
     const { data: d, error: getErr } = await supabase.from('documents').select('*').eq('id', req.params.id).maybeSingle();

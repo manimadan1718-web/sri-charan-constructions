@@ -45,15 +45,16 @@
 
 <!-- TABS -->
 <nav class="tabs">
-  <div class="tab active" id="tab-entry" data-roles="supervisor,admin" onclick="switchTab('entry')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg><span>Data Entry</span></div>
-  <div class="tab" id="tab-records" data-roles="owner,admin" onclick="switchTab('records')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><span>Records</span></div>
-  <div class="tab" id="tab-purchases" data-roles="supervisor,owner,admin" onclick="switchTab('purchases')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg><span>Purchases</span></div>
-  <div class="tab" id="tab-summary" data-roles="owner,admin" onclick="switchTab('summary')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg><span>Summary</span></div>
-  <div class="tab" id="tab-documents" data-roles="owner,admin" onclick="switchTab('documents')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="14" y2="17"/></svg><span>Documents</span></div>
-  <div class="tab" id="tab-payments" data-roles="supervisor,owner,admin" onclick="switchTab('payments')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg><span>Payments</span></div>
-  <div class="tab" id="tab-inventory" data-roles="admin" onclick="switchTab('inventory')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg><span>Inventory</span></div>
-  <div class="tab" id="tab-users" data-roles="admin" onclick="switchTab('users')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>Users</span></div>
-  <div class="tab" id="tab-logs" data-roles="owner,admin" onclick="switchTab('logs')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span>Activity Logs</span></div>
+  <div class="tab active" id="tab-entry" data-perms="entry.add" onclick="switchTab('entry')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg><span>Data Entry</span></div>
+  <div class="tab" id="tab-records" data-perms="records.view" onclick="switchTab('records')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><span>Records</span></div>
+  <div class="tab" id="tab-purchases" data-perms="purchases.add,purchases.view" onclick="switchTab('purchases')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg><span>Purchases</span></div>
+  <div class="tab" id="tab-summary" data-perms="summary.view" onclick="switchTab('summary')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg><span>Summary</span></div>
+  <div class="tab" id="tab-documents" data-perms="documents.view" onclick="switchTab('documents')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="14" y2="17"/></svg><span>Documents</span></div>
+  <div class="tab" id="tab-payments" data-perms="payments.add,payments.view" onclick="switchTab('payments')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg><span>Payments</span></div>
+  <div class="tab" id="tab-inventory" data-perms="inventory.manage" onclick="switchTab('inventory')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg><span>Inventory</span></div>
+  <div class="tab" id="tab-users" data-perms="users.manage" onclick="switchTab('users')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>Users</span></div>
+  <div class="tab" id="tab-permissions" data-perms="permissions.manage" onclick="switchTab('permissions')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg><span>Permissions</span></div>
+  <div class="tab" id="tab-logs" data-perms="logs.view" onclick="switchTab('logs')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span>Activity Logs</span></div>
 </nav>
 </div>
 
@@ -152,7 +153,7 @@
       <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span> All Records</div>
       <div class="rec-actions">
         <button class="btn btn-outline btn-sm" onclick="clearFilters()">✕ Clear filters</button>
-        <div class="export-menu" id="export-menu">
+        <div class="export-menu perm-records-export" id="export-menu">
           <button type="button" class="btn btn-outline btn-sm" id="export-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="export-pop" onclick="toggleExportMenu(event)">
             <span id="export-label">⬇ Export</span><span class="caret" aria-hidden="true">▾</span>
           </button>
@@ -171,7 +172,7 @@
             </button>
           </div>
         </div>
-        <button class="btn btn-outline btn-sm" onclick="window.print()">🖨 Print</button>
+        <button class="btn btn-outline btn-sm perm-records-export" onclick="window.print()">🖨 Print</button>
       </div>
     </div>
 
@@ -181,6 +182,12 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         Search &amp; filter
         <span class="rec-count" id="records-count"></span>
+        <label class="rec-order" for="records-order">Order
+          <select id="records-order" onchange="loadRecords()" aria-label="Order of the records">
+            <option value="asc" selected>Oldest first</option>
+            <option value="desc">Newest first</option>
+          </select>
+        </label>
       </div>
       <div class="rec-filters-grid">
         <div class="filter-field">
@@ -230,11 +237,18 @@
             <th>Start</th><th>Close</th><th>Working Hrs</th>
             <th>Diesel (L)</th><th>Loads</th><th>Operator</th>
             <th>Remarks</th>
-            <th class="hist-col">History</th><th class="admin-only-col edit-col">Edit</th><th class="admin-only-col del-col">Delete</th>
+            <th class="hist-col">History</th><th class="perm-records-edit edit-col">Edit</th><th class="perm-records-delete del-col">Delete</th>
           </tr>
         </thead>
         <tbody id="records-body"></tbody>
       </table>
+    </div>
+
+    <!-- Totals of everything listed above (follows the filters), shown under the table and in print -->
+    <div class="stats-grid records-totals" id="records-totals" hidden aria-live="polite">
+      <div class="stat-card"><div class="stat-label">Records</div><div class="stat-val" id="rt-count">–</div><div class="stat-unit" id="rt-range"></div></div>
+      <div class="stat-card"><div class="stat-label">Total Diesel</div><div class="stat-val" id="rt-diesel">–</div><div class="stat-unit">Litres</div></div>
+      <div class="stat-card"><div class="stat-label">Total Loads</div><div class="stat-val" id="rt-loads">–</div><div class="stat-unit">Loads</div></div>
     </div>
   </div>
 </div>
@@ -295,7 +309,7 @@
 
 <!-- ═══════════════════════════════ DOCUMENTS (Owner + Admin) ═══════════════ -->
 <div class="section" id="section-documents">
-  <div class="card">
+  <div class="card perm-documents-upload" id="doc-upload-card">
     <div class="card-header">
       <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="14" y2="17"/></svg></span> Upload a document <span class="badge">OWNER · ADMIN</span></div>
     </div>
@@ -343,10 +357,18 @@
     </div>
     <div class="table-wrap">
       <table class="doc-table">
-        <thead><tr><th>Document</th><th>Type</th><th>Format</th><th>Size</th><th>Uploaded</th><th>Open</th><th>Edit</th><th class="admin-only-col">Delete</th></tr></thead>
+        <thead><tr><th>Document</th><th>Type</th><th>Format</th><th>Size</th><th>Uploaded</th><th>Open</th><th class="perm-documents-upload">Edit</th><th class="perm-documents-delete">Delete</th></tr></thead>
         <tbody id="documents-body"></tbody>
       </table>
     </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ NOTHING SWITCHED ON ═══════════════════════════════ -->
+<div class="section" id="section-noaccess">
+  <div class="card center-card">
+    <h2>Nothing is switched on for you yet</h2>
+    <p>Your account is active, but no sections have been given to you. Please ask an Admin to switch on what you need, then reload this page.</p>
   </div>
 </div>
 
@@ -432,7 +454,7 @@
     </div>
     <div class="table-wrap">
       <table class="pu-table">
-        <thead><tr><th>Date</th><th>Site</th><th>Supplier</th><th>Vehicle</th><th>Item</th><th>Load (kg)</th><th>Empty (kg)</th><th>Net (kg)</th><th>File</th><th>Saved by</th><th class="admin-only-col">Actions</th></tr></thead>
+        <thead><tr><th>Date</th><th>Site</th><th>Supplier</th><th>Vehicle</th><th>Item</th><th>Load (kg)</th><th>Empty (kg)</th><th>Net (kg)</th><th>File</th><th>Saved by</th><th class="perm-purchases-edit">Actions</th></tr></thead>
         <tbody id="pu-body"></tbody>
       </table>
     </div>
@@ -610,6 +632,21 @@
   </div>
 
 </div><!-- /users -->
+
+<!-- ═══════════════════════════════ PERMISSIONS (Admin) ═══════════════════════════════ -->
+<div class="section" id="section-permissions">
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg></span> Permissions <span class="badge">ADMIN</span></div>
+    </div>
+    <p class="form-hint">Choose what each person can see and do. Their role gives a starting set; switch features on or off for the person on top of it. Admins always have everything. A change applies to the person's very next action, and they see new or removed tabs the next time they open or refresh the app.</p>
+    <div class="perm-warning" id="perm-setup" role="alert" hidden>Permissions need a one-time database update. Run <strong>run-in-supabase-5-permissions.sql</strong> in Supabase → SQL Editor, then reload this page. Until then everyone keeps what their role gives them.</div>
+    <div class="perm-layout">
+      <div class="perm-people" id="perm-people" role="listbox" aria-label="People"></div>
+      <div class="perm-editor" id="perm-editor" aria-live="polite"><p class="perm-empty">Choose a person on the left to see and change what they can do.</p></div>
+    </div>
+  </div>
+</div>
 
 <!-- ═══════════════════════════════ ACTIVITY LOGS (Owner + Admin) ═════════════ -->
 <div class="section" id="section-logs">

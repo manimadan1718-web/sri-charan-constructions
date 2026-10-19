@@ -1395,3 +1395,6 @@ body:not(.can-permissions-manage) .perm-permissions-manage { display: none !impo
 #sum-sites-card[hidden] { display: none; }
 @media (max-width: 720px) { .sum-controls #sum-site { max-width: none; width: 100%; } }
 @media (max-width: 960px), (pointer: coarse) { .sum-controls select { min-height: 44px; } }
+.login-agree { margin: 14px 4px 0; font-size: 12.5px; line-height: 1.5; text-align: center; color: var(--steel); }
+.login-agree a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 3px; font-weight: 700; color: var(--hazard-deep); text-decoration: underline; text-underline-offset: 3px; }
+

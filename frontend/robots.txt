@@ -1,5 +1,5 @@
 # Sri Charan Constructions — private site-log app.
-# The sign-in page and privacy policy may be listed; the app, the API and everything behind the login may not.
+# The sign-in page and the legal pages (privacy, terms) may be listed; the app, the API and everything behind the login may not.
 User-agent: *
 Disallow: /api/
 Disallow: /index.html
@@ -7,3 +7,4 @@ Disallow: /offline.html
 Disallow: /print.html
 Allow: /login.html
 Allow: /privacy.html
+Allow: /terms.html

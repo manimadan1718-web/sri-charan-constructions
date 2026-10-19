@@ -31,3 +31,18 @@ table.tbl{width:100%;border-collapse:collapse;margin:8px 0 14px;font-size:14px}
 .site-footer{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:2px 18px;padding:18px 16px calc(18px + env(safe-area-inset-bottom));font-size:13px;color:#5B6779;text-align:center}
 .site-footer a{display:inline-block;color:#5B6779;font-weight:600;text-decoration:underline;text-underline-offset:3px;padding:14px 4px}
 .site-footer [hidden]{display:none}
+/* Privacy Policy and Terms & Conditions */
+.summary-box{background:#FFF7EC;border:1px solid #F5D3A8;border-radius:12px;padding:16px 18px;margin:0 0 20px}
+.summary-box h2{margin:0 0 8px;font-size:16px;color:#7A3D00}
+.summary-box ul{margin:0;padding-left:20px}
+.summary-box li{color:#1B2433;margin-bottom:6px}
+.toc{background:#F3F5F9;border-radius:12px;padding:14px 18px;margin:0 0 8px}
+.toc h2{margin:0 0 6px;font-size:13px;letter-spacing:.6px;text-transform:uppercase;color:#5B6779}
+.toc ol{padding-left:22px;columns:2;column-gap:28px;margin:0}
+.toc li{margin:0;break-inside:avoid}
+.toc a{display:inline-block;padding:11px 0;font-size:14.5px;min-height:44px}
+article h2[id]{scroll-margin-top:16px}
+.other-doc{margin-top:26px;padding-top:16px;border-top:1px solid #E4E8EF}
+@media (max-width:560px){.toc ol{columns:1}}
+@media print{.pub-top,.site-footer,.toc{display:none}.card{box-shadow:none;border:0}}
+

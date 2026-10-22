@@ -470,6 +470,12 @@ async function saveEntry() {
   const date       = document.getElementById('f-date').value;
   const vehicle_no = getVehicleValue('f');
   if (!date || !vehicle_no) { showToast('Date and Vehicle No. are required.', true); return; }
+  const siteEl = document.getElementById('f-site');
+  if (!siteEl.value.trim()) {
+    siteEl.setAttribute('aria-invalid', 'true'); siteEl.focus();
+    siteEl.addEventListener('change', () => siteEl.removeAttribute('aria-invalid'), { once: true });
+    showToast('Select the site.', true); return;
+  }
   if (photosBusy('f')) { showToast('Please wait — the photo is still uploading.', true); return; }
   const lpProblem = validateLoadPoints('f');
   if (lpProblem) { showToast(lpProblem, true); return; }
@@ -490,6 +496,9 @@ async function saveEntry() {
     remarks:  document.getElementById('f-remarks').value.trim(),
     load_points: readLoadPoints('f'),
   };
+
+  const sure = await askConfirm({ title: 'Save this entry?', message: `${fmtDate(date)} · ${payload.site} · ${vehicle_no}` });
+  if (!sure) return;                                     // "No": nothing is saved, and everything typed stays on the form
 
   try {
     await Entries.create(payload);
@@ -561,7 +570,7 @@ function renderRecordsTable(entries) {
   tbody.innerHTML = '';
 
   if (!entries.length) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="${13 + (canEdit ? 1 : 0) + (canDelete ? 1 : 0)}">No records found.</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="${14 + (canEdit ? 1 : 0) + (canDelete ? 1 : 0)}">No records found.</td></tr>`;
     return;
   }
 
@@ -577,6 +586,7 @@ function renderRecordsTable(entries) {
       <td><span class="reading-cell">${esc(e.close_reading) || '–'}${photoChipHtml(e.close_photo, `Closing reading · ${e.vehicle_no} · ${fmtDate(e.date)}`)}</span></td>
       <td>${esc(e.working_hours) || '–'}</td>
       <td><span class="reading-cell">${esc(e.diesel ?? 0)}${photoChipHtml(e.diesel_photo, `Diesel · ${e.vehicle_no} · ${fmtDate(e.date)}`)}</span></td>
+      <td class="mileage-cell">${esc(fmtEntryMileage(e) || '–')}</td>
       <td>${esc(e.loads ?? 0)}${pointsMini(e)}</td>
       <td>${esc(e.operator) || '–'}</td>
       <td style="max-width:200px;white-space:normal;">${esc(e.remarks) || '–'}</td>
@@ -605,6 +615,52 @@ function parseWorkingMinutes(text) {
 }
 const fmtHours = n => Number(n).toLocaleString('en-IN', { minimumFractionDigits: 1, maximumFractionDigits: 2 });
 
+/* ── Mileage ─────────────────────────────────────────────────────────────────── */
+// The same rules as the server (backend/utils/mileage.js): litres per hour for work measured in hours, km per litre when the
+// reading says km. Totals use the whole period together, and only vehicles that were measured.
+const KM_RE = /^(\d+(?:\.\d+)?)\s*(?:km|kms|kilometer|kilometers|kilometre|kilometres)$/i;
+function parseKm(text) {
+  const m = KM_RE.exec(String(text == null ? '' : text).trim());
+  if (!m) return null;
+  const v = parseFloat(m[1]);
+  return Number.isFinite(v) && v <= 3000 ? v : null;
+}
+const round1 = n => Math.round(n * 10) / 10;
+function entryMileage(e) {
+  const d = Number(e && e.diesel) || 0;
+  if (d <= 0) return null;
+  const km = parseKm(e.working_hours);
+  if (km !== null && km > 0) return { value: round1(km / d), unit: 'km/L' };
+  const min = parseWorkingMinutes(e.working_hours);
+  if (min !== null && min > 0) return { value: round1(d / (min / 60)), unit: 'L/hr' };
+  return null;
+}
+function mileageOf(entries) {
+  const byVehicle = new Map();
+  for (const e of entries || []) {
+    const key = e.vehicle_no || 'Unknown';
+    const v = byVehicle.get(key) || { litres: 0, minutes: 0, km: 0 };
+    v.litres += parseFloat(e.diesel) || 0;
+    const m = parseWorkingMinutes(e.working_hours); if (m !== null) v.minutes += m;
+    const k = parseKm(e.working_hours);            if (k !== null) v.km += k;
+    byVehicle.set(key, v);
+  }
+  let hL = 0, hMin = 0, kL = 0, kKm = 0;
+  for (const v of byVehicle.values()) {
+    if (v.minutes > 0) { hL += v.litres; hMin += v.minutes; }
+    if (v.km > 0)      { kL += v.litres; kKm += v.km; }
+  }
+  return { lph: hMin > 0 && hL > 0 ? round1(hL / (hMin / 60)) : null, kpl: kKm > 0 && kL > 0 ? round1(kKm / kL) : null };
+}
+const fmtMileageText = m => !m ? '' : [m.lph != null ? `${Number(m.lph).toFixed(1)} L/hr` : '', m.kpl != null ? `${Number(m.kpl).toFixed(1)} km/L` : ''].filter(Boolean).join(' · ');
+const fmtEntryMileage = e => { const m = entryMileage(e); return m ? `${m.value.toFixed(1)} ${m.unit}` : ''; };
+/** For a big card: the number, and what it is measured in. */
+function mileageCard(m) {
+  if (m && m.lph != null) return { value: m.lph.toFixed(1), unit: 'L per hour' + (m.kpl != null ? ` · also ${m.kpl.toFixed(1)} km/L` : '') };
+  if (m && m.kpl != null) return { value: m.kpl.toFixed(1), unit: 'km per litre' };
+  return { value: '–', unit: 'needs diesel and hours' };
+}
+
 /** The totals under the Records table (and in print): what is listed above, added up. */
 function renderRecordsTotals(entries, from, to) {
   const box = document.getElementById('records-totals');
@@ -620,6 +676,10 @@ function renderRecordsTotals(entries, from, to) {
   const mins = entries.map(e => parseWorkingMinutes(e.working_hours)).filter(m => m !== null);
   document.getElementById('rt-hours').textContent = mins.length ? fmtHours(Math.round(mins.reduce((a, m) => a + m, 0) / 60 * 100) / 100) : '0.0';
   document.getElementById('rt-hours-note').textContent = mins.length === entries.length ? 'Hours' : `Hours · from ${mins.length} of ${entries.length} entries`;
+  const mc = mileageCard(mileageOf(entries));
+  document.getElementById('rt-mileage').textContent = mc.value;
+  document.getElementById('rt-mileage-note').textContent = mc.unit;
+  document.getElementById('rt-mileage-help').hidden = false;
   box.hidden = false;
 }
 
@@ -905,12 +965,15 @@ async function loadSummary() {
     document.getElementById('s-loads').textContent    = s.total_loads    ?? '–';
     document.getElementById('s-hours').textContent    = s.total_hours === undefined ? '–' : fmtHours(s.total_hours);
     document.getElementById('s-hours-note').textContent = s.hours_entries === undefined || s.hours_entries === s.total_entries ? 'hours' : `hours · from ${s.hours_entries} of ${s.total_entries} entries`;
+    const mc = mileageCard(s.mileage);
+    document.getElementById('s-mileage').textContent = mc.value;
+    document.getElementById('s-mileage-note').textContent = mc.unit;
     fillSummarySites(s.sites || [], site, siteName);
     renderVehicleBreakdown(s.vehicles || []);
     renderSiteBreakdown(s.sites || [], !site);
   } catch (e) {
     if (seq !== summarySeq) return;
-    document.getElementById('vehicle-summary-body').innerHTML = `<tr class="empty-row"><td colspan="5">${esc(e.message || 'Could not load the summary.')}</td></tr>`;
+    document.getElementById('vehicle-summary-body').innerHTML = `<tr class="empty-row"><td colspan="6">${esc(e.message || 'Could not load the summary.')}</td></tr>`;
   }
 }
 
@@ -935,7 +998,7 @@ function renderSiteBreakdown(sites, show) {
   card.hidden = !show;
   tbody.innerHTML = '';
   if (!show) return;
-  if (!sites.length) { tbody.innerHTML = '<tr class="empty-row"><td colspan="5">No entries in this period.</td></tr>'; return; }
+  if (!sites.length) { tbody.innerHTML = '<tr class="empty-row"><td colspan="6">No entries in this period.</td></tr>'; return; }
   sites.forEach(x => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
@@ -943,7 +1006,8 @@ function renderSiteBreakdown(sites, show) {
       <td>${esc(x.entries)}</td>
       <td>${esc(x.diesel)}</td>
       <td>${esc(x.loads)}</td>
-      <td>${esc(fmtHours(x.hours))}</td>`;
+      <td>${esc(fmtHours(x.hours))}</td>
+      <td class="mileage-cell">${esc(fmtMileageText(x.mileage) || '–')}</td>`;
     tbody.appendChild(tr);
   });
 }
@@ -952,7 +1016,7 @@ function renderVehicleBreakdown(list) {
   const tbody = document.getElementById('vehicle-summary-body');
   tbody.innerHTML = '';
   if (!list.length) {
-    tbody.innerHTML = '<tr class="empty-row"><td colspan="5">No vehicles with loads or working hours in this period.</td></tr>';
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="6">No vehicles with loads or working hours in this period.</td></tr>';
     return;
   }
   list.forEach(v => {
@@ -962,7 +1026,8 @@ function renderVehicleBreakdown(list) {
       <td>${esc(v.entries)}</td>
       <td>${esc(v.diesel)}</td>
       <td>${esc(v.loads)}</td>
-      <td>${esc(fmtHours(v.hours))}</td>`;
+      <td>${esc(fmtHours(v.hours))}</td>
+      <td class="mileage-cell">${esc(fmtMileageText(v.mileage) || '–')}</td>`;
     tbody.appendChild(tr);
   });
 }
@@ -1233,12 +1298,14 @@ async function createUser() {
   const pin  = document.getElementById('u-pin').value.trim();
   const role = document.getElementById('u-role').value;
   if (!name || !pin) { showToast('Name and PIN are required.', true); return; }
+  if (!role) { document.getElementById('u-role').focus(); showToast('Select a role for this user.', true); return; }
 
   try {
     await Users.create({ name, pin, role });
     showToast('✅ User created!');
     document.getElementById('u-name').value = '';
     document.getElementById('u-pin').value  = '';
+    document.getElementById('u-role').value = '';            // the next user starts on "Select Role" again
     loadUsers();
   } catch (e) {
     showToast('❌ ' + (e.message || 'Could not create user.'), true);
@@ -1317,6 +1384,36 @@ async function deleteUser(id) {
 /* ═══════════════════════════════════════════════════════════════════════════════
    Confirm-a-delete dialog (optionally makes the person type DELETE first)
    ═══════════════════════════════════════════════════════════════════════════════ */
+/** A plain Yes / No question. Resolves true for Yes; No, Escape or a tap outside is No. */
+function askConfirm({ title, message, yesLabel = 'Yes', noLabel = 'No' }) {
+  return new Promise(resolve => {
+    const overlay = document.getElementById('confirm-overlay');
+    const yes = document.getElementById('confirm-yes'), no = document.getElementById('confirm-no');
+    document.getElementById('confirm-title').textContent = title;
+    document.getElementById('confirm-msg').textContent = message || '';
+    yes.textContent = yesLabel; no.textContent = noLabel;
+    const done = result => {
+      overlay.classList.remove('open');
+      yes.removeEventListener('click', onYes); no.removeEventListener('click', onNo);
+      document.removeEventListener('keydown', onKey, true); overlay.removeEventListener('mousedown', onBackdrop);
+      resolve(result);
+    };
+    const onYes = () => done(true), onNo = () => done(false);
+    const onKey = ev => {
+      if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); done(false); }
+      else if (ev.key === 'Tab') {                         // keep the keyboard inside the question
+        const order = [yes, no], i = order.indexOf(document.activeElement);
+        ev.preventDefault(); order[(i + (ev.shiftKey ? order.length - 1 : 1)) % order.length].focus();
+      }
+    };
+    const onBackdrop = ev => { if (ev.target === overlay) done(false); };
+    yes.addEventListener('click', onYes); no.addEventListener('click', onNo);
+    document.addEventListener('keydown', onKey, true); overlay.addEventListener('mousedown', onBackdrop);
+    overlay.classList.add('open');
+    setTimeout(() => yes.focus(), 50);
+  });
+}
+
 function askDanger({ title, message, confirmLabel = 'Delete', typeToConfirm = false }) {
   return new Promise(resolve => {
     const overlay = document.getElementById('danger-overlay');

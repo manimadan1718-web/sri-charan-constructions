@@ -14,6 +14,7 @@
 const path = require('path');
 const supabase = require('../config/supabase');
 const { parseWorkingMinutes, hoursFromMinutes } = require('./workHours');
+const { mileageOf, fmtMileage, fmtEntryMileage } = require('./mileage');
 const photos = require('./photos');
 const { fmtDateDMY } = require('./activity');
 const lp = require('./loadPoints');
@@ -80,6 +81,7 @@ function toRow(e, i) {
     hoursMin: parseWorkingMinutes(e.working_hours),
     diesel: Number(e.diesel) || 0,
     dieselPhoto: photos.isReadingPath(e.diesel_photo) ? e.diesel_photo : null,
+    mileage: fmtEntryMileage(e),                       // this entry's own diesel per hour (or km per litre); '' when it cannot be worked out
     loads: parseInt(e.loads, 10) || 0,
     unload: lp.pointsText(e.load_points) || '',
     operator: e.operator || '',
@@ -89,6 +91,9 @@ function toRow(e, i) {
     hadDieselPhoto: !!e.diesel_photo,
   };
 }
+
+/** The overall mileage of the rows in a report (used for the closing Total line). */
+const totalMileageText = rows => fmtMileage(mileageOf(rows.map(r => ({ vehicle_no: r.vehicle, diesel: r.diesel, working_hours: r.hours }))));
 
 const PHOTO_KEYS = ['startPhoto', 'closePhoto', 'dieselPhoto'];
 const countPhotos = rows => rows.reduce((n, r) => n + PHOTO_KEYS.filter(k => r[k]).length, 0);
@@ -147,14 +152,14 @@ function csvEscape(val) {
 }
 
 function buildCsv(rows) {
-  const headers = ['Date', 'Site', 'Category', 'Vehicle No.', 'Start', 'Start Photo', 'Close', 'Close Photo', 'Working Hrs', 'Diesel (L)', 'Diesel Photo', 'Loads', 'Unload points', 'Operator', 'Remarks'];
+  const headers = ['Date', 'Site', 'Category', 'Vehicle No.', 'Start', 'Start Photo', 'Close', 'Close Photo', 'Working Hrs', 'Diesel (L)', 'Diesel Photo', 'Mileage', 'Loads', 'Unload points', 'Operator', 'Remarks'];
   const lines = rows.map(r => [
     r.date, r.site, r.category, r.vehicle, r.start, r.hadStartPhoto ? 'Yes' : 'No', r.close, r.hadClosePhoto ? 'Yes' : 'No',
-    r.hours, r.diesel, r.hadDieselPhoto ? 'Yes' : 'No', r.loads, r.unload, r.operator, r.remarks,
+    r.hours, r.diesel, r.hadDieselPhoto ? 'Yes' : 'No', r.mileage, r.loads, r.unload, r.operator, r.remarks,
   ]);
   // The same closing line the Excel and PDF reports have: the totals under Vehicle No., Diesel and Loads.
   const hrsTotal = hoursFromMinutes(rows.reduce((a, r) => a + (r.hoursMin || 0), 0));
-  const total = rows.length ? [['', '', '', 'Total', '', '', '', '', rows.some(r => r.hoursMin !== null) ? hrsTotal : '', Number(rows.reduce((a, r) => a + r.diesel, 0).toFixed(2)), '', rows.reduce((a, r) => a + r.loads, 0), '', '', '']] : [];
+  const total = rows.length ? [['', '', '', 'Total', '', '', '', '', rows.some(r => r.hoursMin !== null) ? hrsTotal : '', Number(rows.reduce((a, r) => a + r.diesel, 0).toFixed(2)), '', totalMileageText(rows), rows.reduce((a, r) => a + r.loads, 0), '', '', '']] : [];
   const csv = [headers, ...lines, ...total].map(l => l.map(csvEscape).join(',')).join('\n');
   return Buffer.from('\uFEFF' + csv, 'utf8');   // BOM so Excel reads accents/₹ correctly
 }
@@ -173,6 +178,7 @@ const XL_COLS = [
   { key: 'hours',      header: 'Working Hrs',  width: 14 },
   { key: 'diesel',     header: 'Diesel (L)',   width: 11 },
   { key: 'dieselPhoto', header: 'Diesel Photo', width: 23, photo: true },
+  { key: 'mileage',    header: 'Mileage',      width: 13 },
   { key: 'loads',      header: 'Loads',        width: 8 },
   { key: 'unload',     header: 'Unload points', width: 30 },
   { key: 'operator',   header: 'Operator',     width: 16 },
@@ -284,6 +290,8 @@ async function buildXlsx(rows, meta, thumbs) {
     totalRow.getCell(dI).value = { formula: `SUM(${colLetter('diesel')}${firstData}:${colLetter('diesel')}${lastData})`, result: rows.reduce((a, r) => a + r.diesel, 0) };
     totalRow.getCell(lI).value = { formula: `SUM(${colLetter('loads')}${firstData}:${colLetter('loads')}${lastData})`, result: rows.reduce((a, r) => a + r.loads, 0) };
     totalRow.getCell(dI).numFmt = '0.00';
+    const mI = XL_COLS.findIndex(c => c.key === 'mileage') + 1;
+    totalRow.getCell(mI).value = totalMileageText(rows) || null;          // e.g. "11.5 L/hr" — over the whole list, vehicles that were measured
     const hI = XL_COLS.findIndex(c => c.key === 'hours') + 1;
     if (rows.some(r => r.hoursMin !== null)) {              // the hours column holds text, so the total is worked out here (not a SUM formula)
       totalRow.getCell(hI).value = hoursFromMinutes(rows.reduce((a, r) => a + (r.hoursMin || 0), 0));
@@ -294,7 +302,7 @@ async function buildXlsx(rows, meta, thumbs) {
       cell.font = { name: 'Calibri', size: 11, bold: true, color: argb(COLORS.ink) };
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: argb('FFF3E6') };
       cell.border = { top: { style: 'medium', color: argb(COLORS.orange) }, bottom: thin };
-      if (i === dI || i === lI || i === hI) cell.alignment = { horizontal: 'right', vertical: 'middle', indent: 1 };
+      if (i === dI || i === lI || i === hI || i === mI) cell.alignment = { horizontal: 'right', vertical: 'middle', indent: 1 };
       else cell.alignment = { vertical: 'middle', indent: 1 };
     }
     totalRow.height = 24;
@@ -315,18 +323,19 @@ const PDF_COLS = [
   { key: 'date',       header: 'Date',        w: 46 },
   { key: 'site',       header: 'Site',        w: 48 },
   { key: 'category',   header: 'Cat.',        w: 34 },
-  { key: 'vehicle',    header: 'Vehicle No.', w: 70, bold: true },
+  { key: 'vehicle',    header: 'Vehicle No.', w: 62, bold: true },
   { key: 'start',      header: 'Start',       w: 40 },
-  { key: 'startPhoto', header: 'Start photo', w: 74, photo: true },
+  { key: 'startPhoto', header: 'Start photo', w: 70, photo: true },
   { key: 'close',      header: 'Close',       w: 40 },
-  { key: 'closePhoto', header: 'Close photo', w: 74, photo: true },
+  { key: 'closePhoto', header: 'Close photo', w: 70, photo: true },
   { key: 'hours',      header: 'Working hrs', w: 40 },
   { key: 'diesel',     header: 'Diesel (L)',  w: 40, right: true },
-  { key: 'dieselPhoto', header: 'Diesel photo', w: 74, photo: true },
+  { key: 'dieselPhoto', header: 'Diesel photo', w: 70, photo: true },
+  { key: 'mileage',    header: 'Mileage',     w: 42 },
   { key: 'loads',      header: 'Loads',       w: 28, right: true },
-  { key: 'unload',     header: 'Unload points', w: 62 },
-  { key: 'operator',   header: 'Operator',    w: 48 },
-  { key: 'remarks',    header: 'Remarks',     w: 43 },
+  { key: 'unload',     header: 'Unload points', w: 52 },
+  { key: 'operator',   header: 'Operator',    w: 44 },
+  { key: 'remarks',    header: 'Remarks',     w: 37 },
 ];
 
 async function buildPdf(rows, meta, thumbs) {
@@ -340,7 +349,7 @@ async function buildPdf(rows, meta, thumbs) {
   const PW = doc.page.width, PH = doc.page.height;
   const usableW = PW - M * 2;
   const bottom = PH - M - 14;            // keep room for the footer
-  const PAD = 3, BOX_W = 68, BOX_H = 51, MAX_TEXT_H = 54, FONT = 7.4;
+  const PAD = 3, BOX_W = 64, BOX_H = 48, MAX_TEXT_H = 54, FONT = 7.4;
   const hex = h => '#' + h;
 
   const x0 = PDF_COLS.reduce((acc, c, i) => { acc.push(i ? acc[i - 1] + PDF_COLS[i - 1].w : M); return acc; }, []);
@@ -413,6 +422,7 @@ async function buildPdf(rows, meta, thumbs) {
     doc.font('Helvetica-Bold').fontSize(8).fillColor(hex(COLORS.ink));
     const ci = k => PDF_COLS.findIndex(c => c.key === k);
     doc.text('Total', x0[ci('vehicle')] + PAD, y + 5.5, { width: PDF_COLS[ci('vehicle')].w, lineBreak: false });
+    { const mt = totalMileageText(rows); if (mt) doc.text(mt, x0[ci('mileage')] + PAD, y + 5.5, { width: PDF_COLS[ci('mileage')].w - PAD * 2, align: 'left', lineBreak: false }); }
     if (rows.some(r => r.hoursMin !== null)) doc.text(String(hoursFromMinutes(rows.reduce((a, r) => a + (r.hoursMin || 0), 0))), x0[ci('hours')] + PAD, y + 5.5, { width: PDF_COLS[ci('hours')].w - PAD * 2, align: 'left', lineBreak: false });
     doc.text(rows.reduce((a, r) => a + r.diesel, 0).toFixed(2), x0[ci('diesel')] + PAD, y + 5.5, { width: PDF_COLS[ci('diesel')].w - PAD * 2, align: 'right', lineBreak: false });
     doc.text(String(rows.reduce((a, r) => a + r.loads, 0)), x0[ci('loads')] + PAD, y + 5.5, { width: PDF_COLS[ci('loads')].w - PAD * 2, align: 'right', lineBreak: false });

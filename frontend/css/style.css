@@ -1342,11 +1342,12 @@ body:not(.can-permissions-manage) .perm-permissions-manage { display: none !impo
 /* Records: order selector and the totals under the table */
 .rec-order { display: inline-flex; align-items: center; gap: 8px; margin-left: 14px; font-size: 13px; font-weight: 600; color: var(--steel); }
 .rec-order select { min-height: 36px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; font: inherit; color: var(--ink); }
-.records-totals { margin-top: 18px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.records-totals { margin-top: 18px; grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .records-totals[hidden] { display: none; }
+@media (max-width: 1280px) { .records-totals { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 1100px) { .records-totals { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 720px) { .records-totals { grid-template-columns: 1fr; } .rec-order { margin-left: 0; width: 100%; justify-content: space-between; } }
-@media print { .rec-order { display: none !important; } .records-totals { break-inside: avoid; grid-template-columns: repeat(4, 1fr); } .stat-card { border: 1px solid #ccc; } }
+@media print { .rec-order { display: none !important; } .records-totals { break-inside: avoid; grid-template-columns: repeat(5, 1fr); } .stat-card { border: 1px solid #ccc; } }
 
 /* Nothing switched on for this person */
 .center-card { text-align: center; padding: 40px 24px; }
@@ -1397,4 +1398,10 @@ body:not(.can-permissions-manage) .perm-permissions-manage { display: none !impo
 @media (max-width: 960px), (pointer: coarse) { .sum-controls select { min-height: 44px; } }
 .login-agree { margin: 14px 4px 0; font-size: 12.5px; line-height: 1.5; text-align: center; color: var(--steel); }
 .login-agree a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 3px; font-weight: 700; color: var(--hazard-deep); text-decoration: underline; text-underline-offset: 3px; }
+
+/* Mileage */
+.mileage-cell { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.records-note { margin: 10px 2px 0; }
+.records-note[hidden] { display: none; }
+#u-role[aria-invalid="true"], #f-site[aria-invalid="true"] { border-color: var(--danger, #C0392B); box-shadow: 0 0 0 3px rgba(192,57,43,.15); }
 

@@ -74,7 +74,7 @@
         <input type="date" id="f-date">
       </div>
       <div class="form-group">
-        <label for="f-site">Site</label>
+        <label for="f-site">Site *</label>
         <select id="f-site">
           <option value="">Select site…</option>
         </select>
@@ -235,7 +235,7 @@
           <tr>
             <th>#</th><th>Date</th><th>Site</th><th>Category</th><th>Vehicle No.</th>
             <th>Start</th><th>Close</th><th>Working Hrs</th>
-            <th>Diesel (L)</th><th>Loads</th><th>Operator</th>
+            <th>Diesel (L)</th><th>Mileage</th><th>Loads</th><th>Operator</th>
             <th>Remarks</th>
             <th class="hist-col">History</th><th class="perm-records-edit edit-col">Edit</th><th class="perm-records-delete del-col">Delete</th>
           </tr>
@@ -250,7 +250,9 @@
       <div class="stat-card"><div class="stat-label">Total Diesel</div><div class="stat-val" id="rt-diesel">–</div><div class="stat-unit">Litres</div></div>
       <div class="stat-card"><div class="stat-label">Total Loads</div><div class="stat-val" id="rt-loads">–</div><div class="stat-unit">Loads</div></div>
       <div class="stat-card"><div class="stat-label">Total Working Hours</div><div class="stat-val" id="rt-hours">–</div><div class="stat-unit" id="rt-hours-note">Hours</div></div>
+      <div class="stat-card"><div class="stat-label">Mileage</div><div class="stat-val" id="rt-mileage">–</div><div class="stat-unit" id="rt-mileage-note">L per hour</div></div>
     </div>
+    <p class="form-hint records-note" id="rt-mileage-help" hidden>Mileage = diesel &divide; working hours (L/hr), or km &divide; diesel (km/L) when the readings are in km. Diesel is often filled on some days only, so the figure for several days together is more reliable than a single day.</p>
   </div>
 </div>
 
@@ -292,6 +294,7 @@
       <div class="stat-card"><div class="stat-label">Total Diesel</div><div class="stat-val" id="s-diesel">–</div><div class="stat-unit">Litres</div></div>
       <div class="stat-card"><div class="stat-label">Total Loads</div><div class="stat-val" id="s-loads">–</div><div class="stat-unit">trips</div></div>
       <div class="stat-card"><div class="stat-label">Total Working Hours</div><div class="stat-val" id="s-hours">–</div><div class="stat-unit" id="s-hours-note">hours</div></div>
+      <div class="stat-card"><div class="stat-label">Mileage</div><div class="stat-val" id="s-mileage">–</div><div class="stat-unit" id="s-mileage-note">L per hour</div></div>
     </div>
   </div>
 
@@ -301,12 +304,12 @@
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>Vehicle No.</th><th>Entries</th><th>Total Diesel (L)</th><th>Total Loads</th><th>Total Working Hours</th></tr>
+          <tr><th>Vehicle No.</th><th>Entries</th><th>Total Diesel (L)</th><th>Total Loads</th><th>Total Working Hours</th><th>Mileage</th></tr>
         </thead>
         <tbody id="vehicle-summary-body"></tbody>
       </table>
     </div>
-    <p class="form-hint">Only vehicles that have loads or working hours are listed. The totals at the top count every entry in the period.</p>
+    <p class="form-hint">Only vehicles that have loads or working hours are listed. The totals at the top count every entry in the period. Mileage = diesel &divide; working hours (L/hr), or km &divide; diesel (km/L) when the readings are in km, over the whole period.</p>
   </div>
 
   <!-- Site-wise summary (only while "All sites" is chosen — picking a site shows just that site) -->
@@ -315,7 +318,7 @@
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>Site</th><th>Entries</th><th>Total Diesel (L)</th><th>Total Loads</th><th>Total Working Hours</th></tr>
+          <tr><th>Site</th><th>Entries</th><th>Total Diesel (L)</th><th>Total Loads</th><th>Total Working Hours</th><th>Mileage</th></tr>
         </thead>
         <tbody id="site-summary-body"></tbody>
       </table>
@@ -618,10 +621,11 @@
       </div>
       <div class="form-group">
         <label for="u-role">Role *</label>
-        <select id="u-role">
-          <option value="supervisor">Supervisor — Data Entry only</option>
-          <option value="owner">Owner — Reports only</option>
-          <option value="admin">Admin — Full access</option>
+        <select id="u-role" aria-required="true">
+          <option value="">Select Role</option>
+          <option value="supervisor">Supervisor — site entries, purchases, payments</option>
+          <option value="owner">Owner — reports and records</option>
+          <option value="admin">Admin — full access</option>
         </select>
       </div>
     </div>
@@ -894,9 +898,9 @@
       <div class="form-group">
         <label for="ue-role">Role</label>
         <select id="ue-role">
-          <option value="supervisor">Supervisor — Data Entry only</option>
-          <option value="owner">Owner — Reports only</option>
-          <option value="admin">Admin — Full access</option>
+          <option value="supervisor">Supervisor — site entries, purchases, payments</option>
+          <option value="owner">Owner — reports and records</option>
+          <option value="admin">Admin — full access</option>
         </select>
       </div>
       <div class="form-group">
@@ -931,6 +935,20 @@
     <div class="btn-group">
       <button type="button" class="btn btn-danger-solid" id="danger-ok">Delete</button>
       <button type="button" class="btn btn-outline" id="danger-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════ SAVE THIS ENTRY? (Yes / No) ═══════════════════════════════ -->
+<div class="modal-overlay modal-top" id="confirm-overlay">
+  <div class="modal-card modal-small" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-msg">
+    <div class="card-header">
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg></span> <span id="confirm-title">Save this entry?</span></div>
+    </div>
+    <p class="reason-intro" id="confirm-msg"></p>
+    <div class="btn-group">
+      <button type="button" class="btn btn-primary" id="confirm-yes">Yes</button>
+      <button type="button" class="btn btn-outline" id="confirm-no">No</button>
     </div>
   </div>
 </div>

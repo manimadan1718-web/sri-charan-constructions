@@ -55,10 +55,12 @@ function summaryRange(q) {
  * Validates + normalises the body shared by POST and PUT.
  * Returns { error } or { fields, rows }.
  */
-function parseEntryBody(body) {
+function parseEntryBody(body, { requireSite = false } = {}) {
   const b = body || {};
   const vehicle_no = str(b.vehicle_no);
   if (!b.date || !vehicle_no) return { error: 'date and vehicle_no are required.' };
+  // A NEW entry must say which site it belongs to (older entries without a site can still be edited).
+  if (requireSite && !str(b.site)) return { error: 'Select the site for this entry.' };
   if (!isValidDate(b.date)) return { error: 'date must be a valid date in YYYY-MM-DD format.' };
 
   const diesel = b.diesel === undefined || b.diesel === null || b.diesel === '' ? 0 : Number(b.diesel);
@@ -240,7 +242,7 @@ router.get('/vehicle-numbers', requirePerm('records.view'), async (req, res) => 
 router.post('/', requirePerm('entry.add'), async (req, res) => {
   let createdId = null;
   try {
-    const parsed = parseEntryBody(req.body);
+    const parsed = parseEntryBody(req.body, { requireSite: true });
     if (parsed.error) return res.status(400).json({ error: parsed.error });
 
     // Only photos that are actually attached are sent to the database (so entries without

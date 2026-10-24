@@ -20,6 +20,7 @@ const supabase = require('../config/supabase');
 const { requireAuth, requirePerm } = require('../middleware/auth');
 const { logActivity, cleanReason, reasonError } = require('../utils/activity');
 const { serverError } = require('../utils/http');
+const archive = require('../utils/archive');
 const { fetchAll } = require('../utils/db');
 const docs = require('../utils/documents');
 const fileView = require('../utils/fileView');
@@ -116,6 +117,7 @@ router.delete('/files/:fid', requirePerm('renewals.edit'), async (req, res) => {
   try {
     const rErr = reasonError(req.body && req.body.reason, 'remove a document'); if (rErr) return res.status(400).json({ error: rErr });
     const x = await fileAndRenewal(req, res); if (!x) return;
+    await archive.keep(req, { type: 'renewal_file', id: x.f.id, label: `${x.f.original_filename} — ${x.r.renewal_type || ''}`, detail: x.f.original_filename, row: x.f, reason: cleanReason(req.body.reason), files: [{ bucket: docs.BUCKET, path: x.f.storage_path }] });
     const { error } = await supabase.from('renewal_files').delete().eq('id', x.f.id);
     if (error) throw error;
     await logActivity(req, { category: 'renewal', action: 'renewal_file_deleted', entityType: 'renewal', entityId: x.f.renewal_id, entityLabel: `${x.r.renewal_type || ''} — ${x.f.original_filename}`, reason: cleanReason(req.body.reason), changes: [{ field: 'Document', from: x.f.original_filename, to: null }] });
@@ -207,6 +209,7 @@ router.delete('/:id', requirePerm('renewals.edit'), async (req, res) => {
     if (gErr) throw gErr;
     if (!r) return res.status(404).json({ error: 'Renewal not found.' });
     const f = await filesOf([r.id]);
+    await archive.keep(req, { type: 'renewal', id: r.id, label: label(r), detail: `${R.money(r.amount)}${f.length ? ` · ${f.length} document${f.length === 1 ? '' : 's'}` : ''}`, row: r, related: { renewal_files: f }, reason: cleanReason(req.body.reason), files: f.map(x => ({ bucket: docs.BUCKET, path: x.storage_path })) });
     await supabase.from('renewal_files').delete().eq('renewal_id', r.id);          // (the database also cascades; this does not depend on it)
     await supabase.from('renewal_alerts').delete().eq('renewal_id', r.id);
     const { error } = await supabase.from('renewals').delete().eq('id', r.id);

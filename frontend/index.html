@@ -32,6 +32,7 @@
       <p>Site Activity Log System</p>
     </div>
   </a>
+  <nav class="crumbs" id="crumbs" aria-label="You are here"><span class="crumb-root">Home</span><span class="crumb-sep" aria-hidden="true">/</span><strong id="crumb-page"></strong></nav>
   <div class="header-right">
     <span class="header-date" id="header-date"></span>
     <span class="header-user" id="header-user"></span>
@@ -62,6 +63,7 @@
 
 <!-- TABS -->
 <nav class="tabs">
+  <div class="tab" id="tab-home" onclick="switchTab('home')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M10 21v-6h4v6"/></svg><span>Home</span></div>
   <div class="tab active" id="tab-entry" data-perms="entry.add" onclick="switchTab('entry')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg><span>Data Entry</span></div>
   <div class="tab" id="tab-records" data-perms="records.view" onclick="switchTab('records')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><span>Records</span></div>
   <div class="tab" id="tab-progress" data-perms="progress.view" onclick="switchTab('progress')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><span>Progress</span></div>
@@ -73,13 +75,40 @@
   <div class="tab" id="tab-inventory" data-perms="inventory.manage" onclick="switchTab('inventory')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg><span>Inventory</span></div>
   <div class="tab" id="tab-users" data-perms="users.manage" onclick="switchTab('users')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>Users</span></div>
   <div class="tab" id="tab-permissions" data-perms="permissions.manage" onclick="switchTab('permissions')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg><span>Permissions</span></div>
+  <div class="tab" id="tab-archive" data-perms="archive.manage" onclick="switchTab('archive')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg><span>Archived</span></div>
   <div class="tab" id="tab-logs" data-perms="logs.view" onclick="switchTab('logs')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span>Activity Logs</span></div>
+  <div class="side-foot" id="side-foot">
+    <div class="side-user"><span class="avatar" id="side-avatar" aria-hidden="true"></span><span class="side-who"><strong id="side-name"></strong><small id="side-role"></small></span></div>
+    <button type="button" class="side-logout" onclick="Auth.logout()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg><span>Logout</span></button>
+  </div>
 </nav>
 </div>
 
 <main id="main-content">
 
 <!-- ═══════════════════════════════ DATA ENTRY ═══════════════════════════════ -->
+<!-- ═══════════════ HOME ═══════════════ -->
+<div class="section" id="section-home">
+  <header class="hm-head">
+    <div><h2 class="pl-title" id="hm-greet"></h2><p class="pl-sub" id="hm-sub"></p></div>
+    <div class="hm-range" id="hm-range" hidden>
+      <label class="pl-flt"><span>From</span><input type="date" id="hm-from"></label>
+      <label class="pl-flt"><span>To</span><input type="date" id="hm-to"></label>
+      <button type="button" class="btn btn-outline btn-sm" id="hm-today">Today</button>
+      <button type="button" class="btn btn-outline btn-sm" id="hm-month">This month</button>
+    </div>
+  </header>
+  <div class="hm-cards" id="hm-cards" aria-live="polite"></div>
+  <div class="card pl-card" id="hm-sites-card" hidden>
+    <div class="pl-card-head"><div class="pl-card-title"><div><h3>Site-wise activity</h3><p id="hm-sites-sub"></p></div></div></div>
+    <div class="table-wrap pl-wrap"><table class="pl-table"><thead><tr><th>Site</th><th class="r">Records</th><th class="r">Hours</th><th class="r">Diesel (L)</th><th class="r">Loads</th></tr></thead><tbody id="hm-sites"></tbody></table></div>
+  </div>
+  <div class="card pl-card" id="hm-actions-card" hidden>
+    <div class="pl-card-head"><div class="pl-card-title"><div><h3>Quick actions</h3><p>Jump straight to what you do most.</p></div></div></div>
+    <div class="hm-actions" id="hm-actions"></div>
+  </div>
+</div>
+
 <div class="section active" id="section-entry">
   <div class="card">
     <div class="card-header">
@@ -816,6 +845,38 @@
 </div>
 
 <!-- ═══════════════════════════════ ACTIVITY LOGS (Owner + Admin) ═════════════ -->
+<!-- ═══════════════ ARCHIVED (Admin) ═══════════════ -->
+<div class="section" id="section-archive">
+  <header class="pl-head">
+    <div>
+      <h2 class="pl-title">Archived</h2>
+      <p class="pl-sub">Everything that is deleted from the app is kept here. Restore it, or delete it permanently &mdash; then the copy and its stored files are removed for good.</p>
+    </div>
+  </header>
+  <div class="perm-warning" id="ar-setup" role="alert" hidden>The Archive needs a one-time database update. Run <strong>run-in-supabase-10-archive.sql</strong> in Supabase &rarr; SQL Editor, then reload this page. Until then nothing can be deleted, so nothing is lost.</div>
+  <div class="ar-chips" id="ar-chips" aria-label="Archived items by kind"></div>
+  <div class="card pl-card">
+    <div class="pl-filters" role="search" aria-label="Search and filter archived items">
+      <label class="pl-flt pl-flt-search"><span>Search</span><input type="search" data-arf="q" placeholder="What, who deleted it or why&hellip;" autocomplete="off"></label>
+      <label class="pl-flt"><span>Kind</span><select data-arf="type"><option value="">Everything</option></select></label>
+      <label class="pl-flt"><span>Deleted from</span><input type="date" data-arf="from"></label>
+      <label class="pl-flt"><span>Deleted to</span><input type="date" data-arf="to"></label>
+      <button type="button" class="btn btn-outline btn-sm pl-flt-clear" id="ar-clear">Clear filters</button>
+    </div>
+    <div class="ar-bar">
+      <label class="ar-all"><input type="checkbox" id="ar-all"> <span>Select all shown</span></label>
+      <span class="ar-count" id="ar-count"></span>
+      <button type="button" class="btn btn-danger btn-sm" id="ar-purge-sel" disabled>Delete selected permanently</button>
+    </div>
+    <div class="table-wrap pl-wrap">
+      <table class="pl-table ar-table">
+        <thead><tr><th class="ar-chk"><span class="sr-only">Select</span></th><th>Deleted</th><th>Kind</th><th>What</th><th>Details</th><th>Deleted by</th><th>Reason</th><th class="pl-act">Actions</th></tr></thead>
+        <tbody id="ar-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 <div class="section" id="section-logs">
   <div class="card">
     <div class="card-header">
@@ -843,6 +904,7 @@
         <option value="document">Documents</option>
         <option value="payment">Payments</option>
           <option value="renewal">Renewals</option>
+          <option value="archive">Archive</option>
         <option value="purchase">Purchases</option>
         <option value="system">System (log clean-ups)</option>
       </select>

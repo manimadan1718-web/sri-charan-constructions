@@ -7,6 +7,7 @@ const {
 } = require('../utils/activity');
 const photos = require('../utils/photos');
 const { serverError } = require('../utils/http');
+const archive = require('../utils/archive');
 const lp = require('../utils/loadPoints');
 const progress = require('../utils/progress');
 const { fetchAll } = require('../utils/db');
@@ -459,6 +460,8 @@ router.delete('/:id', requirePerm('records.delete'), async (req, res) => {
 
     // (Its unloading points — and any old Work Breakup rows — are removed with it by the database.)
     // (Any old Work Breakup rows that belong to this entry are removed with it by the database.)
+    const snap = await archive.entrySnapshot(id);                               // a full copy goes to the Archive first (its photo files stay in storage)
+    await archive.keep(req, { type: 'entry', id, label: entryLabel(original), detail: [original.site, original.operator].filter(Boolean).join(' · '), reason, ...snap });
     const { error } = await supabase.from('entries').delete().eq('id', id);
     if (error) throw error;
 

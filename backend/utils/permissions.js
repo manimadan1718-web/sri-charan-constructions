@@ -46,6 +46,7 @@ const CATALOG = [
   { key: 'logs.view',          group: 'Activity Logs', label: 'See the Activity Log',             desc: 'Read who did what and when, and export the log.' },
   { key: 'logs.delete',        group: 'Activity Logs', label: 'Delete log entries',               desc: 'Remove entries from the Activity Log.', adminOnly: true },
 
+  { key: 'archive.manage',     group: 'Archived',      label: 'Archived items',                   desc: 'See everything that was deleted, restore it, or delete it permanently (the file and the copy go for good).', adminOnly: true },
   { key: 'users.manage',       group: 'Users',         label: 'Manage Users',                     desc: 'Create, edit and switch off people and reset PINs.', adminOnly: true },
   { key: 'permissions.manage', group: 'Permissions',   label: 'Manage Permissions',               desc: 'Decide what each person can do (this tab).', adminOnly: true },
 ];

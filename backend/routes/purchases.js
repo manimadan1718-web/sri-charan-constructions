@@ -5,6 +5,7 @@ const supabase = require('../config/supabase');
 const { requireAuth, requirePerm, hasPerm } = require('../middleware/auth');
 const { logActivity, cleanReason, reasonError, fmtDateDMY } = require('../utils/activity');
 const { serverError } = require('../utils/http');
+const archive = require('../utils/archive');
 const { fetchAll } = require('../utils/db');
 const docs = require('../utils/documents');
 const fileView = require('../utils/fileView');
@@ -273,9 +274,9 @@ router.delete('/:id', requirePerm('purchases.edit'), async (req, res) => {
     if (getErr) throw getErr;
     if (!p) return res.status(404).json({ error: 'Purchase not found.' });
 
+    await archive.keep(req, { type: 'purchase', id: p.id, label: `${descr(p)} — ${p.site}`, detail: p.supplier || '', row: p, reason, files: p.attachment_path ? [{ bucket: docs.BUCKET, path: p.attachment_path }] : [] });
     const { error } = await supabase.from('purchases').delete().eq('id', req.params.id);
-    if (error) throw error;
-    if (p.attachment_path) await docs.removeObject(p.attachment_path).catch(() => {});
+    if (error) throw error;                                                        // (its attachment stays in storage until it is deleted permanently from the Archive)
     await logActivity(req, {
       category: 'purchase', action: 'purchase_deleted', entityType: 'purchase', entityId: p.id,
       entityLabel: `${descr(p)} · ${p.site}`, reason,

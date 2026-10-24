@@ -293,6 +293,13 @@ const Reports = {
   },
 };
 
+// ── Archived (Admin) — everything that was deleted ─────────────────────────────
+const Archive = {
+  list(params = {}) { return apiFetch('/archive' + rnQuery(params)); },
+  restore(id) { return apiFetch(`/archive/${encodeURIComponent(id)}/restore`, { method: 'POST', body: '{}' }); },
+  purge(ids, reason) { return apiFetch('/archive/purge', { method: 'POST', body: JSON.stringify({ ids, reason }) }); },
+};
+
 // ── Renewals (Owner + Admin) and their reminders ────────────────────────────────
 const rnQuery = o => { const q = Object.entries(o || {}).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&'); return q ? '?' + q : ''; };
 const Renewals = {

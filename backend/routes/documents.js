@@ -5,6 +5,7 @@ const supabase = require('../config/supabase');
 const { requireAuth, requirePerm, hasPerm } = require('../middleware/auth');
 const { logActivity } = require('../utils/activity');
 const { serverError } = require('../utils/http');
+const archive = require('../utils/archive');
 const { fetchAll } = require('../utils/db');
 const docs = require('../utils/documents');
 const fileView = require('../utils/fileView');
@@ -185,9 +186,9 @@ router.delete('/:id', requirePerm('documents.delete'), async (req, res) => {
     if (getErr) throw getErr;
     if (!d) return res.status(404).json({ error: 'Document not found.' });
 
+    await archive.keep(req, { type: 'document', id: d.id, label: `${d.name} — ${d.category}`, detail: `${docs.formatLabel(d.ext)} · ${docs.humanSize(d.size_bytes)}`, row: d, files: [{ bucket: docs.BUCKET, path: d.storage_path }] });
     const { error } = await supabase.from('documents').delete().eq('id', req.params.id);
-    if (error) throw error;
-    await docs.removeObject(d.storage_path).catch(e => console.warn('document file could not be removed:', e.message));   // a leftover file is harmless
+    if (error) throw error;                                                        // (the file stays in storage until it is deleted permanently from the Archive)
 
     await logActivity(req, {
       category: 'document', action: 'document_deleted', entityType: 'document', entityId: d.id,

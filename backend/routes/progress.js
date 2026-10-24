@@ -10,6 +10,7 @@ const supabase = require('../config/supabase');
 const { requireAuth, requirePerm } = require('../middleware/auth');
 const { logActivity, cleanReason, reasonError } = require('../utils/activity');
 const { serverError } = require('../utils/http');
+const archive = require('../utils/archive');
 const { fetchAll } = require('../utils/db');
 const photos = require('../utils/photos');
 const progress = require('../utils/progress');
@@ -84,6 +85,7 @@ router.delete('/:id', requirePerm('progress.delete'), async (req, res) => {
     if (!row) return res.status(404).json({ error: 'That progress image could not be found.' });
     const { data: entry } = await supabase.from('entries').select('date, site, vehicle_no').eq('id', row.entry_id).maybeSingle();
 
+    await archive.keep(req, { type: 'progress', id, label: entry ? `${dayText(entry.date)} — ${entry.site || '(no site)'} — ${entry.vehicle_no}` : 'Progress picture', detail: row.caption || '', row, reason, files: row.storage_path ? [{ bucket: photos.BUCKET, path: row.storage_path }] : [] });
     const { error: dErr } = await supabase.from('progress_photos').delete().eq('id', id);
     if (dErr) throw dErr;
     await logActivity(req, {

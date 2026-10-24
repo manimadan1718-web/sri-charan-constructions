@@ -4,6 +4,7 @@ const supabase = require('../config/supabase');
 const { requireAuth, requirePerm } = require('../middleware/auth');
 const { logActivity, simpleDiff, simpleSnapshot } = require('../utils/activity');
 const { serverError } = require('../utils/http');
+const archive = require('../utils/archive');
 
 router.use(requireAuth);
 
@@ -95,6 +96,7 @@ function crud({ table, path, label, orderBy, required, fields, uniqueMsg, entity
   router.delete(`/${path}/:id`, requirePerm('inventory.manage'), async (req, res) => {
     try {
       const { data: before } = await supabase.from(table).select('*').eq('id', req.params.id).maybeSingle();
+      if (before) await archive.keep(req, { type: entity, id: before.id, label: before[required], row: before });
       const { error } = await supabase.from(table).delete().eq('id', req.params.id);
       if (error) throw error;
       if (before) {

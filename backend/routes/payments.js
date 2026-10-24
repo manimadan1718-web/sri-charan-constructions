@@ -16,6 +16,7 @@ const supabase = require('../config/supabase');
 const { requireAuth, requirePerm } = require('../middleware/auth');
 const { logActivity, cleanReason, reasonError } = require('../utils/activity');
 const { serverError } = require('../utils/http');
+const archive = require('../utils/archive');
 const { fetchAll } = require('../utils/db');
 const pay = require('../utils/payments');
 
@@ -189,6 +190,7 @@ router.delete('/:id', requirePerm('payments.edit'), async (req, res) => {
     if (getErr) throw getErr;
     if (!p) return res.status(404).json({ error: 'Payment not found.' });
 
+    await archive.keep(req, { type: 'payment', id: p.id, label: `${p.party_name} — ${pay.KIND_LABEL[p.kind]} — ${p.item || ''}`, detail: `Payable ${pay.money(p.payable)} · Paid ${pay.money(p.paid)}`, row: p, reason });
     const { error } = await supabase.from('payment_lines').delete().eq('id', req.params.id);
     if (error) throw error;
     await logActivity(req, {

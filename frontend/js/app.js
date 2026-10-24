@@ -9,6 +9,8 @@ const TAB_PERMS = {
   records:     ['records.view'],
   progress:    ['progress.view'],
   renewals:    ['renewals.view'],
+  archive:     ['archive.manage'],
+  home:        [],
   purchases:   ['purchases.add', 'purchases.view'],
   summary:     ['summary.view'],
   documents:   ['documents.view'],
@@ -18,8 +20,8 @@ const TAB_PERMS = {
   logs:        ['logs.view'],
   permissions: ['permissions.manage'],
 };
-const TAB_ORDER = ['entry', 'records', 'progress', 'purchases', 'summary', 'documents', 'renewals', 'payments', 'inventory', 'users', 'logs', 'permissions'];
-const ALL_PERMS = ['entry.add', 'progress.add', 'progress.view', 'progress.delete', 'renewals.view', 'renewals.add', 'renewals.edit', 'records.view', 'records.export', 'records.edit', 'records.delete', 'purchases.add', 'purchases.view', 'purchases.edit', 'summary.view',
+const TAB_ORDER = ['home', 'entry', 'records', 'progress', 'purchases', 'summary', 'documents', 'renewals', 'payments', 'inventory', 'users', 'logs', 'permissions', 'archive'];
+const ALL_PERMS = ['archive.manage', 'entry.add', 'progress.add', 'progress.view', 'progress.delete', 'renewals.view', 'renewals.add', 'renewals.edit', 'records.view', 'records.export', 'records.edit', 'records.delete', 'purchases.add', 'purchases.view', 'purchases.edit', 'summary.view',
   'documents.view', 'documents.print', 'documents.upload', 'documents.delete', 'payments.add', 'payments.view', 'payments.edit', 'inventory.manage', 'logs.view', 'logs.delete', 'users.manage', 'permissions.manage'];
 // Only used when the server has not sent a list (a session that started before permissions existed): the role's defaults.
 const ROLE_FALLBACK = {
@@ -33,7 +35,7 @@ function myPerms() {
   return Array.isArray(u.permissions) ? u.permissions : (ROLE_FALLBACK[u.role] || []);
 }
 const can = key => myPerms().includes(key);
-const canTab = name => !!TAB_PERMS[name] && TAB_PERMS[name].some(can);
+const canTab = name => name === 'home' || (!!TAB_PERMS[name] && TAB_PERMS[name].some(can));       // Home is for everyone who is signed in
 const visibleTabs = () => TAB_ORDER.filter(canTab);
 
 /* ── Boot ────────────────────────────────────────────────────────────────────── */
@@ -68,6 +70,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initLogSelection();
 
   document.getElementById('header-user').textContent = `${user.name} / ${capitalize(user.role)}`;
+  fillSideUser(user);
   document.getElementById('f-date').value = today();
   document.getElementById('header-date').textContent = new Date().toLocaleDateString('en-IN', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
@@ -428,7 +431,7 @@ function showToast(msg, isError = false) {
 }
 
 /* ── Tab ─────────────────────────────────────────────────────────────────────── */
-const TAB_LABELS = { entry: 'Data Entry', records: 'Records', progress: 'Progress', purchases: 'Purchases', summary: 'Summary', documents: 'Documents', renewals: 'Renewals', payments: 'Payments', inventory: 'Inventory', users: 'Users', logs: 'Activity Logs', permissions: 'Permissions' };
+const TAB_LABELS = { entry: 'Data Entry', records: 'Records', progress: 'Progress', purchases: 'Purchases', summary: 'Summary', documents: 'Documents', renewals: 'Renewals', archive: 'Archived', home: 'Home', payments: 'Payments', inventory: 'Inventory', users: 'Users', logs: 'Activity Logs', permissions: 'Permissions' };
 
 function switchTab(name) {
   // Only open a screen the signed-in role is meant to have (the server enforces this too; this keeps the screen honest).
@@ -454,6 +457,9 @@ function switchTab(name) {
   if (name === 'records')   loadRecords();
   if (name === 'progress')  loadProgressTab();
   if (name === 'renewals')  initRenewals();
+  if (name === 'home')      initHome();
+  if (name === 'archive')   initArchive();
+  setCrumb(name);
   if (name === 'summary')   loadSummary();
   if (name === 'documents') loadDocuments();
   if (name === 'payments')  initPayments();
@@ -1719,6 +1725,8 @@ const SPECIAL_ACTIONS = {
   document_viewed:     { label: 'Document viewed',     cls: 'pill-sky'  },
   document_printed:    { label: 'Document printed',    cls: 'pill-sky'  },
   progress_deleted:    { label: 'Progress picture deleted', cls: 'pill-red' },
+  archive_restored:    { label: 'Restored from Archive', cls: 'pill-green' },
+  archive_purged:      { label: 'Deleted permanently', cls: 'pill-red' },
   renewal_added:       { label: 'Renewal added',       cls: 'pill-green' },
   renewal_updated:     { label: 'Renewal changed',     cls: 'pill-orange' },
   renewal_deleted:     { label: 'Renewal deleted',     cls: 'pill-red'  },
@@ -3665,6 +3673,185 @@ async function saveReminderSettings(s) {
   finally { btn.disabled = false; }
 }
 
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   The shell: the breadcrumb in the top bar, and the person card in the sidebar
+   ═══════════════════════════════════════════════════════════════════════════════ */
+function setCrumb(name) {
+  const page = document.getElementById('crumb-page'), sep = document.querySelector('#crumbs .crumb-sep');
+  if (!page) return;
+  page.textContent = name === 'home' ? '' : (TAB_LABELS[name] || '');
+  if (sep) sep.hidden = name === 'home';
+  const root = document.querySelector('#crumbs .crumb-root'); if (root) root.classList.toggle('is-here', name === 'home');
+}
+function fillSideUser(user) {
+  const a = document.getElementById('side-avatar'); if (!a) return;
+  a.textContent = (String(user.name || '?').trim()[0] || '?').toUpperCase();
+  document.getElementById('side-name').textContent = user.name || '';
+  document.getElementById('side-role').textContent = capitalize(user.role || '');
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Home — what matters today, for the modules this person may open
+   ═══════════════════════════════════════════════════════════════════════════════ */
+const HM = { built: false };
+const hmGreeting = () => { const h = new Date().getHours(); return h < 12 ? 'Good Morning' : h < 17 ? 'Good Afternoon' : 'Good Evening'; };
+const hmMonthStart = () => today().slice(0, 8) + '01';
+const HM_ICON = {
+  rec: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+  ren: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>',
+  pay: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>',
+  arc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>',
+};
+function hmCard(icon, title, chips, tab) {
+  return `<button type="button" class="hm-card" ${tab ? `data-hm-go="${tab}"` : ''}>
+    <span class="hm-ic">${icon}</span>
+    <span class="hm-body"><strong class="hm-title">${title}</strong>
+      <span class="hm-chips">${chips.map(c => `<span class="hm-chip">${esc(c.label)} <b class="hm-n hm-n-${c.tone || 'plain'}">${esc(String(c.value))}</b></span>`).join('')}</span></span>
+  </button>`;
+}
+
+function initHome() {
+  const user = Auth.currentUser(), name = (user && user.name) || '';
+  document.getElementById('hm-greet').textContent = `${hmGreeting()}, ${name}`;
+  document.getElementById('hm-sub').textContent = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  if (!HM.built) {
+    HM.built = true;
+    const from = document.getElementById('hm-from'), to = document.getElementById('hm-to');
+    from.value = to.value = today();
+    const reload = () => loadHome();
+    from.addEventListener('change', reload); to.addEventListener('change', reload);
+    document.getElementById('hm-today').addEventListener('click', () => { from.value = to.value = today(); reload(); });
+    document.getElementById('hm-month').addEventListener('click', () => { from.value = hmMonthStart(); to.value = today(); reload(); });
+    document.getElementById('section-home').addEventListener('click', ev => { const g = ev.target.closest('[data-hm-go]'); if (g) switchTab(g.dataset.hmGo); });
+  }
+  loadHome();
+}
+
+async function loadHome() {
+  const from = document.getElementById('hm-from').value, to = document.getElementById('hm-to').value;
+  const canRec = can('summary.view'), cards = document.getElementById('hm-cards');
+  document.getElementById('hm-range').hidden = !canRec;
+  const jobs = {
+    rec: canRec && from && to && from <= to ? Entries.stats({ from, to }).then(r => r.data) : null,
+    ren: can('renewals.view') ? Renewals.list({ status: 'active' }) : null,
+    pay: can('payments.view') ? Payments.summary().then(r => r.data) : null,
+    arc: can('archive.manage') ? Archive.list({}) : null,
+  };
+  const got = {};
+  await Promise.all(Object.entries(jobs).map(async ([k, p]) => { if (p) { try { got[k] = await p; } catch { got[k] = null; } } }));
+  const out = [];
+  if (got.rec) {
+    const r = got.rec, span = from === to ? (from === today() ? 'today' : fmtDate(from)) : `${fmtDate(from)} – ${fmtDate(to)}`;
+    out.push(hmCard(HM_ICON.rec, `${r.total_entries} ${r.total_entries === 1 ? 'Record' : 'Records'} <small>${esc(span)}</small>`, [{ label: 'Hours', value: r.total_hours }, { label: 'Diesel (L)', value: Number(r.total_diesel).toFixed(1) }, { label: 'Loads', value: r.total_loads }], can('records.view') ? 'records' : 'summary'));
+  }
+  if (got.ren && got.ren.summary) {
+    const s = got.ren.summary, n = s.overdue + s.today + s.soon;
+    out.push(hmCard(HM_ICON.ren, `${n} ${n === 1 ? 'Renewal needs' : 'Renewals need'} attention`, [{ label: 'Overdue', value: s.overdue, tone: s.overdue ? 'bad' : 'plain' }, { label: 'Due today', value: s.today, tone: s.today ? 'warn' : 'plain' }, { label: 'Due soon', value: s.soon, tone: s.soon ? 'warn' : 'plain' }, { label: 'Upcoming', value: s.upcoming }], 'renewals'));
+  }
+  if (got.pay && got.pay.overall) {
+    const o = got.pay.overall;
+    out.push(hmCard(HM_ICON.pay, `${inrS(o.balance)} <small>balance to pay</small>`, [{ label: 'Payable', value: inrS(o.payable) }, { label: 'Paid', value: inrS(o.paid), tone: 'good' }, { label: 'Company', value: inrS(got.pay.kinds.company.totals.balance) }, { label: 'Outside rental', value: inrS(got.pay.kinds.outside.totals.balance) }], 'payments'));
+  }
+  if (got.arc) out.push(hmCard(HM_ICON.arc, `${got.arc.total} ${got.arc.total === 1 ? 'item' : 'items'} in the Archive`, Object.entries(got.arc.counts || {}).slice(0, 4).map(([k, v]) => ({ label: (got.arc.types.find(t => t.key === k) || { label: k }).label, value: v })), 'archive'));
+  cards.innerHTML = out.join('') || '<p class="hm-empty">Nothing to summarise here yet. Use the quick actions below.</p>';
+
+  const sitesCard = document.getElementById('hm-sites-card');
+  sitesCard.hidden = !got.rec;
+  if (got.rec) {
+    const r = got.rec, rows = r.sites || [];
+    document.getElementById('hm-sites-sub').textContent = rows.length ? `${rows.length} ${rows.length === 1 ? 'site' : 'sites'} with records in this period.` : '';
+    document.getElementById('hm-sites').innerHTML = rows.length
+      ? rows.map(x => `<tr><td data-label="Site"><strong>${esc(x.site)}</strong></td><td class="r" data-label="Records">${x.entries}</td><td class="r" data-label="Hours">${esc(String(x.hours))}</td><td class="r" data-label="Diesel (L)">${esc(Number(x.diesel).toFixed(1))}</td><td class="r" data-label="Loads">${x.loads}</td></tr>`).join('')
+        + `<tr class="pl-total"><td data-label="">Grand total</td><td class="r" data-label="Records">${r.total_entries}</td><td class="r" data-label="Hours">${esc(String(r.total_hours))}</td><td class="r" data-label="Diesel (L)">${esc(Number(r.total_diesel).toFixed(1))}</td><td class="r" data-label="Loads">${r.total_loads}</td></tr>`
+      : '<tr class="empty-row"><td colspan="5">No records in this period.</td></tr>';
+  }
+  const acts = [['entry', 'Add a record', 'entry.add'], ['purchases', 'Add a purchase', 'purchases.add'], ['payments', 'Add payment lines', 'payments.add'], ['renewals', 'Add a renewal', 'renewals.add'], ['documents', 'Upload a document', 'documents.upload'], ['progress', 'See progress pictures', 'progress.view']].filter(a => can(a[2]) && canTab(a[0]));
+  document.getElementById('hm-actions-card').hidden = !acts.length;
+  if (!out.length) cards.innerHTML = acts.length ? '<p class="hm-empty">Nothing to summarise here yet. Use the quick actions below.</p>' : '<p class="hm-empty">Nothing is switched on for you yet. Ask the Admin to give you access to what you need.</p>';
+  document.getElementById('hm-actions').innerHTML = acts.map(a => `<button type="button" class="btn btn-outline" data-hm-go="${a[0]}">${esc(a[1])}</button>`).join('');
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Archived (Admin) — everything that was deleted; restore it, or delete it permanently
+   ═══════════════════════════════════════════════════════════════════════════════ */
+const AR = { built: false, rows: [], total: 0, counts: {}, types: [], filter: { q: '', type: '', from: '', to: '' }, sel: new Set(), timer: null };
+const arWhen = iso => (iso ? new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) : '');
+
+function initArchive() {
+  if (!AR.built) {
+    AR.built = true;
+    const root = document.getElementById('section-archive');
+    root.addEventListener('input', ev => { const t = ev.target; if (t.matches('[data-arf]') && t.tagName !== 'SELECT') { AR.filter[t.dataset.arf] = t.value; clearTimeout(AR.timer); AR.timer = setTimeout(loadArchive, 280); } });
+    root.addEventListener('change', ev => {
+      const t = ev.target;
+      if (t.matches('select[data-arf]')) { AR.filter[t.dataset.arf] = t.value; loadArchive(); }
+      if (t.id === 'ar-all') { AR.rows.forEach(r => { if (t.checked) AR.sel.add(r.id); else AR.sel.delete(r.id); }); renderArchive(); }
+      if (t.matches('[data-ar-sel]')) { if (t.checked) AR.sel.add(t.dataset.arSel); else AR.sel.delete(t.dataset.arSel); syncArBar(); }
+    });
+    root.addEventListener('click', ev => {
+      const b = ev.target.closest('button'); if (!b) return;
+      if (b.id === 'ar-clear') { AR.filter = { q: '', type: '', from: '', to: '' }; syncArFilters(); return loadArchive(); }
+      if (b.id === 'ar-purge-sel') return purgeArchive([...AR.sel]);
+      if (b.dataset.arChip !== undefined) { AR.filter.type = b.dataset.arChip; syncArFilters(); return loadArchive(); }
+      if (b.dataset.arRestore) return restoreArchived(b.dataset.arRestore);
+      if (b.dataset.arPurge) return purgeArchive([b.dataset.arPurge]);
+    });
+  }
+  loadArchive();
+}
+function syncArFilters() { document.querySelectorAll('#section-archive [data-arf]').forEach(el => { el.value = AR.filter[el.dataset.arf] || ''; }); }
+async function loadArchive() {
+  try {
+    const f = AR.filter;
+    const res = await Archive.list({ q: f.q.trim(), type: f.type, from: f.from, to: f.to });
+    AR.rows = res.data || []; AR.total = res.total || 0; AR.counts = res.counts || {}; AR.types = res.types || [];
+    const visible = new Set(AR.rows.map(r => r.id)); AR.sel = new Set([...AR.sel].filter(id => visible.has(id)));
+    document.getElementById('ar-setup').hidden = !res.setup_required;
+    const sel = document.querySelector('#section-archive select[data-arf="type"]');
+    sel.innerHTML = '<option value="">Everything</option>' + AR.types.map(t => `<option value="${esc(t.key)}">${esc(t.label)}${AR.counts[t.key] ? ` (${AR.counts[t.key]})` : ''}</option>`).join('');
+    syncArFilters(); renderArchive();
+  } catch (e) { document.getElementById('ar-body').innerHTML = `<tr class="empty-row"><td colspan="8">${esc(e.message || 'The Archive could not be loaded.')}</td></tr>`; }
+}
+function renderArchive() {
+  document.getElementById('ar-chips').innerHTML = AR.total
+    ? `<button type="button" class="ar-chip${AR.filter.type ? '' : ' is-on'}" data-ar-chip="">Everything <b>${AR.total}</b></button>` + AR.types.filter(t => AR.counts[t.key]).map(t => `<button type="button" class="ar-chip${AR.filter.type === t.key ? ' is-on' : ''}" data-ar-chip="${esc(t.key)}">${esc(t.label)} <b>${AR.counts[t.key]}</b></button>`).join('') : '';
+  document.getElementById('ar-body').innerHTML = AR.rows.length ? AR.rows.map(r => `
+    <tr data-id="${esc(r.id)}">
+      <td class="ar-chk"><input type="checkbox" data-ar-sel="${esc(r.id)}" ${AR.sel.has(r.id) ? 'checked' : ''} aria-label="Select ${esc(r.label)}"></td>
+      <td data-label="Deleted">${esc(arWhen(r.deleted_at))}</td>
+      <td data-label="Kind"><span class="ar-kind ar-kind-${esc(r.type)}">${esc(r.type_label)}</span></td>
+      <td data-label="What"><strong>${esc(r.label)}</strong></td>
+      <td data-label="Details" class="pl-desc-cell">${esc(r.detail) || '<span class="pl-none">—</span>'}${r.files ? `<small class="ar-files">${r.files} stored ${r.files === 1 ? 'file' : 'files'}</small>` : ''}</td>
+      <td data-label="Deleted by">${esc(r.deleted_by_name) || '<span class="pl-none">—</span>'}</td>
+      <td data-label="Reason" class="pl-desc-cell">${esc(r.reason) || '<span class="pl-none">—</span>'}</td>
+      <td class="pl-act" data-label="Actions">${r.restorable ? `<button type="button" class="btn btn-outline btn-sm" data-ar-restore="${esc(r.id)}">Restore</button>` : '<small class="ar-note">Add again in Users</small>'}<button type="button" class="btn btn-danger btn-sm" data-ar-purge="${esc(r.id)}">Delete permanently</button></td>
+    </tr>`).join('') : `<tr class="empty-row"><td colspan="8">${AR.total ? 'Nothing matches these filters.' : 'The Archive is empty. Anything that is deleted will appear here.'}</td></tr>`;
+  document.getElementById('ar-count').textContent = AR.rows.length ? (AR.rows.length === AR.total ? plural(AR.total, 'item') : `Showing ${AR.rows.length} of ${plural(AR.total, 'item')}`) : '';
+  syncArBar();
+}
+function syncArBar() {
+  const n = AR.sel.size, all = document.getElementById('ar-all');
+  const b = document.getElementById('ar-purge-sel'); b.disabled = n === 0; b.textContent = n ? `Delete ${n} selected permanently` : 'Delete selected permanently';
+  all.checked = AR.rows.length > 0 && n === AR.rows.length; all.indeterminate = n > 0 && n < AR.rows.length;
+}
+async function restoreArchived(id) {
+  const r = AR.rows.find(x => x.id === id); if (!r) return;
+  try { await Archive.restore(id); showToast(`${r.type_label} restored: ${r.label}`); AR.sel.delete(id); loadArchive(); refreshBell(true); }
+  catch (e) { showToast(e.message || 'Could not restore.', true); }
+}
+async function purgeArchive(ids) {
+  if (!ids.length) return;
+  const rows = ids.map(id => AR.rows.find(x => x.id === id)).filter(Boolean), one = rows.length === 1 ? rows[0] : null;
+  const files = rows.reduce((a, r) => a + (r.files || 0), 0);
+  const reason = await askReason({ title: one ? 'Delete this permanently?' : `Delete ${rows.length} items permanently?`,
+    intro: `${one ? `<strong>${esc(one.type_label)}: ${esc(one.label)}</strong>. ` : ''}This <strong>cannot be undone</strong>: the copy is removed from the database${files ? ` and ${plural(files, 'stored file')} ${files === 1 ? 'is' : 'are'} removed from storage` : ''}. The reason is saved in the Activity Log.`,
+    confirmLabel: 'Delete permanently', danger: true });
+  if (!reason) return;
+  try { const res = await Archive.purge(ids, reason); showToast(`Deleted permanently: ${plural(res.removed, 'item')}.`); ids.forEach(i => AR.sel.delete(i)); loadArchive(); }
+  catch (e) { showToast(e.message || 'Could not delete.', true); }
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════════
    Mobile menu — on phones and small tablets the tab bar is replaced by a slide-in menu

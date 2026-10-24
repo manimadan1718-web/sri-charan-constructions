@@ -1,3 +1,6 @@
+/* Small line icons for the icon-only buttons (the same drawing style everywhere) */
+const ICON_EDIT = '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
+const ICON_TRASH = '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
 /* ── Permissions → Tabs ─────────────────────────────────────────────────────── */
 // What a person may do is decided by the SERVER (their role, plus anything the Admin switched on or off for them) and
 // sent when they sign in. A tab is shown when the person has ANY of the permissions listed for it.
@@ -364,7 +367,7 @@ function setupAutoCalculate() {
       const hrs  = Math.floor(diff / 60);
       const mins = diff % 60;
       hoursEl.value = mins === 0 ? `${hrs} hrs` : `${hrs} hrs ${mins} mins`;
-      if (hintEl) hintEl.textContent = `✅ Auto-calculated: ${hoursEl.value}`;
+      if (hintEl) hintEl.textContent = `Auto-calculated: ${hoursEl.value}`;
       hoursEl.style.borderColor = 'var(--green)';
       return;
     }
@@ -380,10 +383,10 @@ function setupAutoCalculate() {
         const unit = sRead.unit ? ' ' + sRead.unit : '';
         // round to 2 dp to avoid floating-point noise like 130.10000000000002
         hoursEl.value = (Math.round(diff * 100) / 100).toString() + unit;
-        if (hintEl) hintEl.textContent = `✅ Auto-calculated: ${cNum} − ${sNum} = ${hoursEl.value}`;
+        if (hintEl) hintEl.textContent = `Auto-calculated: ${cNum} − ${sNum} = ${hoursEl.value}`;
         hoursEl.style.borderColor = 'var(--green)';
       } else {
-        if (hintEl) hintEl.textContent = '⚠️ Closing reading is less than starting reading.';
+        if (hintEl) hintEl.textContent = '⚠ Closing reading is less than starting reading.';
         hoursEl.style.borderColor = 'var(--red)';
       }
       return;
@@ -513,13 +516,13 @@ async function saveEntry() {
 
   try {
     await Entries.create(payload);
-    showToast('✅ Entry saved successfully!');
+    showToast('Entry saved successfully!');
     releasePhotos('f', false);   // the photos now belong to the entry — keep them
     pgReset(true);               // …and so do the progress pictures
     clearForm();
     loadUnloadPoints();          // a new point name may have been used
   } catch (e) {
-    showToast('❌ ' + (e.message || 'Save failed.'), true);
+    showToast('' + (e.message || 'Save failed.'), true);
   }
 }
 
@@ -603,8 +606,8 @@ function renderRecordsTable(entries) {
       <td>${esc(e.operator) || '–'}</td>
       <td style="max-width:200px;white-space:normal;">${esc(e.remarks) || '–'}</td>
       <td class="hist-col"><button class="btn btn-outline btn-sm hist-btn" data-id="${esc(e.id)}" onclick="openHistory(this.dataset.id)" title="View history">${CLOCK_SVG}<span class="hist-count"></span></button></td>
-      ${canEdit ? `<td class="edit-col"><button class="btn btn-outline btn-sm" onclick="openEditModal('${esc(e.id)}')" aria-label="Edit this entry">✏️</button></td>` : ''}
-      ${canDelete ? `<td class="del-col"><button class="btn btn-danger btn-sm" onclick="deleteEntry('${esc(e.id)}')" aria-label="Delete this entry">🗑</button></td>` : ''}`;
+      ${canEdit ? `<td class="edit-col"><button class="btn btn-outline btn-sm" onclick="openEditModal('${esc(e.id)}')" aria-label="Edit this entry">${ICON_EDIT}</button></td>` : ''}
+      ${canDelete ? `<td class="del-col"><button class="btn btn-danger btn-sm" onclick="deleteEntry('${esc(e.id)}')" aria-label="Delete this entry">${ICON_TRASH}</button></td>` : ''}`;
     tbody.appendChild(tr);
   });
 }
@@ -720,7 +723,7 @@ async function deleteEntry(id) {
     showToast('Entry deleted.');
     loadRecords();
   } catch (e) {
-    showToast('❌ ' + (e.message || 'Delete failed.'), true);
+    showToast('' + (e.message || 'Delete failed.'), true);
   }
 }
 
@@ -788,7 +791,7 @@ function setExportBusy(on, label) {
   const btn = document.getElementById('export-btn');
   btn.disabled = on;
   btn.classList.toggle('is-busy', on);
-  document.getElementById('export-label').textContent = on ? `Preparing ${label}…` : '⬇ Export';
+  document.getElementById('export-label').textContent = on ? `Preparing ${label}…` : 'Export';
 }
 
 function saveBlob(blob, filename) {
@@ -813,9 +816,9 @@ async function exportReport(format) {
   try {
     const blob = await Reports.entries({ format, ids: currentRecords.map(e => e.id), filtersText: describeFilters() });
     saveBlob(blob, `SCC-site-log-${today()}.${format}`);
-    showToast(`✅ ${label} report downloaded.`);
+    showToast(`${label} report downloaded.`);
   } catch (e) {
-    showToast('❌ ' + (e.message || 'The report could not be prepared.'), true);
+    showToast('' + (e.message || 'The report could not be prepared.'), true);
   } finally {
     exporting = false;
     setExportBusy(false);
@@ -909,12 +912,12 @@ async function submitEditEntry() {
 
   try {
     await Entries.update(id, payload);
-    showToast('✅ Entry updated successfully!');
+    showToast('Entry updated successfully!');
     releasePhotos('e', false);   // saved — keep the photos
     closeEditModal();
     loadRecords();
   } catch (e) {
-    showToast('❌ ' + (e.message || 'Update failed.'), true);
+    showToast('' + (e.message || 'Update failed.'), true);
   }
 }
 
@@ -1085,7 +1088,7 @@ async function loadInventory() {
 const statusBtn = (active, fn, id) => `
       <button class="btn ${active ? 'btn-green' : 'btn-outline'} btn-sm" onclick="${fn}('${esc(id)}', ${!!active})">${active ? 'Active' : 'Inactive'}</button>`;
 const editBtn = (type, id, label) =>
-  `<button class="btn btn-outline btn-sm" onclick="openInvEdit('${type}', '${esc(id)}')" aria-label="Edit ${esc(label)}">✏️ Edit</button>`;
+  `<button class="btn btn-outline btn-sm" onclick="openInvEdit('${type}', '${esc(id)}')" aria-label="Edit ${esc(label)}">Edit</button>`;
 
 function renderVehiclesTable(list) {
   const tbody = document.getElementById('vehicles-body');
@@ -1098,7 +1101,7 @@ function renderVehiclesTable(list) {
       <td>${esc(v.type) || '–'}</td>
       <td>${statusBtn(v.active, 'toggleVehicleActive', v.id)}</td>
       <td>${editBtn('vehicles', v.id, v.vehicle_no)}</td>
-      <td><button class="btn btn-danger btn-sm" onclick="deleteVehicle('${esc(v.id)}')" aria-label="Delete ${esc(v.vehicle_no)}">🗑</button></td>`;
+      <td><button class="btn btn-danger btn-sm" onclick="deleteVehicle('${esc(v.id)}')" aria-label="Delete ${esc(v.vehicle_no)}">${ICON_TRASH}</button></td>`;
     tbody.appendChild(tr);
   });
 }
@@ -1114,7 +1117,7 @@ function renderOperatorsTable(list) {
       <td>${esc(o.phone) || '–'}</td>
       <td>${statusBtn(o.active, 'toggleOperatorActive', o.id)}</td>
       <td>${editBtn('operators', o.id, o.name)}</td>
-      <td><button class="btn btn-danger btn-sm" onclick="deleteOperator('${esc(o.id)}')" aria-label="Delete ${esc(o.name)}">🗑</button></td>`;
+      <td><button class="btn btn-danger btn-sm" onclick="deleteOperator('${esc(o.id)}')" aria-label="Delete ${esc(o.name)}">${ICON_TRASH}</button></td>`;
     tbody.appendChild(tr);
   });
 }
@@ -1130,7 +1133,7 @@ function renderSitesTable(list) {
       <td>${esc(st.location) || '–'}</td>
       <td>${statusBtn(st.active, 'toggleSiteActive', st.id)}</td>
       <td>${editBtn('sites', st.id, st.name)}</td>
-      <td><button class="btn btn-danger btn-sm" onclick="deleteSite('${esc(st.id)}')" aria-label="Delete ${esc(st.name)}">🗑</button></td>`;
+      <td><button class="btn btn-danger btn-sm" onclick="deleteSite('${esc(st.id)}')" aria-label="Delete ${esc(st.name)}">${ICON_TRASH}</button></td>`;
     tbody.appendChild(tr);
   });
 }
@@ -1141,19 +1144,19 @@ async function addVehicle() {
   if (!vehicle_no) { showToast('Vehicle / Machine No. is required.', true); return; }
   try {
     await Inventory.addVehicle({ vehicle_no, type });
-    showToast('✅ Vehicle added!');
+    showToast('Vehicle added!');
     document.getElementById('inv-vehicle-no').value = '';
     document.getElementById('inv-vehicle-type').value = '';
     loadInventory();
     loadDropdownData();
   } catch (e) {
-    showToast('❌ ' + (e.message || 'Could not add vehicle.'), true);
+    showToast('' + (e.message || 'Could not add vehicle.'), true);
   }
 }
 
 async function toggleVehicleActive(id, currentActive) {
   try { await Inventory.updateVehicle(id, { active: !currentActive }); showToast(currentActive ? 'Vehicle marked inactive — it no longer appears in the entry form.' : 'Vehicle marked active again.'); loadInventory(); loadDropdownData(); }
-  catch (e) { showToast('❌ ' + (e.message || 'Update failed.'), true); }
+  catch (e) { showToast('' + (e.message || 'Update failed.'), true); }
 }
 
 async function deleteVehicle(id) {
@@ -1168,19 +1171,19 @@ async function addOperator() {
   if (!name) { showToast('Operator name is required.', true); return; }
   try {
     await Inventory.addOperator({ name, phone });
-    showToast('✅ Operator added!');
+    showToast('Operator added!');
     document.getElementById('inv-operator-name').value = '';
     document.getElementById('inv-operator-phone').value = '';
     loadInventory();
     loadDropdownData();
   } catch (e) {
-    showToast('❌ ' + (e.message || 'Could not add operator.'), true);
+    showToast('' + (e.message || 'Could not add operator.'), true);
   }
 }
 
 async function toggleOperatorActive(id, currentActive) {
   try { await Inventory.updateOperator(id, { active: !currentActive }); showToast(currentActive ? 'Operator marked inactive — it no longer appears in the entry form.' : 'Operator marked active again.'); loadInventory(); loadDropdownData(); }
-  catch (e) { showToast('❌ ' + (e.message || 'Update failed.'), true); }
+  catch (e) { showToast('' + (e.message || 'Update failed.'), true); }
 }
 
 async function deleteOperator(id) {
@@ -1195,19 +1198,19 @@ async function addSite() {
   if (!name) { showToast('Site name is required.', true); return; }
   try {
     await Inventory.addSite({ name, location });
-    showToast('✅ Site added!');
+    showToast('Site added!');
     document.getElementById('inv-site-name').value = '';
     document.getElementById('inv-site-location').value = '';
     loadInventory();
     loadDropdownData();
   } catch (e) {
-    showToast('❌ ' + (e.message || 'Could not add site.'), true);
+    showToast('' + (e.message || 'Could not add site.'), true);
   }
 }
 
 async function toggleSiteActive(id, currentActive) {
   try { await Inventory.updateSite(id, { active: !currentActive }); showToast(currentActive ? 'Site marked inactive — it no longer appears in the entry form.' : 'Site marked active again.'); loadInventory(); loadDropdownData(); }
-  catch (e) { showToast('❌ ' + (e.message || 'Update failed.'), true); }
+  catch (e) { showToast('' + (e.message || 'Update failed.'), true); }
 }
 
 async function deleteSite(id) {
@@ -1252,7 +1255,7 @@ async function saveInvEdit() {
   btn.disabled = true;
   try {
     await def.update(invEditing.id, { [def.k1]: v1, [def.k2]: v2 });
-    showToast(`✅ ${capitalize(def.noun)} updated.`);
+    showToast(`${capitalize(def.noun)} updated.`);
     closeInvEdit();
     loadInventory();
     loadDropdownData();
@@ -1297,9 +1300,9 @@ function renderUsersTable(list) {
       <td><strong>${esc(u.name)}</strong>${isSelf ? ' <span class="badge">You</span>' : ''}</td>
       <td><span class="pill ${ROLE_PILL[u.role] || 'pill-gray'}">${esc(capitalize(u.role))}</span></td>
       <td><span class="pill ${u.active ? 'pill-green' : 'pill-gray'}">${u.active ? 'Active' : 'Inactive'}</span></td>
-      <td><button class="btn btn-outline btn-sm" onclick="openUserEdit('${esc(u.id)}')" aria-label="Edit ${esc(u.name)}">✏️ Edit</button></td>
+      <td><button class="btn btn-outline btn-sm" onclick="openUserEdit('${esc(u.id)}')" aria-label="Edit ${esc(u.name)}">Edit</button></td>
       <td>
-        <button class="btn btn-danger btn-sm" onclick="deleteUser('${esc(u.id)}')" aria-label="Delete ${esc(u.name)}" ${isSelf ? 'disabled title="You cannot delete your own account"' : ''}>🗑</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteUser('${esc(u.id)}')" aria-label="Delete ${esc(u.name)}" ${isSelf ? 'disabled title="You cannot delete your own account"' : ''}>${ICON_TRASH}</button>
       </td>`;
     tbody.appendChild(tr);
   });
@@ -1314,13 +1317,13 @@ async function createUser() {
 
   try {
     await Users.create({ name, pin, role });
-    showToast('✅ User created!');
+    showToast('User created!');
     document.getElementById('u-name').value = '';
     document.getElementById('u-pin').value  = '';
     document.getElementById('u-role').value = '';            // the next user starts on "Select Role" again
     loadUsers();
   } catch (e) {
-    showToast('❌ ' + (e.message || 'Could not create user.'), true);
+    showToast('' + (e.message || 'Could not create user.'), true);
   }
 }
 
@@ -1366,7 +1369,7 @@ async function saveUserEdit() {
   try {
     const res = await Users.update(userEditingId, payload);
     closeUserEdit();
-    showToast(res.unchanged ? 'No changes were made.' : '✅ User updated.');
+    showToast(res.unchanged ? 'No changes were made.' : 'User updated.');
     loadUsers();
   } catch (e) {
     err.textContent = e.message || 'Could not save the changes.';
@@ -1388,7 +1391,7 @@ async function deleteUser(id) {
     showToast('User deleted.');
     loadUsers();
   } catch (e) {
-    showToast('❌ ' + (e.message || 'Delete failed.'), true);
+    showToast('' + (e.message || 'Delete failed.'), true);
   }
 }
 
@@ -1547,14 +1550,14 @@ async function runTableReport(kind, format, itemEl) {
   try {
     const blob = await call();
     saveBlob(blob, `SCC-${name}-${today()}.${format}`);
-    showToast(`✅ ${label} report downloaded.`);
+    showToast(`${label} report downloaded.`);
   } catch (e) {
-    showToast('❌ ' + (e.message || 'The report could not be prepared.'), true);
+    showToast('' + (e.message || 'The report could not be prepared.'), true);
   } finally {
     rmBusy = false;
     btn.disabled = false;
     btn.classList.remove('is-busy');
-    menu.querySelector('.rm-label').textContent = '⬇ Export';
+    menu.querySelector('.rm-label').textContent = 'Export';
   }
 }
 
@@ -1903,7 +1906,7 @@ async function loadLogs(reset = true) {
     if (seq !== logsSeq) return;
     const setup = e.data && e.data.setup_required;
     body.innerHTML = `<tr class="empty-row"><td colspan="7">${setup
-      ? '⚠️ The activity log table has not been created yet.<br><small>Open Supabase → SQL Editor and run <strong>run-in-supabase-logs.sql</strong>, then reload this page.</small>'
+      ? '⚠ The activity log table has not been created yet.<br><small>Open Supabase → SQL Editor and run <strong>run-in-supabase-logs.sql</strong>, then reload this page.</small>'
       : esc(e.message || 'Could not load the activity logs.')}</td></tr>`;
     $('logs-count').textContent = '';
     moreBtn.style.display = 'none';
@@ -1927,7 +1930,7 @@ function logRowHtml(l) {
   const select = protectedRow
     ? `<span class="lg-lock" title="A permanent record that the log was cleaned — it cannot be deleted" aria-label="Permanent record">${LOCK_SVG}</span>`
     : `<input type="checkbox" class="lg-check" data-id="${esc(l.id)}" aria-label="Select this entry" ${logSel.has(String(l.id)) || logAllMatching ? 'checked' : ''}>`;
-  const del = protectedRow ? '' : `<button type="button" class="btn btn-danger btn-sm lg-del-btn" data-id="${esc(l.id)}" title="Delete this entry" aria-label="Delete this entry">🗑</button>`;
+  const del = protectedRow ? '' : `<button type="button" class="btn btn-danger btn-sm lg-del-btn" data-id="${esc(l.id)}" title="Delete this entry" aria-label="Delete this entry">${ICON_TRASH}</button>`;
   return `<tr${protectedRow ? ' class="is-protected"' : ''}>
     <td class="lg-select">${select}</td>
     <td class="log-time">${fmtDateTime(l.created_at)}</td>
@@ -2017,9 +2020,9 @@ async function runLogDelete(body) {
   try {
     const res = await Logs.remove(body);
     const kept = res.skipped ? ` (${res.skipped} permanent record${res.skipped === 1 ? ' was' : 's were'} kept)` : '';
-    showToast(res.deleted ? `🗑 Deleted ${res.deleted} log entr${res.deleted === 1 ? 'y' : 'ies'}.${kept}` : `Nothing was deleted${kept}.`);
+    showToast(res.deleted ? `Deleted ${res.deleted} log entr${res.deleted === 1 ? 'y' : 'ies'}.${kept}` : `Nothing was deleted${kept}.`);
   } catch (e) {
-    showToast('❌ ' + (e.message || 'Could not delete.'), true);
+    showToast('' + (e.message || 'Could not delete.'), true);
   }
   loadLogs(true);
 }
@@ -2092,7 +2095,7 @@ function photoFieldHtml() {
       </button>
       <span class="photo-status"></span>
       <button type="button" class="photo-replace">Replace</button>
-      <button type="button" class="photo-x" title="Remove photo" aria-label="Remove photo">✕</button>
+      <button type="button" class="photo-x" title="Remove photo" aria-label="Remove photo">×</button>
     </div>
     <div class="photo-err" role="alert"></div>`;
 }
@@ -2402,7 +2405,7 @@ function addLoadPoint(p, v = {}, focus = true) {
     <label class="lp-f lp-f-count"><span class="lp-fl">Loads</span><input type="number" class="lp-count" min="1" step="1" inputmode="numeric" placeholder="Loads" value="${esc(loads)}"></label>
     <label class="lp-f lp-f-rate"><span class="lp-fl">Rate (₹)</span><input type="number" class="lp-rate" min="0" step="0.01" inputmode="decimal" placeholder="Rate" value="${esc(rate)}"></label>
     <div class="lp-f lp-f-amount"><span class="lp-fl">Amount (₹)</span><output class="lp-amount">0.00</output></div>
-    <button type="button" class="lp-del" aria-label="Remove this line">✕</button>`;
+    <button type="button" class="lp-del" aria-label="Remove this line">×</button>`;
   wrap.appendChild(row);
   refreshLpRow(row); renumberLp(p); updateLpTotal(p);
   if (focus) row.querySelector('.lp-name').focus();
@@ -2489,7 +2492,7 @@ function pgRender() {
   if (!grid) return;
   grid.innerHTML = PG.items.map((it, n) => `
     <div class="pg-item${it.busy ? ' is-busy' : ''}" data-id="${it.id}">
-      <div class="pg-thumb"><img src="${esc(it.preview)}" alt="Progress photo ${n + 1}"><button type="button" class="pg-x" data-id="${it.id}" aria-label="Remove progress photo ${n + 1}" ${it.busy ? 'disabled' : ''}>✕</button></div>
+      <div class="pg-thumb"><img src="${esc(it.preview)}" alt="Progress photo ${n + 1}"><button type="button" class="pg-x" data-id="${it.id}" aria-label="Remove progress photo ${n + 1}" ${it.busy ? 'disabled' : ''}>×</button></div>
       <input type="text" class="pg-cap" data-id="${it.id}" maxlength="200" placeholder="Caption (optional)" aria-label="Caption for progress photo ${n + 1}" value="${esc(it.caption)}">
       <span class="pg-st${it.error ? ' is-bad' : ''}">${it.busy ? 'Uploading…' : (it.error ? esc(it.error) : 'Attached ✓')}</span>
     </div>`).join('');
@@ -2615,7 +2618,7 @@ async function deleteProgressPicture(id) {
   const reason = await askReason({ title: 'Delete this picture?', intro: `${esc(fmtDate(it.date))} · ${esc(it.site || '(no site)')} · ${esc(it.vehicle_no)}. It is taken out of view and the reason is recorded in the Activity Log.`, confirmLabel: 'Delete picture', danger: true });
   if (!reason) return;
   try { await Progress.remove(id, reason); showToast('Picture deleted.'); fetchProgress(); }
-  catch (e) { showToast('❌ ' + ((e && e.message) || 'Could not delete the picture.'), true); }
+  catch (e) { showToast('' + ((e && e.message) || 'Could not delete the picture.'), true); }
 }
 
 
@@ -2677,7 +2680,7 @@ async function loadDocuments() {
     if (seq !== docSeq) return;
     const setup = e.data && e.data.setup_required;
     body.innerHTML = `<tr class="empty-row"><td colspan="8">${setup
-      ? '⚠️ Documents need a one-time database update.<br><small>Open Supabase → SQL Editor and run <strong>run-in-supabase-3-new-features.sql</strong>, then reload this page.</small>'
+      ? '⚠ Documents need a one-time database update.<br><small>Open Supabase → SQL Editor and run <strong>run-in-supabase-3-new-features.sql</strong>, then reload this page.</small>'
       : esc(e.message || 'Could not load the documents.')}</td></tr>`;
     document.getElementById('doc-count').textContent = '';
   }
@@ -2699,16 +2702,16 @@ function renderDocuments() {
       <td class="doc-name-cell">
         <strong>${esc(d.name)}</strong>
         <div class="doc-sub">${esc(d.original_filename || '')}</div>
-        ${d.site ? `<div class="doc-sub">📍 ${esc(d.site)}</div>` : ''}
+        ${d.site ? `<div class="doc-sub">${esc(d.site)}</div>` : ''}
         ${d.notes ? `<div class="doc-notes">${esc(d.notes)}</div>` : ''}
       </td>
       <td><span class="pill pill-orange">${esc(d.category)}</span></td>
       <td>${fmtBadge(d.format)}</td>
       <td class="doc-size">${esc(humanSize(d.size_bytes))}</td>
       <td class="log-time">${fmtDateTime(d.created_at)}<br>${esc(d.uploaded_by_name || '')}</td>
-      <td><div class="open-btns">${d.viewable ? `<button type="button" class="btn btn-outline btn-sm" onclick="viewDocument('${esc(d.id)}')" aria-label="View ${esc(d.name)}">👁 View</button>` : ''}${can('documents.print') ? `<button type="button" class="btn btn-outline btn-sm" onclick="printDocument('${esc(d.id)}')" aria-label="Print ${esc(d.name)}">🖨 Print</button>` : ''}<button type="button" class="btn btn-green btn-sm" onclick="downloadDocument('${esc(d.id)}')" aria-label="Download ${esc(d.name)}">⬇ Download</button></div></td>
-      ${can('documents.upload') ? `<td><button type="button" class="btn btn-outline btn-sm" onclick="openDocEdit('${esc(d.id)}')" aria-label="Edit ${esc(d.name)}">✏️ Edit</button></td>` : ''}
-      ${can('documents.delete') ? `<td><button type="button" class="btn btn-danger btn-sm" onclick="deleteDocument('${esc(d.id)}')" aria-label="Delete ${esc(d.name)}">🗑</button></td>` : ''}`;
+      <td><div class="open-btns">${d.viewable ? `<button type="button" class="btn btn-outline btn-sm" onclick="viewDocument('${esc(d.id)}')" aria-label="View ${esc(d.name)}">View</button>` : ''}${can('documents.print') ? `<button type="button" class="btn btn-outline btn-sm" onclick="printDocument('${esc(d.id)}')" aria-label="Print ${esc(d.name)}">Print</button>` : ''}<button type="button" class="btn btn-green btn-sm" onclick="downloadDocument('${esc(d.id)}')" aria-label="Download ${esc(d.name)}">Download</button></div></td>
+      ${can('documents.upload') ? `<td><button type="button" class="btn btn-outline btn-sm" onclick="openDocEdit('${esc(d.id)}')" aria-label="Edit ${esc(d.name)}">Edit</button></td>` : ''}
+      ${can('documents.delete') ? `<td><button type="button" class="btn btn-danger btn-sm" onclick="deleteDocument('${esc(d.id)}')" aria-label="Delete ${esc(d.name)}">${ICON_TRASH}</button></td>` : ''}`;
     body.appendChild(tr);
   });
 }
@@ -2766,7 +2769,7 @@ async function uploadDocument() {
       bar.style.width = `${Math.round(f * 100)}%`;
       txt.textContent = f >= 1 ? 'Saving…' : `Uploading… ${Math.round(f * 100)}%`;
     });
-    showToast('✅ Document uploaded.');
+    showToast('Document uploaded.');
     resetDocForm();
     loadDocuments();
   } catch (e) {
@@ -2788,7 +2791,7 @@ async function openInNewTab(getLink) {
     else showToast('Your browser blocked the new tab. Allow pop-ups for this site, then press View again.', true);
   } catch (e) {
     if (w) w.close();
-    showToast('❌ ' + (e.message || 'Could not open the file.'), true);
+    showToast('' + (e.message || 'Could not open the file.'), true);
   }
 }
 
@@ -2812,7 +2815,7 @@ async function printDocument(id) {
     else showToast('Your browser blocked the new tab. Allow pop-ups for this site, then press Print again.', true);
   } catch (e) {
     if (w) w.close();
-    showToast('❌ ' + (e.message || 'Could not open the print view.'), true);
+    showToast('' + (e.message || 'Could not open the print view.'), true);
   }
 }
 
@@ -2822,9 +2825,9 @@ async function downloadDocument(id) {
     const a = document.createElement('a');          // the link makes the browser DOWNLOAD the file (it is never opened in our page)
     a.href = r.url; a.rel = 'noopener';
     document.body.appendChild(a); a.click(); a.remove();
-    showToast('⬇ Download started.');
+    showToast('Download started.');
   } catch (e) {
-    showToast('❌ ' + (e.message || 'Could not start the download.'), true);
+    showToast('' + (e.message || 'Could not start the download.'), true);
   }
 }
 
@@ -2857,7 +2860,7 @@ async function saveDocEdit() {
       site: document.getElementById('de-site').value, notes: document.getElementById('de-notes').value.trim(),
     });
     closeDocEdit();
-    showToast(res.unchanged ? 'No changes were made.' : '✅ Document updated.');
+    showToast(res.unchanged ? 'No changes were made.' : 'Document updated.');
     loadDocuments();
   } catch (e) {
     err.textContent = e.message || 'Could not save the changes.';
@@ -2875,7 +2878,7 @@ async function deleteDocument(id) {
   });
   if (!ok) return;
   try { await Documents.remove(id); showToast('Document deleted.'); loadDocuments(); }
-  catch (e) { showToast('❌ ' + (e.message || 'Delete failed.'), true); }
+  catch (e) { showToast('' + (e.message || 'Delete failed.'), true); }
 }
 
 
@@ -2906,7 +2909,7 @@ const PL_ICON = {
 };
 const plExportMenu = kind => `
   <div class="export-menu rm">
-    <button type="button" class="btn btn-outline btn-sm rm-btn" aria-haspopup="menu" aria-expanded="false"><span class="rm-label">⬇ Export</span><span class="caret" aria-hidden="true">▾</span></button>
+    <button type="button" class="btn btn-outline btn-sm rm-btn" aria-haspopup="menu" aria-expanded="false"><span class="rm-label">Export</span><span class="caret" aria-hidden="true">▾</span></button>
     <div class="export-pop" role="menu" aria-label="Choose a report format" hidden>
       <button type="button" role="menuitem" data-rm-kind="payments:${kind}" data-rm-format="xlsx"><span class="fmt fmt-xlsx">XLS</span><span class="fmt-text"><strong>Excel</strong><small>.xlsx · ${kind === 'all' ? 'complete report' : 'this ledger'} · with the filters set</small></span></button>
       <button type="button" role="menuitem" data-rm-kind="payments:${kind}" data-rm-format="pdf"><span class="fmt fmt-pdf">PDF</span><span class="fmt-text"><strong>PDF</strong><small>.pdf · print-ready · with the filters set</small></span></button>
@@ -2922,7 +2925,7 @@ const plFilterBar = k => `
     <label class="pl-flt"><span>Name</span><select data-plf="name"><option value="">All names</option></select></label>
     <label class="pl-flt"><span>Paid by</span><select data-plf="paid_by"><option value="">Anyone</option></select></label>
     <label class="pl-flt"><span>Status</span><select data-plf="status"><option value="">All lines</option><option value="due">Balance due</option><option value="settled">Settled</option><option value="over">Advance paid</option></select></label>
-    <button type="button" class="btn btn-outline btn-sm pl-flt-clear" data-plf-clear="${k}">✕ Clear filters</button>
+    <button type="button" class="btn btn-outline btn-sm pl-flt-clear" data-plf-clear="${k}">Clear filters</button>
   </div>`;
 
 function plFillOptions(k, options) {
@@ -2994,8 +2997,8 @@ function buildPlPanel(k) {
       <div class="form-error" id="pl-err-${k}" role="alert"></div>
       <div class="pl-actions">
         <button type="button" class="btn btn-outline" onclick="plAddLine('${k}')">+ Add line</button>
-        <button type="button" class="btn btn-primary" id="pl-save-${k}" onclick="savePayments('${k}')">💾 Save payments</button>
-        <button type="button" class="btn btn-outline" onclick="plClear('${k}')">✕ Clear</button>
+        <button type="button" class="btn btn-primary" id="pl-save-${k}" onclick="savePayments('${k}')">Save payments</button>
+        <button type="button" class="btn btn-outline" onclick="plClear('${k}')">Clear</button>
       </div>
     </div>
 
@@ -3036,7 +3039,7 @@ function plAddLine(k, v = {}, focus = true) {
     <label class="pl-f pl-f-num"><span class="pl-fl">Paid (₹)</span><input type="number" class="pl-paid" min="0" step="0.01" inputmode="decimal" placeholder="0.00" value="${esc(v.paid || '')}"></label>
     <div class="pl-f pl-f-bal"><span class="pl-fl">Balance (₹)</span><output class="pl-balance">0.00</output></div>
     <label class="pl-f pl-f-by"><span class="pl-fl">Paid By</span><input type="text" class="pl-by" list="pl-paidby-${k}" placeholder="Who paid" maxlength="120" autocomplete="off" value="${esc(v.paid_by || '')}"></label>
-    <button type="button" class="pl-rm" aria-label="Remove this line">✕</button>`;
+    <button type="button" class="pl-rm" aria-label="Remove this line">×</button>`;
   wrap.appendChild(row);
   plRefreshRow(row); plRenumber(k); plRefreshTotals(k);
   if (focus) row.querySelector('.pl-name').focus();
@@ -3081,7 +3084,7 @@ async function savePayments(k) {
   const btn = document.getElementById(`pl-save-${k}`); btn.disabled = true;
   try {
     const res = await Payments.create({ kind: k, items: lines });
-    showToast(`✅ ${res.count} line${res.count === 1 ? '' : 's'} saved to ${PL_LABEL[k]}.`);
+    showToast(`${res.count} line${res.count === 1 ? '' : 's'} saved to ${PL_LABEL[k]}.`);
     plClear(k); loadPlLedger(k);
   } catch (e) { err.textContent = e.message || 'Could not save. Please try again.'; }
   finally { btn.disabled = false; }
@@ -3247,7 +3250,7 @@ async function savePayEdit() {
   if (!reason) return;
   try {
     await Payments.update(PL.editing.id, { ...body, reason });
-    showToast('✅ Payment line updated.'); closePayEdit();
+    showToast('Payment line updated.'); closePayEdit();
     if (PL.tab === 'all') loadPlCumulative(); else { loadPlLedger(PL.tab); if (body.kind !== PL.tab) loadPlLedger(body.kind); }
   } catch (e) { err.textContent = e.message || 'Update failed.'; }
 }
@@ -3256,7 +3259,7 @@ async function deletePayment(k, id) {
   const reason = await askReason({ title: 'Delete this payment line?', intro: `<strong>${esc(row.party_name)}</strong> — ${esc(row.item)} — ${esc(fmtDate(row.pay_date))} — payable ${esc(inrS(row.payable))}, paid ${esc(inrS(row.paid))}. The reason is saved in the Activity Log.`, confirmLabel: 'Delete line', danger: true });
   if (!reason) return;
   try { await Payments.remove(row.id, reason); showToast('Payment line deleted.'); loadPlLedger(k); }
-  catch (e) { showToast('❌ ' + (e.message || 'Delete failed.'), true); }
+  catch (e) { showToast('' + (e.message || 'Delete failed.'), true); }
 }
 
 
@@ -3347,7 +3350,7 @@ function renderRnCards() {
     card('today', 'Due today', s.today, s.today ? 'Renew today' : 'Nothing due today') +
     card('soon', 'Due soon', s.soon, 'Inside the reminder window') +
     card('upcoming', 'Upcoming', s.upcoming, `${s.renewed} renewed so far`);
-  document.getElementById('rn-note').innerHTML = `<strong>Reminders:</strong> ${esc(RN.meta.settings_text || '')} ${s.needs_attention_amount ? ` <strong>${esc(inrS(s.needs_attention_amount))}</strong> needs attention (overdue, today and soon).` : ''}`;
+  document.getElementById('rn-note').innerHTML = `${esc(RN.meta.settings_text || '')} ${s.needs_attention_amount ? ` <strong>${esc(inrS(s.needs_attention_amount))}</strong> needs attention (overdue, today and soon).` : ''}`;
 }
 function renderRnTable(setup) {
   const body = document.getElementById('rn-body'), canAdd = can('renewals.add'), canEdit = can('renewals.edit');
@@ -3362,7 +3365,7 @@ function renderRnTable(setup) {
       <td data-label="Description" class="pl-desc-cell">${esc(r.description) || '<span class="pl-none">—</span>'}</td>
       <td class="r" data-label="Amount">${r.amount ? esc(inrS(r.amount)) : '<span class="pl-none">—</span>'}</td>
       <td data-label="Who paid">${esc(r.paid_by) || '<span class="pl-none">—</span>'}</td>
-      <td data-label="Documents" class="rn-docs">${r.files.map(f => `<span class="rn-file"><button type="button" class="rn-file-btn" data-rn-file="${esc(f.id)}" data-rn-viewable="${f.viewable ? 1 : 0}" title="${f.viewable ? 'Open' : 'Download'} ${esc(f.original_filename)} (${esc(f.format)}, ${esc(fileSize(f.size_bytes))})"><span aria-hidden="true">${f.viewable ? '📄' : '⬇'}</span> ${esc(f.original_filename)}</button>${canEdit ? `<button type="button" class="rn-file-x" data-rn-filedel="${esc(f.id)}" aria-label="Remove ${esc(f.original_filename)}">✕</button>` : ''}</span>`).join('') || '<span class="pl-none">None</span>'}${canAdd && r.files.length < (RN.meta.max_files || 10) ? `<button type="button" class="rn-adddoc" data-rn-adddoc="${esc(r.id)}">+ Add document</button>` : ''}</td>
+      <td data-label="Documents" class="rn-docs">${r.files.map(f => `<span class="rn-file"><button type="button" class="rn-file-btn" data-rn-file="${esc(f.id)}" data-rn-viewable="${f.viewable ? 1 : 0}" title="${f.viewable ? 'Open' : 'Download'} ${esc(f.original_filename)} (${esc(f.format)}, ${esc(fileSize(f.size_bytes))})"><span class="rn-ext" aria-hidden="true">${esc((f.ext || 'file').slice(0, 4).toUpperCase())}</span>${esc(f.original_filename)}</button>${canEdit ? `<button type="button" class="rn-file-x" data-rn-filedel="${esc(f.id)}" aria-label="Remove ${esc(f.original_filename)}">×</button>` : ''}</span>`).join('') || '<span class="pl-none">None</span>'}${canAdd && r.files.length < (RN.meta.max_files || 10) ? `<button type="button" class="rn-adddoc" data-rn-adddoc="${esc(r.id)}">+ Add document</button>` : ''}</td>
       <td data-label="Status"><span class="rn-chip rn-chip-${r.state}">${RN_CHIP[r.state]}</span><span class="rn-when">${esc(rnWhen(r))}</span></td>
       <td class="pl-act" data-label="Actions">
         ${r.status === 'active' && canAdd ? `<button type="button" class="btn btn-primary btn-sm" data-rn-renew="${esc(r.id)}">Mark renewed</button>` : ''}
@@ -3384,7 +3387,7 @@ function addChosenFiles(files) {
   renderChosen();
 }
 function renderChosen() {
-  document.getElementById('rn-chosen').innerHTML = RN.chosen.map((f, i) => `<li><span aria-hidden="true">📎</span> <span class="rn-chosen-name">${esc(f.name)}</span> <small>${esc(fileSize(f.size))}</small><button type="button" class="rn-file-x" data-rn-chosen-del="${i}" aria-label="Remove ${esc(f.name)}">✕</button></li>`).join('');
+  document.getElementById('rn-chosen').innerHTML = RN.chosen.map((f, i) => `<li><span class="rn-chosen-name">${esc(f.name)}</span> <small>${esc(fileSize(f.size))}</small><button type="button" class="rn-file-x" data-rn-chosen-del="${i}" aria-label="Remove ${esc(f.name)}">×</button></li>`).join('');
 }
 function clearRenewalForm() {
   ['rn-type', 'rn-date', 'rn-amount', 'rn-paidby', 'rn-desc'].forEach(id => { document.getElementById(id).value = ''; });
@@ -3404,7 +3407,7 @@ async function saveRenewal() {
       btn.textContent = `Uploading ${i + 1} of ${files.length}…`;
       try { await Renewals.uploadFile(id, files[i]); } catch (e) { failed.push(`${files[i].name} — ${e.message}`); }
     }
-    showToast(`✅ Renewal saved${files.length ? ` with ${plural(files.length - failed.length, 'document')}` : ''}.`);
+    showToast(`Renewal saved${files.length ? ` with ${plural(files.length - failed.length, 'document')}` : ''}.`);
     clearRenewalForm();
     if (failed.length) err.textContent = `The renewal was saved, but ${plural(failed.length, 'document')} could not be uploaded: ${failed.join('; ')}. Add them from the list below.`;
     RN.filter.status = 'active'; loadRenewals(); refreshBell(true);
@@ -3417,8 +3420,8 @@ async function uploadToRenewal(id, files) {
     if (f.size > (RN.meta.max_mb || 25) * 1048576) { failed.push(`${f.name} — too large`); continue; }
     try { await Renewals.uploadFile(id, f); ok++; } catch (e) { failed.push(`${f.name} — ${e.message}`); }
   }
-  if (ok) showToast(`✅ ${plural(ok, 'document')} added.`);
-  if (failed.length) showToast('❌ ' + failed.join('; '), true);
+  if (ok) showToast(`${plural(ok, 'document')} added.`);
+  if (failed.length) showToast('' + failed.join('; '), true);
   loadRenewals();
 }
 async function openRenewalFile(fid, viewable) {
@@ -3426,8 +3429,8 @@ async function openRenewalFile(fid, viewable) {
   try {
     const r = await Renewals.fileUrl(fid);
     const a = document.createElement('a'); a.href = r.url; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove();     // the browser DOWNLOADS it
-    showToast('⬇ Download started.');
-  } catch (e) { showToast('❌ ' + (e.message || 'Could not start the download.'), true); }
+    showToast('Download started.');
+  } catch (e) { showToast('' + (e.message || 'Could not start the download.'), true); }
 }
 async function removeRenewalFile(fid) {
   const row = RN.rows.find(r => r.files.some(f => String(f.id) === String(fid))), file = row && row.files.find(f => String(f.id) === String(fid));
@@ -3435,7 +3438,7 @@ async function removeRenewalFile(fid) {
   const reason = await askReason({ title: 'Remove this document?', intro: `<strong>${esc(file.original_filename)}</strong> — ${esc(row.renewal_type)}. It is taken off this renewal; the reason is saved in the Activity Log.`, confirmLabel: 'Remove document', danger: true });
   if (!reason) return;
   try { await Renewals.removeFile(fid, reason); showToast('Document removed.'); loadRenewals(); }
-  catch (e) { showToast('❌ ' + (e.message || 'Could not remove the document.'), true); }
+  catch (e) { showToast('' + (e.message || 'Could not remove the document.'), true); }
 }
 
 /* mark as renewed (optionally starting the next cycle) */
@@ -3456,7 +3459,7 @@ async function saveRenew() {
   const btn = document.getElementById('rnr-save'); btn.disabled = true;
   try {
     const res = await Renewals.renew(RN.renewing.id, body);
-    showToast(res.next ? `✅ Marked as renewed — the next one is due ${fmtDate(res.next.renewal_date)}.` : '✅ Marked as renewed.');
+    showToast(res.next ? `Marked as renewed — the next one is due ${fmtDate(res.next.renewal_date)}.` : 'Marked as renewed.');
     closeRenew(); loadRenewals(); refreshBell(true);
   } catch (e) { err.textContent = e.message || 'Could not save.'; }
   finally { btn.disabled = false; }
@@ -3466,7 +3469,7 @@ async function reopenRenewal(id) {
   const reason = await askReason({ title: 'Reopen this renewal?', intro: `<strong>${esc(r.renewal_type)}</strong> — due ${esc(fmtDate(r.renewal_date))}. It goes back to the active list and its reminders start again.`, confirmLabel: 'Reopen' });
   if (!reason) return;
   try { await Renewals.reopen(id, reason); showToast('Renewal reopened.'); loadRenewals(); refreshBell(true); }
-  catch (e) { showToast('❌ ' + (e.message || 'Could not reopen.'), true); }
+  catch (e) { showToast('' + (e.message || 'Could not reopen.'), true); }
 }
 
 /* edit and delete (Admin; a written reason is always needed) */
@@ -3495,7 +3498,7 @@ async function saveRnEdit() {
   if (!changes.length) { showToast('No changes were made.'); closeRnEdit(); return; }
   const reason = await askReason({ title: 'Reason for change', intro: 'Please explain why this renewal is being changed. It is saved in the Activity Log.', confirmLabel: 'Confirm & Save', changes });
   if (!reason) return;
-  try { await Renewals.update(before.id, { ...body, reason }); showToast('✅ Renewal updated.'); closeRnEdit(); loadRenewals(); refreshBell(true); }
+  try { await Renewals.update(before.id, { ...body, reason }); showToast('Renewal updated.'); closeRnEdit(); loadRenewals(); refreshBell(true); }
   catch (e) { err.textContent = e.message || 'Update failed.'; }
 }
 async function deleteRenewal(id) {
@@ -3503,7 +3506,7 @@ async function deleteRenewal(id) {
   const reason = await askReason({ title: 'Delete this renewal?', intro: `<strong>${esc(r.renewal_type)}</strong> — due ${esc(fmtDate(r.renewal_date))}${r.files.length ? `, with ${plural(r.files.length, 'document')}` : ''}. The reason is saved in the Activity Log.`, confirmLabel: 'Delete renewal', danger: true });
   if (!reason) return;
   try { await Renewals.remove(id, reason); showToast('Renewal deleted.'); loadRenewals(); refreshBell(true); }
-  catch (e) { showToast('❌ ' + (e.message || 'Delete failed.'), true); }
+  catch (e) { showToast('' + (e.message || 'Delete failed.'), true); }
 }
 
 
@@ -3545,7 +3548,7 @@ function applyBell(r, announce) {
   const first = BELL.first; BELL.first = false;
   const top = fresh[0], more = fresh.length - 1;
   const text = fresh.length === 1 ? `${top.title} — ${top.body}` : `${top.title} — ${top.body}${more ? ` (+ ${plural(more, 'more renewal')})` : ''}`;
-  showToast(`🔔 ${first ? `${plural(BELL.unread, 'renewal reminder')} need${BELL.unread === 1 ? 's' : ''} attention. ` : 'Renewal reminder: '}${first ? '' : text}`.trim());
+  showToast(`${first ? `${plural(BELL.unread, 'renewal reminder')} need${BELL.unread === 1 ? 's' : ''} attention. ` : 'Renewal reminder: '}${first ? '' : text}`.trim());
   deviceNotify(fresh.length === 1 ? top.title : `${plural(fresh.length, 'renewal')} need attention`, fresh.length === 1 ? top.body : fresh.slice(0, 3).map(i => `${i.title}: ${i.body}`).join('\n'));
 }
 function renderBell() {
@@ -3564,7 +3567,7 @@ function renderBell() {
         <span class="bell-dot" aria-hidden="true"></span>
         <span class="bell-main"><strong>${esc(i.title)}</strong><span class="bell-when">${esc(i.body)}</span>${i.description ? `<span class="bell-desc">${esc(i.description)}</span>` : ''}<small>Reminded ${esc(plural(i.times, 'time'))} · last ${esc(time(i.last_sent_at))}${i.unread ? '' : ' · read'}</small></span>
       </button>`).join('')
-    : '<p class="bell-empty">Nothing to renew soon. 🎉</p>';
+    : '<p class="bell-empty">Nothing to renew soon.</p>';
 }
 function toggleBell(force) {
   const panel = document.getElementById('bell-panel'), open = force === undefined ? panel.hidden : force;
@@ -3592,7 +3595,7 @@ async function enableDeviceAlerts() {
   if (!deviceAlertsSupported()) return;
   try { await Notification.requestPermission(); } catch { /* ignore */ }
   updateDeviceNote();
-  if (Notification.permission === 'granted') { showToast('✅ Alerts are on for this device.'); deviceNotify('Renewal alerts are on', 'You will get a pop-up here each time a renewal reminder repeats.'); }
+  if (Notification.permission === 'granted') { showToast('Alerts are on for this device.'); deviceNotify('Renewal alerts are on', 'You will get a pop-up here each time a renewal reminder repeats.'); }
 }
 async function deviceNotify(title, body) {
   if (!deviceAlertsSupported() || Notification.permission !== 'granted') return;
@@ -3656,7 +3659,7 @@ async function saveReminderSettings(s) {
   const btn = document.getElementById('rs-save'); btn.disabled = true;
   try {
     const r = await Renewals.saveSettings(s.enabled ? s : { enabled: false });
-    RS.saved = r.settings; showToast(r.unchanged ? 'No changes were made.' : '✅ Reminder settings saved.');
+    RS.saved = r.settings; showToast(r.unchanged ? 'No changes were made.' : 'Reminder settings saved.');
     document.getElementById('rs-preview').textContent = r.text; loadReminderSettings(); refreshBell(true);
   } catch (e) { err.textContent = e.message || 'Could not save.'; }
   finally { btn.disabled = false; }
@@ -3954,7 +3957,7 @@ async function savePurchase() {
   PU.saving = true; btn.disabled = true;
   try {
     const r = await Purchases.create(body);
-    showToast(`✅ Purchase saved — net weight ${puKg(r.data.net_weight)}.`);
+    showToast(`Purchase saved — net weight ${puKg(r.data.net_weight)}.`);
     resetPuForm(true);
     loadPuSuggestions();
     if (can('purchases.view')) loadPuList(); else loadPuMine();
@@ -3968,8 +3971,8 @@ async function savePurchase() {
 /* ── Lists ──────────────────────────────────────────────────────────────────── */
 function puFileCell(r) {
   if (!r.has_file) return '<span class="doc-sub">—</span>';
-  const view = r.file_viewable ? `<button type="button" class="btn btn-outline btn-sm" onclick="viewPurchaseFile('${esc(r.id)}')" aria-label="View the file of ${esc(r.supplier)}">👁 View</button>` : '';
-  return `<div class="pu-file"><span class="pu-file-name">${esc(r.file_name || 'file')}</span><div class="open-btns">${view}<button type="button" class="btn btn-green btn-sm" onclick="downloadPurchaseFile('${esc(r.id)}')" aria-label="Download the file of ${esc(r.supplier)}">⬇ Download</button></div></div>`;
+  const view = r.file_viewable ? `<button type="button" class="btn btn-outline btn-sm" onclick="viewPurchaseFile('${esc(r.id)}')" aria-label="View the file of ${esc(r.supplier)}">View</button>` : '';
+  return `<div class="pu-file"><span class="pu-file-name">${esc(r.file_name || 'file')}</span><div class="open-btns">${view}<button type="button" class="btn btn-green btn-sm" onclick="downloadPurchaseFile('${esc(r.id)}')" aria-label="Download the file of ${esc(r.supplier)}">Download</button></div></div>`;
 }
 
 function puRowHtml(r, full) {
@@ -3983,11 +3986,11 @@ function puRowHtml(r, full) {
     <td class="num"><strong>${esc(puNum(r.net_weight))}</strong></td>
     <td>${puFileCell(r)}</td>
     ${full ? `<td class="log-time">${esc(r.created_by_name || '')}<br>${esc(fmtDateTime(r.created_at))}</td>
-    ${can('purchases.edit') ? `<td><div class="open-btns"><button type="button" class="btn btn-outline btn-sm" onclick="openPuEdit('${esc(r.id)}')" aria-label="Edit the purchase from ${esc(r.supplier)}">✏️ Edit</button><button type="button" class="btn btn-danger btn-sm" onclick="deletePurchase('${esc(r.id)}')" aria-label="Delete the purchase from ${esc(r.supplier)}">🗑</button></div></td>` : ''}` : ''}`;
+    ${can('purchases.edit') ? `<td><div class="open-btns"><button type="button" class="btn btn-outline btn-sm" onclick="openPuEdit('${esc(r.id)}')" aria-label="Edit the purchase from ${esc(r.supplier)}">Edit</button><button type="button" class="btn btn-danger btn-sm" onclick="deletePurchase('${esc(r.id)}')" aria-label="Delete the purchase from ${esc(r.supplier)}">${ICON_TRASH}</button></div></td>` : ''}` : ''}`;
 }
 
 async function loadPuMine() {
-  try { PU.mine = (await Purchases.mine()).data || []; } catch (e) { showToast('❌ ' + (e.message || 'Could not load your purchases.'), true); return; }
+  try { PU.mine = (await Purchases.mine()).data || []; } catch (e) { showToast('' + (e.message || 'Could not load your purchases.'), true); return; }
   const body = document.getElementById('pu-mine-body');
   document.getElementById('pu-mine-count').textContent = PU.mine.length ? `${PU.mine.length} saved` : '';
   body.innerHTML = '';
@@ -4009,7 +4012,7 @@ async function loadPuList() {
   const seq = ++puListSeq;
   let r;
   try { r = await Purchases.list({ from, to, site: document.getElementById('pu-filter-site').value, q: document.getElementById('pu-filter-q').value.trim() }); }
-  catch (e) { if (seq === puListSeq) showToast('❌ ' + (e.message || 'Could not load the purchases.'), true); return; }
+  catch (e) { if (seq === puListSeq) showToast('' + (e.message || 'Could not load the purchases.'), true); return; }
   if (seq !== puListSeq) return;                         // a newer search is already on its way
   PU.list = r.data || [];
   const body = document.getElementById('pu-body');
@@ -4032,9 +4035,9 @@ async function downloadPurchaseFile(id) {
     const a = document.createElement('a');
     a.href = r.url; a.rel = 'noopener';
     document.body.appendChild(a); a.click(); a.remove();
-    showToast('⬇ Download started.');
+    showToast('Download started.');
   } catch (e) {
-    showToast('❌ ' + (e.message || 'Could not start the download.'), true);
+    showToast('' + (e.message || 'Could not start the download.'), true);
   }
 }
 
@@ -4128,7 +4131,7 @@ async function savePuEdit() {
     await Purchases.update(row.id, body);
     PU.editAtt = undefined;                                              // the new file now belongs to the purchase
     closePuEdit();
-    showToast('✅ Purchase updated.');
+    showToast('Purchase updated.');
     loadPuList();
   } catch (e) {
     err.textContent = e.message || 'Could not save the changes.';
@@ -4147,7 +4150,7 @@ async function deletePurchase(id) {
   });
   if (!reason) return;
   try { await Purchases.remove(row.id, reason); showToast('Purchase deleted.'); loadPuList(); }
-  catch (e) { showToast('❌ ' + (e.message || 'Delete failed.'), true); }
+  catch (e) { showToast('' + (e.message || 'Delete failed.'), true); }
 }
 
 
@@ -4160,7 +4163,7 @@ async function initPermissions() { await loadPermissions(); }
 
 async function loadPermissions() {
   try { PERM.data = await Permissions.get(); }
-  catch (e) { showToast('❌ ' + (e.message || 'Could not load the permissions.'), true); return; }
+  catch (e) { showToast('' + (e.message || 'Could not load the permissions.'), true); return; }
   document.getElementById('perm-setup').hidden = PERM.data.column_ready !== false;
   renderPermPeople();
   const keep = PERM.id && permPerson(PERM.id);
@@ -4241,9 +4244,9 @@ function renderPermEditor() {
     ${groups}
     <div class="form-error" id="perm-error" role="alert"></div>
     <div class="btn-group perm-actions">
-      <button type="button" class="btn btn-primary" id="perm-save" onclick="savePermissions()" ${changes.length ? '' : 'disabled'}>💾 Save changes</button>
+      <button type="button" class="btn btn-primary" id="perm-save" onclick="savePermissions()" ${changes.length ? '' : 'disabled'}>Save changes</button>
       <button type="button" class="btn btn-outline" id="perm-discard" onclick="selectPermPerson('${esc(u.id)}')" ${changes.length ? '' : 'disabled'}>Discard</button>
-      <button type="button" class="btn btn-outline" id="perm-reset" onclick="resetPermissions()">↺ Back to ${esc(capitalize(u.role))} defaults</button>
+      <button type="button" class="btn btn-outline" id="perm-reset" onclick="resetPermissions()">Back to ${esc(capitalize(u.role))} defaults</button>
     </div>`;
   updatePermPreview();
 }
@@ -4281,7 +4284,7 @@ async function savePermissions() {
   if (!changes.length) { showToast('No changes were made.'); return; }
   const reason = await askReason({ title: 'Reason for Changes', intro: `Please explain why <strong>${esc(u.name)}</strong>'s permissions are being changed. It is saved in the Activity Log.`, confirmLabel: 'Confirm & Save', changes });
   if (!reason) return;
-  await sendPermissions(u, () => Permissions.save(u.id, [...PERM.wanted], reason), `✅ Permissions saved for ${u.name}.`);
+  await sendPermissions(u, () => Permissions.save(u.id, [...PERM.wanted], reason), `Permissions saved for ${u.name}.`);
 }
 
 async function resetPermissions() {
@@ -4292,7 +4295,7 @@ async function resetPermissions() {
   if (!changes.length) { showToast(`${u.name} already has exactly the ${capitalize(u.role)} defaults.`); return; }
   const reason = await askReason({ title: `Back to ${capitalize(u.role)} defaults`, intro: `Please explain why <strong>${esc(u.name)}</strong> is being put back to the ${esc(capitalize(u.role))} defaults. It is saved in the Activity Log.`, confirmLabel: 'Confirm & Reset', changes });
   if (!reason) return;
-  await sendPermissions(u, () => Permissions.reset(u.id, reason), `✅ ${u.name} is back to the ${capitalize(u.role)} defaults.`);
+  await sendPermissions(u, () => Permissions.reset(u.id, reason), `${u.name} is back to the ${capitalize(u.role)} defaults.`);
 }
 
 async function sendPermissions(u, call, okMessage) {
@@ -4304,7 +4307,7 @@ async function sendPermissions(u, call, okMessage) {
     await loadPermissions();
   } catch (e) {
     if (err) err.textContent = e.message || 'Could not save the permissions.';
-    else showToast('❌ ' + (e.message || 'Could not save the permissions.'), true);
+    else showToast('' + (e.message || 'Could not save the permissions.'), true);
   } finally {
     PERM.busy = false;
   }

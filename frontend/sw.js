@@ -18,7 +18,8 @@ const PRECACHE = [
   '/js/site.js',
   '/js/api.js',
   '/js/app.js',
-  '/fonts/inter-latin-wght-normal.woff2',     // the offline page's font
+  '/fonts/ibm-plex-sans-latin-wght-normal.woff2',     // the offline page's font
+  '/fonts/inter-latin-wght-normal.woff2',
   '/img/logo.png',
   '/img/favicon.png',
   '/img/icon-192.png',

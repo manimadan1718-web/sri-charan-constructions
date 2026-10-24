@@ -2024,3 +2024,56 @@ body::before { background: var(--side-bg) !important; background-image: none !im
   .pl-seg-btn.active { background: #F7F8F9; border-left-color: var(--accent); border-bottom-color: var(--line); }
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════════
+   COLOUR PASS — white dashboard, orange highlight (the logo's orange), red for Logout and Delete
+   ═══════════════════════════════════════════════════════════════════════════════ */
+:root { --red-solid: #C62828; --red-solid-hover: #A81F1F; --side-bg: #FFFFFF; --hover-tint: #FDEEDB; --active-tint: #FBE3C6; }
+body { background: #FFFFFF; }
+.app-top::before { background: var(--hazard) !important; height: 3px; }
+
+/* the brand: orange name on white */
+.brand h1 { color: var(--hazard) !important; }
+.brand p { color: var(--steel) !important; }
+
+/* logout and delete are red, as people expect */
+.logout-btn, .mm-foot .btn-outline { background: var(--red-solid) !important; border-color: var(--red-solid) !important; color: #fff !important; }
+.logout-btn:hover, .mm-foot .btn-outline:hover { background: var(--red-solid-hover) !important; border-color: var(--red-solid-hover) !important; color: #fff !important; }
+.btn-danger, .pl-danger { background: var(--red-solid) !important; border: 1px solid var(--red-solid) !important; color: #fff !important; }
+.btn-danger:hover:not(:disabled), .pl-danger:hover:not(:disabled) { background: var(--red-solid-hover) !important; border-color: var(--red-solid-hover) !important; color: #fff !important; }
+.btn-danger .ico, .logout-btn svg { color: #fff; }
+
+/* sidebar and menus: white, with an orange highlight under the pointer and on the open page */
+@media (min-width: 1200px) {
+  .brand-link { background: #fff; border-right: 1px solid var(--line); }
+  .tabs { background: #fff; border-right: 1px solid var(--line); scrollbar-color: #D5DAE0 transparent; }
+  .tab { color: #3B4652; }
+  .tab svg { color: var(--steel); }
+  .tab:hover { background: var(--hover-tint); color: var(--hazard-deep); }
+  .tab:hover svg { color: var(--hazard); }
+  .tab.active { background: var(--active-tint); color: #8A4000; font-weight: 600; }
+  .tab.active svg { color: var(--hazard); }
+}
+@media (min-width: 961px) and (max-width: 1199px) {
+  .tab:hover { background: var(--hover-tint); color: var(--hazard-deep); }
+  .tab.active { color: #8A4000; background: var(--active-tint); }
+  .tab::after { background: var(--hazard); }
+}
+.mm-item:hover { background: var(--hover-tint); color: var(--hazard-deep); }
+.mm-item.active { background: var(--active-tint); color: #8A4000; }
+.pl-seg-btn:hover { background: var(--hover-tint); color: var(--hazard-deep); }
+.bell-item:hover, .bell-item:focus-visible { background: var(--hover-tint); }
+tbody tr:hover { background: #FFF8EF; }
+
+/* sign-in: the logo sits exactly in the middle */
+.login-logo { width: 100px !important; height: 100px !important; margin: 0 auto 14px !important; display: block; }
+.login-logo-link { display: flex; width: 100%; height: 100%; align-items: center; justify-content: center; }
+.login-coin { width: 100% !important; height: 100% !important; margin: 0 auto; display: flex; align-items: center; justify-content: center; filter: none !important; box-shadow: none !important; }
+.login-coin img { width: 100% !important; height: 100% !important; object-fit: contain; display: block; margin: 0; }
+@media (max-width: 600px) { .login-logo { width: 84px !important; height: 84px !important; } }
+/* the optional panels inside the entry forms: white, with a thin border like everything else */
+.lp-section, .pg-section, .pl-filters, .rn-filters { background: #fff; }
+.lp-section, .pg-section { border: 1px solid var(--line); }
+.tab:hover:not(.active) { background: var(--hover-tint); color: var(--hazard-deep); }
+.tab:hover:not(.active) svg { color: var(--hazard); }
+.login-logo { margin-top: 20px !important; }
+

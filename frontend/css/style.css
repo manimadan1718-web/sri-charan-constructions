@@ -2161,4 +2161,8 @@ tbody tr:hover { background: #FFF8EF; }
 #confirm-overlay { z-index: 1100; }                                   /* the Yes / No question is always on top (even over the phone menu) */
 #confirm-overlay { align-items: center; }
 @media (pointer: coarse), (max-width: 960px) { #confirm-yes, #confirm-no { min-height: 46px; } }
+/* sign-in footer: its links sit on the dark photo, so they are white (the grey of the normal footer was nearly invisible there) */
+.login-footer.site-footer, .login-footer.site-footer span { color: rgba(255,255,255,.92); }
+.login-footer.site-footer a { color: #fff; text-decoration: underline; text-underline-offset: 2px; font-weight: 600; }
+.login-footer.site-footer a:hover { color: #FFD9A8; }
 

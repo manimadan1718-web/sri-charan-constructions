@@ -293,6 +293,11 @@ const Reports = {
   },
 };
 
+// ── The full backup (Admin) — everything as one Excel file ─────────────────────
+const Backup = {
+  full() { return apiFetch('/backup/full', { method: 'POST', body: '{}', asBlob: true }); },
+};
+
 // ── Archived (Admin) — everything that was deleted ─────────────────────────────
 const Archive = {
   list(params = {}) { return apiFetch('/archive' + rnQuery(params)); },

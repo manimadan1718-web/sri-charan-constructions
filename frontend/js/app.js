@@ -21,7 +21,7 @@ const TAB_PERMS = {
   permissions: ['permissions.manage'],
 };
 const TAB_ORDER = ['home', 'entry', 'records', 'progress', 'purchases', 'summary', 'documents', 'renewals', 'payments', 'inventory', 'users', 'logs', 'permissions', 'archive'];
-const ALL_PERMS = ['archive.manage', 'entry.add', 'progress.add', 'progress.view', 'progress.delete', 'renewals.view', 'renewals.add', 'renewals.edit', 'records.view', 'records.export', 'records.edit', 'records.delete', 'purchases.add', 'purchases.view', 'purchases.edit', 'summary.view',
+const ALL_PERMS = ['archive.manage', 'backup.download', 'entry.add', 'progress.add', 'progress.view', 'progress.delete', 'renewals.view', 'renewals.add', 'renewals.edit', 'records.view', 'records.export', 'records.edit', 'records.delete', 'purchases.add', 'purchases.view', 'purchases.edit', 'summary.view',
   'documents.view', 'documents.print', 'documents.upload', 'documents.delete', 'payments.add', 'payments.view', 'payments.edit', 'inventory.manage', 'logs.view', 'logs.delete', 'users.manage', 'permissions.manage'];
 // Only used when the server has not sent a list (a session that started before permissions existed): the role's defaults.
 const ROLE_FALLBACK = {
@@ -1734,6 +1734,7 @@ const SPECIAL_ACTIONS = {
   document_viewed:     { label: 'Document viewed',     cls: 'pill-sky'  },
   document_printed:    { label: 'Document printed',    cls: 'pill-sky'  },
   progress_deleted:    { label: 'Progress picture deleted', cls: 'pill-red' },
+  backup_downloaded:   { label: 'Full backup downloaded', cls: 'pill-sky' },
   archive_restored:    { label: 'Restored from Archive', cls: 'pill-green' },
   archive_purged:      { label: 'Deleted permanently', cls: 'pill-red' },
   renewal_added:       { label: 'Renewal added',       cls: 'pill-green' },
@@ -3733,7 +3734,7 @@ function initHome() {
     from.addEventListener('change', reload); to.addEventListener('change', reload);
     document.getElementById('hm-today').addEventListener('click', () => { from.value = to.value = today(); reload(); });
     document.getElementById('hm-month').addEventListener('click', () => { from.value = hmMonthStart(); to.value = today(); reload(); });
-    document.getElementById('section-home').addEventListener('click', ev => { const g = ev.target.closest('[data-hm-go]'); if (g) switchTab(g.dataset.hmGo); });
+    document.getElementById('section-home').addEventListener('click', ev => { const g = ev.target.closest('[data-hm-go]'); if (g) switchTab(g.dataset.hmGo); if (ev.target.closest('#hm-backup')) downloadFullBackup(); });
   }
   loadHome();
 }
@@ -3777,9 +3778,20 @@ async function loadHome() {
       : '<tr class="empty-row"><td colspan="5">No records in this period.</td></tr>';
   }
   const acts = [['entry', 'Add a record', 'entry.add'], ['purchases', 'Add a purchase', 'purchases.add'], ['payments', 'Add payment lines', 'payments.add'], ['renewals', 'Add a renewal', 'renewals.add'], ['documents', 'Upload a document', 'documents.upload'], ['progress', 'See progress pictures', 'progress.view']].filter(a => can(a[2]) && canTab(a[0]));
-  document.getElementById('hm-actions-card').hidden = !acts.length;
+  const canBackup = can('backup.download');
+  document.getElementById('hm-actions-card').hidden = !acts.length && !canBackup;
   if (!out.length) cards.innerHTML = acts.length ? '<p class="hm-empty">Nothing to summarise here yet. Use the quick actions below.</p>' : '<p class="hm-empty">Nothing is switched on for you yet. Ask the Admin to give you access to what you need.</p>';
-  document.getElementById('hm-actions').innerHTML = acts.map(a => `<button type="button" class="btn btn-outline" data-hm-go="${a[0]}">${esc(a[1])}</button>`).join('');
+  document.getElementById('hm-actions').innerHTML = acts.map(a => `<button type="button" class="btn btn-outline" data-hm-go="${a[0]}">${esc(a[1])}</button>`).join('') + (canBackup ? '<button type="button" class="btn btn-primary hm-backup" id="hm-backup">Download full backup (Excel)</button>' : '');
+  document.getElementById('hm-backup-note').hidden = !canBackup;
+}
+
+/** Admin: every module's data as one Excel file (no PINs, no photo / PDF files). */
+async function downloadFullBackup() {
+  const btn = document.getElementById('hm-backup'); if (!btn || btn.disabled) return;
+  const label = btn.textContent; btn.disabled = true; btn.textContent = 'Preparing your backup…';
+  try { const blob = await Backup.full(); saveBlob(blob, `SCC-full-backup-${today()}.xlsx`); showToast('Full backup downloaded. Keep it in a private folder.'); }
+  catch (e) { showToast(e.message || 'The backup could not be made. Please try again.', true); }
+  finally { btn.disabled = false; btn.textContent = label; }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════

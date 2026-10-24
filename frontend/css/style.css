@@ -2165,4 +2165,7 @@ tbody tr:hover { background: #FFF8EF; }
 .login-footer.site-footer, .login-footer.site-footer span { color: rgba(255,255,255,.92); }
 .login-footer.site-footer a { color: #fff; text-decoration: underline; text-underline-offset: 2px; font-weight: 600; }
 .login-footer.site-footer a:hover { color: #FFD9A8; }
+.hm-actions .hm-backup { margin-left: auto; }
+.hm-backup-note { margin: 12px 2px 0; }
+@media (max-width: 720px) { .hm-actions .hm-backup { margin-left: 0; } }
 

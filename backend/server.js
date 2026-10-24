@@ -30,6 +30,9 @@ const inventoryRouter = require('./routes/inventory');
 const logsRouter      = require('./routes/logs');
 const uploadsRouter   = require('./routes/uploads');
 const progressRouter = require('./routes/progress');
+const renewalsRouter = require('./routes/renewals');
+const notificationsRouter = require('./routes/notifications');
+const renewalsUtil = require('./utils/renewals');
 const reportsRouter   = require('./routes/reports');
 const documentsRouter = require('./routes/documents');
 const paymentsRouter  = require('./routes/payments');
@@ -163,6 +166,8 @@ app.use('/api/inventory', inventoryRouter);
 app.use('/api/logs',      logsRouter);
 app.use('/api/uploads',   uploadsRouter);
 app.use('/api/progress',  progressRouter);
+app.use('/api/renewals',  renewalsRouter);
+app.use('/api/notifications', notificationsRouter);
 app.use('/api/reports',   reportsRouter);
 app.use('/api/documents', documentsRouter);
 app.use('/api/payments',  paymentsRouter);
@@ -197,7 +202,7 @@ app.use((err, req, res, next) => {
   if (err.type === 'entity.too.large') {
     const url = String(req.originalUrl || '');
     const msg = url.startsWith('/api/uploads') ? 'That photo is too large. Please choose a smaller one.'
-      : url.startsWith('/api/documents') || url.startsWith('/api/purchases') ? `That file is too large (${documentsUtil.MAX_MB} MB at most).`
+      : url.startsWith('/api/documents') || url.startsWith('/api/purchases') || url.startsWith('/api/renewals') ? `That file is too large (${documentsUtil.MAX_MB} MB at most).`
       : 'Request is too large.';
     return res.status(413).json({ error: msg });
   }
@@ -207,6 +212,7 @@ app.use((err, req, res, next) => {
 
 // ── Start ────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
+  renewalsUtil.start();           // renewal reminders: checked every minute (and whenever somebody opens the app)
   console.log(`\n🏗️  Sri Charan Constructions`);
   console.log(`✅  Server running at http://localhost:${PORT}`);
   console.log(`📋  Environment: ${process.env.NODE_ENV || 'development'}\n`);

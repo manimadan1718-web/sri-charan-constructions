@@ -7,7 +7,7 @@
  *     The cache is only a fallback for when the network fails.
  *   • Bump VERSION whenever you change the list below, so old caches are cleaned up.
  */
-const VERSION = 'v11';
+const VERSION = 'v12';
 const SHELL   = `scc-shell-${VERSION}`;
 const RUNTIME = `scc-runtime-${VERSION}`;
 
@@ -86,4 +86,15 @@ self.addEventListener('fetch', event => {
   if (req.mode === 'navigate') { event.respondWith(page(req)); return; }
   if (isImage(url.pathname))   { event.respondWith(staleWhileRevalidate(req)); return; }
   event.respondWith(networkFirst(req));
+});
+
+// Tapping a renewal alert on the phone / computer brings the app to the front (or opens it).
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  event.waitUntil((async () => {
+    const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const c of all) { if ('focus' in c) return c.focus(); }
+    if (self.clients.openWindow) return self.clients.openWindow('/');
+    return undefined;
+  })());
 });

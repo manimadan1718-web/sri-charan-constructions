@@ -293,6 +293,28 @@ const Reports = {
   },
 };
 
+// ── Renewals (Owner + Admin) and their reminders ────────────────────────────────
+const rnQuery = o => { const q = Object.entries(o || {}).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&'); return q ? '?' + q : ''; };
+const Renewals = {
+  list(params = {}) { return apiFetch('/renewals' + rnQuery(params)); },
+  add(body) { return apiFetch('/renewals', { method: 'POST', body: JSON.stringify(body) }); },
+  update(id, body) { return apiFetch(`/renewals/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(body) }); },
+  remove(id, reason) { return apiFetch(`/renewals/${encodeURIComponent(id)}`, { method: 'DELETE', body: JSON.stringify({ reason }) }); },
+  renew(id, body) { return apiFetch(`/renewals/${encodeURIComponent(id)}/renew`, { method: 'POST', body: JSON.stringify(body || {}) }); },
+  reopen(id, reason) { return apiFetch(`/renewals/${encodeURIComponent(id)}/reopen`, { method: 'POST', body: JSON.stringify({ reason }) }); },
+  // The file is sent as the raw request body; its name goes in the address.
+  uploadFile(id, file) { return apiFetch(`/renewals/${encodeURIComponent(id)}/files?filename=${encodeURIComponent(file.name)}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file }); },
+  viewLink(fid) { return apiFetch(`/renewals/files/${encodeURIComponent(fid)}/view-link`); },
+  fileUrl(fid) { return apiFetch(`/renewals/files/${encodeURIComponent(fid)}/url`); },
+  removeFile(fid, reason) { return apiFetch(`/renewals/files/${encodeURIComponent(fid)}`, { method: 'DELETE', body: JSON.stringify({ reason }) }); },
+  settings() { return apiFetch('/renewals/settings'); },                                                     // Admin (Permissions tab)
+  saveSettings(body) { return apiFetch('/renewals/settings', { method: 'PUT', body: JSON.stringify(body) }); },
+};
+const Notifications = {
+  list() { return apiFetch('/notifications'); },                                                             // the bell
+  read(renewalId) { return apiFetch('/notifications/read', { method: 'POST', body: JSON.stringify(renewalId ? { renewal_id: renewalId } : {}) }); },
+};
+
 // ── Documents (Owner + Admin) ─────────────────────────────────────────────────
 const Documents = {
   list(params = {}) {

@@ -35,7 +35,7 @@ function readLink(token) {
   try {
     const d = jwt.verify(String(token || ''), secret(), { algorithms: ['HS256'] });
     if (!d || d.typ !== 'file-view' || !d.p) return null;
-    if (!(docs.isValidPath(d.p) || docs.isValidPurchasePath(d.p))) return null;
+    if (!(docs.isValidPath(d.p) || docs.isValidPurchasePath(d.p) || docs.isValidRenewalPath(d.p))) return null;
     if (!isViewable(d.e)) return null;
     return d;
   } catch { return null; }

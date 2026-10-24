@@ -22,6 +22,10 @@ const CATALOG = [
   { key: 'progress.view',      group: 'Site Progress', label: 'See site working progress images',  desc: 'Open the Progress tab to see the pictures, and include them in reports.' },
   { key: 'progress.delete',    group: 'Site Progress', label: 'Delete site working progress images', desc: 'Remove a progress picture from view (a written reason is always needed).', requires: 'progress.view' },
 
+  { key: 'renewals.view',      group: 'Renewals',      label: 'See renewals and get reminders',   desc: 'Open the Renewals tab (insurance, permits, subscriptions …), see its documents, and get the reminder bell.' },
+  { key: 'renewals.add',       group: 'Renewals',      label: 'Add renewals and documents',       desc: 'Add a renewal, upload its documents, and mark it as renewed.', requires: 'renewals.view' },
+  { key: 'renewals.edit',      group: 'Renewals',      label: 'Edit and delete renewals',         desc: 'Change a renewal, reopen one, or remove a renewal or a document (a written reason is always needed).', requires: 'renewals.view' },
+
   { key: 'purchases.add',      group: 'Purchases',     label: 'Add purchases',                    desc: 'Record material that arrives at a site, with weights and an attached slip. Sees the purchases they saved themselves.' },
   { key: 'purchases.view',     group: 'Purchases',     label: 'See all purchases',                desc: 'Open the full purchases list, with totals, filters and the attached files.' },
   { key: 'purchases.edit',     group: 'Purchases',     label: 'Edit and delete purchases',        desc: 'Change or remove a saved purchase (a written reason is always needed).', requires: 'purchases.view' },
@@ -54,7 +58,7 @@ const GROUPS = [...new Set(CATALOG.map(c => c.group))];
 // What each role can do when nothing has been customised — exactly how the app behaved before permissions existed.
 const ROLE_DEFAULTS = {
   admin: [...KEYS],
-  owner: ['records.view', 'records.export', 'progress.view', 'purchases.view', 'summary.view', 'documents.view', 'documents.print', 'documents.upload', 'payments.view', 'logs.view'],
+  owner: ['records.view', 'records.export', 'progress.view', 'renewals.view', 'renewals.add', 'purchases.view', 'summary.view', 'documents.view', 'documents.print', 'documents.upload', 'payments.view', 'logs.view'],
   supervisor: ['entry.add', 'progress.add', 'purchases.add', 'payments.add'],
 };
 const ROLES = Object.keys(ROLE_DEFAULTS);

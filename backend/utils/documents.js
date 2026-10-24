@@ -69,6 +69,14 @@ const isValidPurchasePath = p => typeof p === 'string' && p.length < 160 && PURC
 /** Who uploaded this purchase file (the id is part of the path, so nobody can attach somebody else's upload). */
 const purchasePathOwner = p => (isValidPurchasePath(p) ? PURCHASE_PATH_RE.exec(p)[1] : null);
 
+// Renewal documents (insurance papers, permits, receipts …) live in the same private bucket under renewals/<year>/<month>/…
+function newRenewalPath(ext) {
+  const d = new Date();
+  return `renewals/${d.getUTCFullYear()}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${crypto.randomUUID()}${ext ? '.' + ext : ''}`;
+}
+const RENEWAL_PATH_RE = /^renewals\/\d{4}\/\d{2}\/[0-9a-f-]{36}(?:\.[a-z0-9]{1,10})?$/;
+const isValidRenewalPath = p => typeof p === 'string' && p.length < 120 && RENEWAL_PATH_RE.test(p);
+
 const isMissingBucket = err => !!err && /bucket not found/i.test(String(err.message || ''));
 
 async function ensureBucket() {
@@ -114,6 +122,6 @@ const humanSize = n => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : n >= 1
 module.exports = {
   BUCKET, MAX_MB, MAX_BYTES, CATEGORIES, BLOCKED_EXT,
   clean, safeFilename, extensionOf, formatLabel, sha256, newPath, isValidPath,
-  newPurchasePath, isValidPurchasePath, purchasePathOwner, safeUid,
+  newPurchasePath, isValidPurchasePath, purchasePathOwner, safeUid, newRenewalPath, isValidRenewalPath,
   ensureBucket, store, removeObject, downloadUrl, isMissingDocuments, DOCUMENTS_SETUP_MESSAGE, humanSize,
 };

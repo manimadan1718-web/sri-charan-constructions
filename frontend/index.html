@@ -37,7 +37,24 @@
     <span class="header-user" id="header-user"></span>
     <button class="btn btn-outline btn-sm logout-btn" onclick="Auth.logout()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>Logout</button>
   </div>
-<button type="button" class="menu-btn" id="menu-btn" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-menu">
+<div class="bell-wrap" id="bell-wrap" hidden>
+    <button type="button" class="bell-btn" id="bell-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="bell-panel" aria-label="Renewal reminders">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="bell-count" id="bell-count" hidden>0</span>
+    </button>
+    <div class="bell-panel" id="bell-panel" role="dialog" aria-label="Renewal reminders" hidden>
+      <div class="bell-head">
+        <div><strong>Renewal reminders</strong><span id="bell-sub" class="bell-sub"></span></div>
+        <button type="button" class="btn btn-outline btn-sm" id="bell-readall">Mark all read</button>
+      </div>
+      <div class="bell-list" id="bell-list" aria-live="polite"></div>
+      <div class="bell-foot">
+        <p id="bell-rule"></p>
+        <button type="button" class="btn btn-outline btn-sm" id="bell-device">&#128276; Turn on alerts on this device</button>
+        <p class="bell-device-note" id="bell-device-note"></p>
+      </div>
+    </div>
+  </div>
+  <button type="button" class="menu-btn" id="menu-btn" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-menu">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
     <span class="menu-current" id="menu-current">Menu</span>
   </button>
@@ -51,6 +68,7 @@
   <div class="tab" id="tab-purchases" data-perms="purchases.add,purchases.view" onclick="switchTab('purchases')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg><span>Purchases</span></div>
   <div class="tab" id="tab-summary" data-perms="summary.view" onclick="switchTab('summary')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg><span>Summary</span></div>
   <div class="tab" id="tab-documents" data-perms="documents.view" onclick="switchTab('documents')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="14" y2="17"/></svg><span>Documents</span></div>
+  <div class="tab" id="tab-renewals" data-perms="renewals.view" onclick="switchTab('renewals')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg><span>Renewals</span></div>
   <div class="tab" id="tab-payments" data-perms="payments.add,payments.view" onclick="switchTab('payments')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg><span>Payments</span></div>
   <div class="tab" id="tab-inventory" data-perms="inventory.manage" onclick="switchTab('inventory')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg><span>Inventory</span></div>
   <div class="tab" id="tab-users" data-perms="users.manage" onclick="switchTab('users')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>Users</span></div>
@@ -518,6 +536,66 @@
 </div>
 
 <!-- ═══════════════════════════════ PAYMENTS (Supervisor adds · Owner + Admin see) ═══ -->
+<!-- ═══════════════ RENEWALS (Owner + Admin) ═══════════════ -->
+<div class="section" id="section-renewals">
+  <header class="pl-head">
+    <div>
+      <h2 class="pl-title">Renewals</h2>
+      <p class="pl-sub">Insurance, permits, licences and subscriptions &mdash; with their documents and reminders before they fall due.</p>
+    </div>
+  </header>
+  <div class="rn-cards" id="rn-cards" aria-live="polite"></div>
+  <p class="rn-note" id="rn-note"></p>
+
+  <div class="card pl-card perm-renewals-add">
+    <div class="pl-card-head">
+      <div class="pl-card-title"><span class="pl-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span><div><h3>Add a renewal</h3><p>What is to be renewed, when, how much it costs, who paid, and its documents.</p></div></div>
+    </div>
+    <div class="form-grid rn-form">
+      <div class="form-group"><label for="rn-type">Type of renewal *</label><input type="text" id="rn-type" list="rn-types" maxlength="80" placeholder="e.g. Vehicle Insurance" autocomplete="off"><datalist id="rn-types"></datalist></div>
+      <div class="form-group"><label for="rn-date">Renewal date *</label><input type="date" id="rn-date"></div>
+      <div class="form-group"><label for="rn-amount">Amount (&#8377;)</label><input type="number" id="rn-amount" min="0" step="0.01" inputmode="decimal" placeholder="0.00"></div>
+      <div class="form-group"><label for="rn-paidby">Who paid</label><input type="text" id="rn-paidby" list="rn-paidby-list" maxlength="120" placeholder="Name of the person who paid" autocomplete="off"><datalist id="rn-paidby-list"></datalist></div>
+      <div class="form-group rn-wide"><label for="rn-desc">Description</label><textarea id="rn-desc" rows="2" maxlength="500" placeholder="Vehicle number, policy number, plan, company &hellip;"></textarea></div>
+      <div class="form-group rn-wide">
+        <label for="rn-files-btn">Documents</label>
+        <div class="rn-pick">
+          <input type="file" id="rn-files" multiple hidden aria-label="Choose renewal documents">
+          <button type="button" class="btn btn-outline" id="rn-files-btn">&#128206; Choose documents</button>
+          <span class="form-hint" id="rn-files-hint">Policy, receipt, certificate &hellip; PDF, Word, Excel or pictures.</span>
+        </div>
+        <ul class="rn-chosen" id="rn-chosen"></ul>
+      </div>
+    </div>
+    <div class="form-error" id="rn-error" role="alert"></div>
+    <div class="pl-actions">
+      <button type="button" class="btn btn-primary" id="rn-save">&#128190; Save renewal</button>
+      <button type="button" class="btn btn-outline" id="rn-clear">&#10005; Clear</button>
+    </div>
+  </div>
+
+  <div class="card pl-card">
+    <div class="pl-card-head">
+      <div class="pl-card-title"><span class="pl-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></span><div><h3>All renewals</h3><p id="rn-count"></p></div></div>
+    </div>
+    <div class="pl-filters rn-filters" role="search" aria-label="Search and filter renewals">
+      <label class="pl-flt pl-flt-search"><span>Search</span><input type="search" data-rnf="q" placeholder="Type, description or who paid&hellip;" autocomplete="off"></label>
+      <label class="pl-flt"><span>Show</span><select data-rnf="status"><option value="active">Not yet renewed</option><option value="renewed">Renewed</option><option value="all">Everything</option></select></label>
+      <label class="pl-flt"><span>Type</span><select data-rnf="type"><option value="">All types</option></select></label>
+      <label class="pl-flt"><span>From date</span><input type="date" data-rnf="from"></label>
+      <label class="pl-flt"><span>To date</span><input type="date" data-rnf="to"></label>
+      <button type="button" class="btn btn-outline btn-sm pl-flt-clear" id="rn-filter-clear">&#10005; Clear filters</button>
+    </div>
+    <div class="table-wrap pl-wrap">
+      <table class="pl-table rn-table">
+        <thead><tr><th>Sl No</th><th>Renewal date</th><th>Type</th><th>Description</th><th class="r">Amount</th><th>Who paid</th><th>Documents</th><th>Status</th><th class="pl-act">Actions</th></tr></thead>
+        <tbody id="rn-body"></tbody>
+      </table>
+    </div>
+    <input type="file" id="rn-rowfile" hidden multiple aria-label="Add documents to this renewal">
+  </div>
+</div>
+
 <div class="section" id="section-payments">
   <header class="pl-head">
     <div>
@@ -710,6 +788,31 @@
       <div class="perm-editor" id="perm-editor" aria-live="polite"><p class="perm-empty">Choose a person on the left to see and change what they can do.</p></div>
     </div>
   </div>
+  <div class="card rs-card" id="rs-card">
+    <div class="card-header">
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></span> Renewal reminders <span class="badge">ADMIN</span></div>
+    </div>
+    <p class="form-hint">The Owner and everyone allowed to &ldquo;see renewals&rdquo; get a reminder in the bell for every renewal that is coming up. Choose when the reminders start and how often they repeat. They stop once the renewal is marked as renewed; overdue renewals keep reminding.</p>
+    <div class="perm-warning" id="rs-setup" role="alert" hidden>Reminder settings need a one-time database update. Run <strong>run-in-supabase-9-renewals.sql</strong> in Supabase &rarr; SQL Editor, then reload this page. Until then the standard settings apply (start 7 days before, repeat every hour).</div>
+    <div class="rs-grid">
+      <label class="rs-switch"><input type="checkbox" id="rs-enabled"><span class="rs-track" aria-hidden="true"></span><span>Reminders are <strong id="rs-onoff">on</strong></span></label>
+      <div class="rs-field">
+        <label for="rs-start">Start reminding</label>
+        <div class="rs-inline"><input type="number" id="rs-start" min="1" max="365" step="1" inputmode="numeric"><span>days before the renewal date</span></div>
+      </div>
+      <div class="rs-field">
+        <label for="rs-every">Repeat every</label>
+        <div class="rs-inline"><input type="number" id="rs-every" min="1" max="168" step="1" inputmode="numeric"><select id="rs-unit" aria-label="Hours or days"><option value="hours">hours</option><option value="days">days</option></select></div>
+      </div>
+    </div>
+    <p class="rs-preview" id="rs-preview" aria-live="polite"></p>
+    <div class="form-error" id="rs-error" role="alert"></div>
+    <div class="btn-group">
+      <button type="button" class="btn btn-primary" id="rs-save">&#128190; Save reminder settings</button>
+      <button type="button" class="btn btn-outline" id="rs-reset">Use the standard settings</button>
+    </div>
+    <p class="form-hint" id="rs-by"></p>
+  </div>
 </div>
 
 <!-- ═══════════════════════════════ ACTIVITY LOGS (Owner + Admin) ═════════════ -->
@@ -739,6 +842,7 @@
         <option value="user">Users</option>
         <option value="document">Documents</option>
         <option value="payment">Payments</option>
+          <option value="renewal">Renewals</option>
         <option value="purchase">Purchases</option>
         <option value="system">System (log clean-ups)</option>
       </select>
@@ -1017,6 +1121,58 @@
     <div class="btn-group">
       <button type="button" class="btn btn-primary" id="de-save" onclick="saveDocEdit()">💾 Save Changes</button>
       <button type="button" class="btn btn-outline" onclick="closeDocEdit()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ MARK AS RENEWED ═══════════════ -->
+<div class="modal-overlay" id="rn-renew-overlay" onclick="if(event.target===this) closeRenew()">
+  <div class="modal-card modal-small" role="dialog" aria-modal="true" aria-labelledby="rn-renew-title">
+    <div class="card-header">
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></span> <span id="rn-renew-title">Mark as renewed</span></div>
+      <button type="button" class="btn btn-outline btn-sm" onclick="closeRenew()">&#10005; Close</button>
+    </div>
+    <p class="reason-intro" id="rn-renew-intro"></p>
+    <div class="form-grid one-col">
+      <div class="form-group"><label for="rnr-on">Renewed on</label><input type="date" id="rnr-on"></div>
+      <div class="form-group">
+        <label for="rnr-next">Next renewal date <small>(optional)</small></label>
+        <input type="date" id="rnr-next">
+        <div class="rn-quick" role="group" aria-label="Quick choices for the next date">
+          <button type="button" class="btn btn-outline btn-sm" data-rnr-add="12">+ 1 year</button>
+          <button type="button" class="btn btn-outline btn-sm" data-rnr-add="6">+ 6 months</button>
+          <button type="button" class="btn btn-outline btn-sm" data-rnr-add="3">+ 3 months</button>
+          <button type="button" class="btn btn-outline btn-sm" data-rnr-add="1">+ 1 month</button>
+        </div>
+        <p class="form-hint">Set it, and the next renewal is added for you (same type, amount and who paid) with its own reminders.</p>
+      </div>
+    </div>
+    <div class="form-error" id="rnr-error" role="alert"></div>
+    <div class="btn-group">
+      <button type="button" class="btn btn-primary" id="rnr-save" onclick="saveRenew()">&#10003; Mark as renewed</button>
+      <button type="button" class="btn btn-outline" onclick="closeRenew()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ EDIT RENEWAL (Admin) ═══════════════ -->
+<div class="modal-overlay" id="rn-edit-overlay" onclick="if(event.target===this) closeRnEdit()">
+  <div class="modal-card modal-small" role="dialog" aria-modal="true" aria-labelledby="rn-edit-title">
+    <div class="card-header">
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></span> <span id="rn-edit-title">Edit renewal</span></div>
+      <button type="button" class="btn btn-outline btn-sm" onclick="closeRnEdit()">&#10005; Close</button>
+    </div>
+    <div class="form-grid one-col">
+      <div class="form-group"><label for="rne-type">Type of renewal *</label><input type="text" id="rne-type" list="rn-types" maxlength="80" autocomplete="off"></div>
+      <div class="form-group"><label for="rne-date">Renewal date *</label><input type="date" id="rne-date"></div>
+      <div class="form-group"><label for="rne-amount">Amount (&#8377;)</label><input type="number" id="rne-amount" min="0" step="0.01" inputmode="decimal"></div>
+      <div class="form-group"><label for="rne-paidby">Who paid</label><input type="text" id="rne-paidby" list="rn-paidby-list" maxlength="120" autocomplete="off"></div>
+      <div class="form-group"><label for="rne-desc">Description</label><textarea id="rne-desc" rows="2" maxlength="500"></textarea></div>
+    </div>
+    <div class="form-error" id="rne-error" role="alert"></div>
+    <div class="btn-group">
+      <button type="button" class="btn btn-primary" id="rne-save" onclick="saveRnEdit()">&#128190; Save Changes</button>
+      <button type="button" class="btn btn-outline" onclick="closeRnEdit()">Cancel</button>
     </div>
   </div>
 </div>

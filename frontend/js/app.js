@@ -5,6 +5,7 @@ const TAB_PERMS = {
   entry:       ['entry.add'],
   records:     ['records.view'],
   progress:    ['progress.view'],
+  renewals:    ['renewals.view'],
   purchases:   ['purchases.add', 'purchases.view'],
   summary:     ['summary.view'],
   documents:   ['documents.view'],
@@ -14,13 +15,13 @@ const TAB_PERMS = {
   logs:        ['logs.view'],
   permissions: ['permissions.manage'],
 };
-const TAB_ORDER = ['entry', 'records', 'progress', 'purchases', 'summary', 'documents', 'payments', 'inventory', 'users', 'logs', 'permissions'];
-const ALL_PERMS = ['entry.add', 'progress.add', 'progress.view', 'progress.delete', 'records.view', 'records.export', 'records.edit', 'records.delete', 'purchases.add', 'purchases.view', 'purchases.edit', 'summary.view',
+const TAB_ORDER = ['entry', 'records', 'progress', 'purchases', 'summary', 'documents', 'renewals', 'payments', 'inventory', 'users', 'logs', 'permissions'];
+const ALL_PERMS = ['entry.add', 'progress.add', 'progress.view', 'progress.delete', 'renewals.view', 'renewals.add', 'renewals.edit', 'records.view', 'records.export', 'records.edit', 'records.delete', 'purchases.add', 'purchases.view', 'purchases.edit', 'summary.view',
   'documents.view', 'documents.print', 'documents.upload', 'documents.delete', 'payments.add', 'payments.view', 'payments.edit', 'inventory.manage', 'logs.view', 'logs.delete', 'users.manage', 'permissions.manage'];
 // Only used when the server has not sent a list (a session that started before permissions existed): the role's defaults.
 const ROLE_FALLBACK = {
   admin: ALL_PERMS,
-  owner: ['records.view', 'records.export', 'progress.view', 'purchases.view', 'summary.view', 'documents.view', 'documents.print', 'documents.upload', 'payments.view', 'logs.view'],
+  owner: ['records.view', 'records.export', 'progress.view', 'renewals.view', 'renewals.add', 'purchases.view', 'summary.view', 'documents.view', 'documents.print', 'documents.upload', 'payments.view', 'logs.view'],
   supervisor: ['entry.add', 'progress.add', 'purchases.add', 'payments.add'],
 };
 function myPerms() {
@@ -74,6 +75,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   toggleCategoryFields('f');
   initLoadPoints();
   initProgressAdd();
+  initBell();
   loadUnloadPoints();
 
   const firstTab = visibleTabs()[0];
@@ -423,7 +425,7 @@ function showToast(msg, isError = false) {
 }
 
 /* ── Tab ─────────────────────────────────────────────────────────────────────── */
-const TAB_LABELS = { entry: 'Data Entry', records: 'Records', progress: 'Progress', purchases: 'Purchases', summary: 'Summary', documents: 'Documents', payments: 'Payments', inventory: 'Inventory', users: 'Users', logs: 'Activity Logs', permissions: 'Permissions' };
+const TAB_LABELS = { entry: 'Data Entry', records: 'Records', progress: 'Progress', purchases: 'Purchases', summary: 'Summary', documents: 'Documents', renewals: 'Renewals', payments: 'Payments', inventory: 'Inventory', users: 'Users', logs: 'Activity Logs', permissions: 'Permissions' };
 
 function switchTab(name) {
   // Only open a screen the signed-in role is meant to have (the server enforces this too; this keeps the screen honest).
@@ -448,6 +450,7 @@ function switchTab(name) {
 
   if (name === 'records')   loadRecords();
   if (name === 'progress')  loadProgressTab();
+  if (name === 'renewals')  initRenewals();
   if (name === 'summary')   loadSummary();
   if (name === 'documents') loadDocuments();
   if (name === 'payments')  initPayments();
@@ -456,6 +459,7 @@ function switchTab(name) {
   if (name === 'inventory') loadInventory();
   if (name === 'users')     loadUsers();
   if (name === 'logs')      loadLogs(true);
+  const activeTab = document.getElementById('tab-' + name); if (activeTab && activeTab.scrollIntoView) activeTab.scrollIntoView({ inline: 'nearest', block: 'nearest' });       // the tab bar scrolls sideways when there are many
 }
 
 /* ── Form ────────────────────────────────────────────────────────────────────── */
@@ -1712,6 +1716,16 @@ const SPECIAL_ACTIONS = {
   document_viewed:     { label: 'Document viewed',     cls: 'pill-sky'  },
   document_printed:    { label: 'Document printed',    cls: 'pill-sky'  },
   progress_deleted:    { label: 'Progress picture deleted', cls: 'pill-red' },
+  renewal_added:       { label: 'Renewal added',       cls: 'pill-green' },
+  renewal_updated:     { label: 'Renewal changed',     cls: 'pill-orange' },
+  renewal_deleted:     { label: 'Renewal deleted',     cls: 'pill-red'  },
+  renewal_renewed:     { label: 'Marked renewed',      cls: 'pill-green' },
+  renewal_reopened:    { label: 'Renewal reopened',    cls: 'pill-orange' },
+  renewal_file_added:  { label: 'Renewal document added', cls: 'pill-green' },
+  renewal_file_viewed: { label: 'Renewal document viewed', cls: 'pill-sky' },
+  renewal_file_downloaded: { label: 'Renewal document downloaded', cls: 'pill-sky' },
+  renewal_file_deleted:{ label: 'Renewal document removed', cls: 'pill-red' },
+  reminder_settings_changed: { label: 'Reminder settings changed', cls: 'pill-orange' },
   permissions_changed: { label: 'Permissions changed', cls: 'pill-orange' },
   purchase_created:    { label: 'Purchase added',      cls: 'pill-green' },
   purchase_updated:    { label: 'Purchase updated',    cls: 'pill-orange' },
@@ -3246,6 +3260,409 @@ async function deletePayment(k, id) {
 }
 
 
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Renewals — insurance, permits, licences, subscriptions … with documents and reminders
+   ═══════════════════════════════════════════════════════════════════════════════ */
+const RN = { built: false, rows: [], total: 0, summary: null, meta: { types: [], today: '', max_files: 10, max_mb: 25, settings_text: '' }, filter: { q: '', status: 'active', type: '', from: '', to: '' }, chosen: [], rowFileFor: null, renewing: null, editing: null, highlight: null, timer: null };
+const RN_CHIP = { overdue: 'Overdue', today: 'Due today', soon: 'Due soon', upcoming: 'Upcoming', renewed: 'Renewed' };
+const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+const fileSize = n => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n} bytes`);
+function addMonthsISO(iso, n) {
+  const [y, m, d] = iso.split('-').map(Number);
+  const first = new Date(Date.UTC(y, m - 1 + n, 1)), dim = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
+  first.setUTCDate(Math.min(d, dim));                                       // 31 Jan + 1 month = 28/29 Feb, not 3 March
+  return first.toISOString().slice(0, 10);
+}
+const rnWhen = r => (r.state === 'renewed' ? `on ${fmtDate(r.renewed_on)}` : r.days_left < 0 ? `${plural(-r.days_left, 'day')} late` : r.days_left === 0 ? 'renew today' : `in ${plural(r.days_left, 'day')}`);
+
+function initRenewals() {
+  if (!RN.built) {
+    RN.built = true;
+    const root = document.getElementById('section-renewals');
+    root.addEventListener('input', ev => {
+      const t = ev.target;
+      if (t.matches('[data-rnf]') && t.dataset.rnf !== 'status' && t.dataset.rnf !== 'type') { RN.filter[t.dataset.rnf] = t.value; scheduleRnLoad(); }
+    });
+    root.addEventListener('change', ev => {
+      const t = ev.target;
+      if (t.matches('select[data-rnf]')) { RN.filter[t.dataset.rnf] = t.value; loadRenewals(); }
+      if (t.id === 'rn-files') { addChosenFiles([...t.files]); t.value = ''; }
+      if (t.id === 'rn-rowfile') { const id = RN.rowFileFor; const files = [...t.files]; t.value = ''; if (id && files.length) uploadToRenewal(id, files); }
+    });
+    root.addEventListener('click', ev => {
+      const b = ev.target.closest('button'); if (!b) return;
+      if (b.id === 'rn-files-btn') return document.getElementById('rn-files').click();
+      if (b.id === 'rn-save') return saveRenewal();
+      if (b.id === 'rn-clear') return clearRenewalForm();
+      if (b.id === 'rn-filter-clear') { RN.filter = { q: '', status: 'active', type: '', from: '', to: '' }; syncRnFilters(); return loadRenewals(); }
+      if (b.dataset.rnChosenDel !== undefined) { RN.chosen.splice(Number(b.dataset.rnChosenDel), 1); return renderChosen(); }
+      if (b.dataset.rnRenew) return openRenew(b.dataset.rnRenew);
+      if (b.dataset.rnEdit) return openRnEdit(b.dataset.rnEdit);
+      if (b.dataset.rnDel) return deleteRenewal(b.dataset.rnDel);
+      if (b.dataset.rnReopen) return reopenRenewal(b.dataset.rnReopen);
+      if (b.dataset.rnAdddoc) { RN.rowFileFor = b.dataset.rnAdddoc; return document.getElementById('rn-rowfile').click(); }
+      if (b.dataset.rnFile) return openRenewalFile(b.dataset.rnFile, b.dataset.rnViewable === '1');
+      if (b.dataset.rnFiledel) return removeRenewalFile(b.dataset.rnFiledel);
+    });
+    document.getElementById('rnr-save').closest('.modal-card').addEventListener('click', ev => {
+      const q = ev.target.closest('[data-rnr-add]'); if (!q || !RN.renewing) return;
+      document.getElementById('rnr-next').value = addMonthsISO(RN.renewing.renewal_date, Number(q.dataset.rnrAdd));
+    });
+    document.getElementById('rn-date').value = '';
+  }
+  loadRenewals();
+}
+const scheduleRnLoad = () => { clearTimeout(RN.timer); RN.timer = setTimeout(loadRenewals, 280); };
+function syncRnFilters() {
+  document.querySelectorAll('#section-renewals [data-rnf]').forEach(el => { el.value = RN.filter[el.dataset.rnf] || ''; });
+}
+
+async function loadRenewals() {
+  try {
+    const f = RN.filter;
+    const res = await Renewals.list({ q: f.q.trim(), status: f.status, type: f.type, from: f.from, to: f.to });
+    RN.rows = res.data || []; RN.total = res.total || 0; RN.summary = res.summary; RN.meta = res.meta || RN.meta;
+    fillRnLists(); renderRnCards(); renderRnTable(res.setup_required);
+    syncRnFilters();
+    if (RN.highlight) { const row = document.querySelector(`#rn-body tr[data-id="${RN.highlight}"]`); RN.highlight = null; if (row) { row.scrollIntoView({ behavior: 'smooth', block: 'center' }); row.classList.add('rn-flash'); setTimeout(() => row.classList.remove('rn-flash'), 3000); } }
+  } catch (e) {
+    document.getElementById('rn-body').innerHTML = `<tr class="empty-row"><td colspan="9">${esc(e.message || 'The renewals could not be loaded.')}</td></tr>`;
+  }
+}
+function fillRnLists() {
+  const types = RN.meta.types || [];
+  document.getElementById('rn-types').innerHTML = types.map(t => `<option value="${esc(t)}"></option>`).join('');
+  const names = [...new Set(RN.rows.map(r => r.paid_by).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  document.getElementById('rn-paidby-list').innerHTML = names.map(n => `<option value="${esc(n)}"></option>`).join('');
+  const sel = document.querySelector('#section-renewals select[data-rnf="type"]'), used = [...new Set(RN.rows.map(r => r.renewal_type))];
+  const all = [...new Set([...used, RN.filter.type].filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  sel.innerHTML = '<option value="">All types</option>' + all.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('');
+}
+function renderRnCards() {
+  const s = RN.summary || { overdue: 0, today: 0, soon: 0, upcoming: 0, renewed: 0, active_amount: 0, needs_attention_amount: 0 };
+  const card = (cls, label, n, note) => `<div class="rn-card rn-c-${cls}"><span class="pl-lbl">${label}</span><span class="rn-num">${n}</span><span class="pl-note">${note}</span></div>`;
+  document.getElementById('rn-cards').innerHTML =
+    card('overdue', 'Overdue', s.overdue, s.overdue ? 'Past the renewal date' : 'Nothing overdue') +
+    card('today', 'Due today', s.today, s.today ? 'Renew today' : 'Nothing due today') +
+    card('soon', 'Due soon', s.soon, 'Inside the reminder window') +
+    card('upcoming', 'Upcoming', s.upcoming, `${s.renewed} renewed so far`);
+  document.getElementById('rn-note').innerHTML = `<strong>Reminders:</strong> ${esc(RN.meta.settings_text || '')} ${s.needs_attention_amount ? ` <strong>${esc(inrS(s.needs_attention_amount))}</strong> needs attention (overdue, today and soon).` : ''}`;
+}
+function renderRnTable(setup) {
+  const body = document.getElementById('rn-body'), canAdd = can('renewals.add'), canEdit = can('renewals.edit');
+  document.getElementById('rn-count').textContent = setup ? 'Renewals need a one-time database update — run run-in-supabase-9-renewals.sql in Supabase, then reload this page.'
+    : RN.total ? (RN.rows.length === RN.total ? plural(RN.total, 'renewal') : `Showing ${RN.rows.length} of ${plural(RN.total, 'renewal')}`) : 'No renewals yet.';
+  if (!RN.rows.length) { body.innerHTML = `<tr class="empty-row"><td colspan="9">${RN.total ? 'No renewals match these filters.' : 'No renewals saved yet. Add the first one above.'}</td></tr>`; return; }
+  body.innerHTML = RN.rows.map((r, i) => `
+    <tr data-id="${esc(r.id)}" class="rn-row rn-${r.state}">
+      <td data-label="Sl No">${i + 1}</td>
+      <td data-label="Renewal date" class="pl-date-cell"><strong>${esc(fmtDate(r.renewal_date))}</strong></td>
+      <td data-label="Type"><strong>${esc(r.renewal_type)}</strong></td>
+      <td data-label="Description" class="pl-desc-cell">${esc(r.description) || '<span class="pl-none">—</span>'}</td>
+      <td class="r" data-label="Amount">${r.amount ? esc(inrS(r.amount)) : '<span class="pl-none">—</span>'}</td>
+      <td data-label="Who paid">${esc(r.paid_by) || '<span class="pl-none">—</span>'}</td>
+      <td data-label="Documents" class="rn-docs">${r.files.map(f => `<span class="rn-file"><button type="button" class="rn-file-btn" data-rn-file="${esc(f.id)}" data-rn-viewable="${f.viewable ? 1 : 0}" title="${f.viewable ? 'Open' : 'Download'} ${esc(f.original_filename)} (${esc(f.format)}, ${esc(fileSize(f.size_bytes))})"><span aria-hidden="true">${f.viewable ? '📄' : '⬇'}</span> ${esc(f.original_filename)}</button>${canEdit ? `<button type="button" class="rn-file-x" data-rn-filedel="${esc(f.id)}" aria-label="Remove ${esc(f.original_filename)}">✕</button>` : ''}</span>`).join('') || '<span class="pl-none">None</span>'}${canAdd && r.files.length < (RN.meta.max_files || 10) ? `<button type="button" class="rn-adddoc" data-rn-adddoc="${esc(r.id)}">+ Add document</button>` : ''}</td>
+      <td data-label="Status"><span class="rn-chip rn-chip-${r.state}">${RN_CHIP[r.state]}</span><span class="rn-when">${esc(rnWhen(r))}</span></td>
+      <td class="pl-act" data-label="Actions">
+        ${r.status === 'active' && canAdd ? `<button type="button" class="btn btn-primary btn-sm" data-rn-renew="${esc(r.id)}">Mark renewed</button>` : ''}
+        ${r.status === 'renewed' && canEdit ? `<button type="button" class="btn btn-outline btn-sm" data-rn-reopen="${esc(r.id)}">Reopen</button>` : ''}
+        ${canEdit ? `<button type="button" class="btn btn-outline btn-sm" data-rn-edit="${esc(r.id)}" aria-label="Edit ${esc(r.renewal_type)}">Edit</button> <button type="button" class="btn btn-outline btn-sm pl-danger" data-rn-del="${esc(r.id)}" aria-label="Delete ${esc(r.renewal_type)}">Delete</button>` : ''}
+      </td>
+    </tr>`).join('');
+}
+
+/* the "add" form */
+function addChosenFiles(files) {
+  const max = RN.meta.max_files || 10, mb = RN.meta.max_mb || 25, err = document.getElementById('rn-error'); err.textContent = '';
+  for (const f of files) {
+    if (RN.chosen.length >= max) { err.textContent = `At most ${max} documents per renewal.`; break; }
+    if (f.size > mb * 1048576) { err.textContent = `"${f.name}" is too large (${mb} MB at most).`; continue; }
+    if (!f.size) { err.textContent = `"${f.name}" is empty.`; continue; }
+    RN.chosen.push(f);
+  }
+  renderChosen();
+}
+function renderChosen() {
+  document.getElementById('rn-chosen').innerHTML = RN.chosen.map((f, i) => `<li><span aria-hidden="true">📎</span> <span class="rn-chosen-name">${esc(f.name)}</span> <small>${esc(fileSize(f.size))}</small><button type="button" class="rn-file-x" data-rn-chosen-del="${i}" aria-label="Remove ${esc(f.name)}">✕</button></li>`).join('');
+}
+function clearRenewalForm() {
+  ['rn-type', 'rn-date', 'rn-amount', 'rn-paidby', 'rn-desc'].forEach(id => { document.getElementById(id).value = ''; });
+  RN.chosen = []; renderChosen(); document.getElementById('rn-error').textContent = '';
+}
+async function saveRenewal() {
+  const err = document.getElementById('rn-error'); err.textContent = '';
+  const body = { renewal_type: document.getElementById('rn-type').value.replace(/\s+/g, ' ').trim(), renewal_date: document.getElementById('rn-date').value, amount: document.getElementById('rn-amount').value.trim(),
+    paid_by: document.getElementById('rn-paidby').value.replace(/\s+/g, ' ').trim(), description: document.getElementById('rn-desc').value.replace(/\s+/g, ' ').trim() };
+  if (!body.renewal_type) { err.textContent = 'Choose or type the type of renewal (for example Vehicle Insurance).'; document.getElementById('rn-type').focus(); return; }
+  if (!body.renewal_date) { err.textContent = 'Choose the renewal date.'; document.getElementById('rn-date').focus(); return; }
+  if (body.amount !== '' && (!Number.isFinite(Number(body.amount)) || Number(body.amount) < 0)) { err.textContent = 'The amount must be a number of 0 or more.'; return; }
+  const btn = document.getElementById('rn-save'), label = btn.textContent; btn.disabled = true;
+  try {
+    const res = await Renewals.add(body), id = res.data.id, files = RN.chosen.slice(), failed = [];
+    for (let i = 0; i < files.length; i++) {
+      btn.textContent = `Uploading ${i + 1} of ${files.length}…`;
+      try { await Renewals.uploadFile(id, files[i]); } catch (e) { failed.push(`${files[i].name} — ${e.message}`); }
+    }
+    showToast(`✅ Renewal saved${files.length ? ` with ${plural(files.length - failed.length, 'document')}` : ''}.`);
+    clearRenewalForm();
+    if (failed.length) err.textContent = `The renewal was saved, but ${plural(failed.length, 'document')} could not be uploaded: ${failed.join('; ')}. Add them from the list below.`;
+    RN.filter.status = 'active'; loadRenewals(); refreshBell(true);
+  } catch (e) { err.textContent = e.message || 'Could not save. Please try again.'; }
+  finally { btn.disabled = false; btn.textContent = label; }
+}
+async function uploadToRenewal(id, files) {
+  let ok = 0; const failed = [];
+  for (const f of files) {
+    if (f.size > (RN.meta.max_mb || 25) * 1048576) { failed.push(`${f.name} — too large`); continue; }
+    try { await Renewals.uploadFile(id, f); ok++; } catch (e) { failed.push(`${f.name} — ${e.message}`); }
+  }
+  if (ok) showToast(`✅ ${plural(ok, 'document')} added.`);
+  if (failed.length) showToast('❌ ' + failed.join('; '), true);
+  loadRenewals();
+}
+async function openRenewalFile(fid, viewable) {
+  if (viewable) return openInNewTab(() => Renewals.viewLink(fid));
+  try {
+    const r = await Renewals.fileUrl(fid);
+    const a = document.createElement('a'); a.href = r.url; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove();     // the browser DOWNLOADS it
+    showToast('⬇ Download started.');
+  } catch (e) { showToast('❌ ' + (e.message || 'Could not start the download.'), true); }
+}
+async function removeRenewalFile(fid) {
+  const row = RN.rows.find(r => r.files.some(f => String(f.id) === String(fid))), file = row && row.files.find(f => String(f.id) === String(fid));
+  if (!file) return;
+  const reason = await askReason({ title: 'Remove this document?', intro: `<strong>${esc(file.original_filename)}</strong> — ${esc(row.renewal_type)}. It is taken off this renewal; the reason is saved in the Activity Log.`, confirmLabel: 'Remove document', danger: true });
+  if (!reason) return;
+  try { await Renewals.removeFile(fid, reason); showToast('Document removed.'); loadRenewals(); }
+  catch (e) { showToast('❌ ' + (e.message || 'Could not remove the document.'), true); }
+}
+
+/* mark as renewed (optionally starting the next cycle) */
+function openRenew(id) {
+  const r = RN.rows.find(x => String(x.id) === String(id)); if (!r) return;
+  RN.renewing = r;
+  document.getElementById('rn-renew-intro').innerHTML = `<strong>${esc(r.renewal_type)}</strong> — due ${esc(fmtDate(r.renewal_date))}. Its reminders stop once it is marked as renewed.`;
+  document.getElementById('rnr-on').value = today(); document.getElementById('rnr-next').value = ''; document.getElementById('rnr-error').textContent = '';
+  document.getElementById('rn-renew-overlay').classList.add('open');
+  setTimeout(() => document.getElementById('rnr-on').focus(), 60);
+}
+function closeRenew() { document.getElementById('rn-renew-overlay').classList.remove('open'); RN.renewing = null; }
+async function saveRenew() {
+  if (!RN.renewing) return;
+  const err = document.getElementById('rnr-error'); err.textContent = '';
+  const body = { renewed_on: document.getElementById('rnr-on').value || undefined, next_date: document.getElementById('rnr-next').value || undefined };
+  if (body.next_date && body.next_date <= RN.renewing.renewal_date) { err.textContent = 'The next renewal date must be after this renewal\'s date.'; return; }
+  const btn = document.getElementById('rnr-save'); btn.disabled = true;
+  try {
+    const res = await Renewals.renew(RN.renewing.id, body);
+    showToast(res.next ? `✅ Marked as renewed — the next one is due ${fmtDate(res.next.renewal_date)}.` : '✅ Marked as renewed.');
+    closeRenew(); loadRenewals(); refreshBell(true);
+  } catch (e) { err.textContent = e.message || 'Could not save.'; }
+  finally { btn.disabled = false; }
+}
+async function reopenRenewal(id) {
+  const r = RN.rows.find(x => String(x.id) === String(id)); if (!r) return;
+  const reason = await askReason({ title: 'Reopen this renewal?', intro: `<strong>${esc(r.renewal_type)}</strong> — due ${esc(fmtDate(r.renewal_date))}. It goes back to the active list and its reminders start again.`, confirmLabel: 'Reopen' });
+  if (!reason) return;
+  try { await Renewals.reopen(id, reason); showToast('Renewal reopened.'); loadRenewals(); refreshBell(true); }
+  catch (e) { showToast('❌ ' + (e.message || 'Could not reopen.'), true); }
+}
+
+/* edit and delete (Admin; a written reason is always needed) */
+function openRnEdit(id) {
+  const r = RN.rows.find(x => String(x.id) === String(id)); if (!r) return;
+  RN.editing = r;
+  document.getElementById('rne-type').value = r.renewal_type; document.getElementById('rne-date').value = r.renewal_date;
+  document.getElementById('rne-amount').value = r.amount || ''; document.getElementById('rne-paidby').value = r.paid_by || ''; document.getElementById('rne-desc').value = r.description || '';
+  document.getElementById('rne-error').textContent = '';
+  document.getElementById('rn-edit-overlay').classList.add('open');
+  setTimeout(() => document.getElementById('rne-type').focus(), 60);
+}
+function closeRnEdit() { document.getElementById('rn-edit-overlay').classList.remove('open'); RN.editing = null; }
+async function saveRnEdit() {
+  if (!RN.editing) return;
+  const err = document.getElementById('rne-error'); err.textContent = '';
+  const before = RN.editing;
+  const body = { renewal_type: document.getElementById('rne-type').value.replace(/\s+/g, ' ').trim(), renewal_date: document.getElementById('rne-date').value, amount: document.getElementById('rne-amount').value.trim(),
+    paid_by: document.getElementById('rne-paidby').value.replace(/\s+/g, ' ').trim(), description: document.getElementById('rne-desc').value.replace(/\s+/g, ' ').trim() };
+  if (!body.renewal_type) { err.textContent = 'Choose or type the type of renewal.'; return; }
+  if (!body.renewal_date) { err.textContent = 'Choose the renewal date.'; return; }
+  if (body.amount !== '' && (!Number.isFinite(Number(body.amount)) || Number(body.amount) < 0)) { err.textContent = 'The amount must be a number of 0 or more.'; return; }
+  const changes = [], push = (field, a, b) => { if (String(a ?? '') !== String(b ?? '')) changes.push({ field, from: a || null, to: b || null }); };
+  push('Type', before.renewal_type, body.renewal_type); push('Renewal date', fmtDate(before.renewal_date), fmtDate(body.renewal_date)); push('Description', before.description, body.description);
+  push('Amount', inrS(before.amount), inrS(Number(body.amount) || 0)); push('Paid by', before.paid_by, body.paid_by);
+  if (!changes.length) { showToast('No changes were made.'); closeRnEdit(); return; }
+  const reason = await askReason({ title: 'Reason for change', intro: 'Please explain why this renewal is being changed. It is saved in the Activity Log.', confirmLabel: 'Confirm & Save', changes });
+  if (!reason) return;
+  try { await Renewals.update(before.id, { ...body, reason }); showToast('✅ Renewal updated.'); closeRnEdit(); loadRenewals(); refreshBell(true); }
+  catch (e) { err.textContent = e.message || 'Update failed.'; }
+}
+async function deleteRenewal(id) {
+  const r = RN.rows.find(x => String(x.id) === String(id)); if (!r) return;
+  const reason = await askReason({ title: 'Delete this renewal?', intro: `<strong>${esc(r.renewal_type)}</strong> — due ${esc(fmtDate(r.renewal_date))}${r.files.length ? `, with ${plural(r.files.length, 'document')}` : ''}. The reason is saved in the Activity Log.`, confirmLabel: 'Delete renewal', danger: true });
+  if (!reason) return;
+  try { await Renewals.remove(id, reason); showToast('Renewal deleted.'); loadRenewals(); refreshBell(true); }
+  catch (e) { showToast('❌ ' + (e.message || 'Delete failed.'), true); }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   The reminder bell — in the header, for everyone who may see renewals
+   Reminders arrive as the Admin set them (start N days before, repeat every N hours / days). While the app is open the bell
+   is checked every minute; a reminder that repeats shows as unread again, and (if the person turned it on) a phone / computer alert pops up.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+const BELL = { items: [], unread: 0, rule: '', setup: false, seen: new Map(), first: true, timer: null, built: false, title: '' };
+
+function initBell() {
+  if (!can('renewals.view') || BELL.built) return;
+  BELL.built = true; BELL.title = document.title;
+  const wrap = document.getElementById('bell-wrap'); wrap.hidden = false;
+  document.getElementById('bell-btn').addEventListener('click', ev => { ev.stopPropagation(); toggleBell(); });
+  document.getElementById('bell-readall').addEventListener('click', async () => { try { const r = await Notifications.read(); applyBell(r); } catch { /* quiet */ } });
+  document.getElementById('bell-list').addEventListener('click', ev => { const it = ev.target.closest('[data-bell]'); if (it) openBellItem(it.dataset.bell); });
+  document.getElementById('bell-device').addEventListener('click', enableDeviceAlerts);
+  document.addEventListener('click', ev => { if (!document.getElementById('bell-panel').hidden && !ev.target.closest('#bell-wrap')) toggleBell(false); });
+  document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && !document.getElementById('bell-panel').hidden) { toggleBell(false); document.getElementById('bell-btn').focus(); } });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshBell(); });
+  updateDeviceNote();
+  refreshBell();
+  BELL.timer = setInterval(refreshBell, 60000);
+}
+
+/** quiet = after the person's own action (they know what they just did): update the bell, but do not pop a toast over their "saved" message. */
+async function refreshBell(quiet) {
+  if (!BELL.built) return;
+  try { applyBell(await Notifications.list(), quiet !== true); } catch { /* the bell is a convenience: stay quiet */ }
+}
+function applyBell(r, announce) {
+  BELL.items = r.items || []; BELL.unread = r.unread || 0; BELL.rule = r.settings_text || ''; BELL.setup = !!r.setup_required;
+  renderBell();
+  const fresh = BELL.items.filter(i => i.unread && BELL.seen.get(i.renewal_id) !== i.last_sent_at);       // sent (or sent again) since the last check
+  BELL.items.forEach(i => BELL.seen.set(i.renewal_id, i.last_sent_at));
+  if (!announce) return;
+  if (!fresh.length) { BELL.first = false; return; }
+  const first = BELL.first; BELL.first = false;
+  const top = fresh[0], more = fresh.length - 1;
+  const text = fresh.length === 1 ? `${top.title} — ${top.body}` : `${top.title} — ${top.body}${more ? ` (+ ${plural(more, 'more renewal')})` : ''}`;
+  showToast(`🔔 ${first ? `${plural(BELL.unread, 'renewal reminder')} need${BELL.unread === 1 ? 's' : ''} attention. ` : 'Renewal reminder: '}${first ? '' : text}`.trim());
+  deviceNotify(fresh.length === 1 ? top.title : `${plural(fresh.length, 'renewal')} need attention`, fresh.length === 1 ? top.body : fresh.slice(0, 3).map(i => `${i.title}: ${i.body}`).join('\n'));
+}
+function renderBell() {
+  const count = document.getElementById('bell-count');
+  count.hidden = BELL.unread === 0; count.textContent = BELL.unread > 9 ? '9+' : String(BELL.unread);
+  document.getElementById('bell-btn').setAttribute('aria-label', BELL.unread ? `Renewal reminders: ${plural(BELL.unread, 'unread reminder')}` : 'Renewal reminders: nothing unread');
+  document.getElementById('bell-btn').classList.toggle('has-unread', BELL.unread > 0);
+  document.title = (BELL.unread ? `(${BELL.unread}) ` : '') + BELL.title;
+  document.getElementById('bell-sub').textContent = BELL.items.length ? `${plural(BELL.items.length, 'renewal')} to watch${BELL.unread ? ` · ${BELL.unread} unread` : ''}` : '';
+  document.getElementById('bell-readall').hidden = BELL.unread === 0;
+  document.getElementById('bell-rule').textContent = BELL.rule;
+  const time = iso => new Date(iso).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true });
+  document.getElementById('bell-list').innerHTML = BELL.setup ? '<p class="bell-empty">Renewals need a one-time database update (run-in-supabase-9-renewals.sql).</p>'
+    : BELL.items.length ? BELL.items.map(i => `
+      <button type="button" class="bell-item bell-${i.state}${i.unread ? ' is-unread' : ''}" data-bell="${esc(i.renewal_id)}">
+        <span class="bell-dot" aria-hidden="true"></span>
+        <span class="bell-main"><strong>${esc(i.title)}</strong><span class="bell-when">${esc(i.body)}</span>${i.description ? `<span class="bell-desc">${esc(i.description)}</span>` : ''}<small>Reminded ${esc(plural(i.times, 'time'))} · last ${esc(time(i.last_sent_at))}${i.unread ? '' : ' · read'}</small></span>
+      </button>`).join('')
+    : '<p class="bell-empty">Nothing to renew soon. 🎉</p>';
+}
+function toggleBell(force) {
+  const panel = document.getElementById('bell-panel'), open = force === undefined ? panel.hidden : force;
+  panel.hidden = !open; document.getElementById('bell-btn').setAttribute('aria-expanded', String(open));
+  if (open) refreshBell();
+}
+async function openBellItem(id) {
+  toggleBell(false);
+  try { applyBell(await Notifications.read(id)); } catch { /* quiet */ }
+  RN.filter = { q: '', status: 'active', type: '', from: '', to: '' }; RN.highlight = id;
+  if (document.getElementById('section-renewals').classList.contains('active')) loadRenewals(); else switchTab('renewals');
+}
+
+/* alerts on this phone / computer (while the app is open) */
+const deviceAlertsSupported = () => typeof window !== 'undefined' && 'Notification' in window;
+function updateDeviceNote() {
+  const btn = document.getElementById('bell-device'), note = document.getElementById('bell-device-note');
+  if (!deviceAlertsSupported()) { btn.hidden = true; note.textContent = 'This browser cannot show alerts. The bell still works while the app is open.'; return; }
+  const p = Notification.permission;
+  btn.hidden = p === 'granted';
+  note.textContent = p === 'granted' ? '✓ Alerts are on for this device. They appear while the app is open or installed.' : p === 'denied' ? 'Alerts are blocked for this site. Allow notifications in the browser settings to turn them on.' : 'Get a pop-up alert on this device each time a reminder repeats.';
+  if (p === 'denied') btn.hidden = true;
+}
+async function enableDeviceAlerts() {
+  if (!deviceAlertsSupported()) return;
+  try { await Notification.requestPermission(); } catch { /* ignore */ }
+  updateDeviceNote();
+  if (Notification.permission === 'granted') { showToast('✅ Alerts are on for this device.'); deviceNotify('Renewal alerts are on', 'You will get a pop-up here each time a renewal reminder repeats.'); }
+}
+async function deviceNotify(title, body) {
+  if (!deviceAlertsSupported() || Notification.permission !== 'granted') return;
+  const opts = { body, icon: '/img/icon-192.png', badge: '/img/icon-192.png', tag: 'scc-renewals', renotify: true, data: { url: '/' } };
+  try {
+    const reg = navigator.serviceWorker && navigator.serviceWorker.getRegistration ? await navigator.serviceWorker.getRegistration() : null;
+    if (reg && reg.showNotification) await reg.showNotification(title, opts); else new Notification(title, opts);        // (phones only allow the first way)
+  } catch { /* an alert is a nicety */ }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Reminder settings — in the Permissions tab (Admin)
+   ═══════════════════════════════════════════════════════════════════════════════ */
+const RS = { built: false, limits: { start_days: [1, 365], hours: [1, 168], days: [1, 30] }, defaults: { enabled: true, start_days: 7, repeat_every: 1, repeat_unit: 'hours' }, saved: null };
+function rsRead() {
+  return { enabled: document.getElementById('rs-enabled').checked, start_days: Number(document.getElementById('rs-start').value), repeat_every: Number(document.getElementById('rs-every').value), repeat_unit: document.getElementById('rs-unit').value };
+}
+function rsText(s) {
+  if (!s.enabled) return 'Reminders are switched off.';
+  const every = s.repeat_every === 1 ? (s.repeat_unit === 'days' ? 'day' : 'hour') : `${s.repeat_every} ${s.repeat_unit}`;
+  return `Reminders start ${plural(s.start_days, 'day')} before the renewal date and repeat every ${every} until the renewal is marked as renewed. Overdue renewals keep reminding.`;
+}
+function rsProblem(s) {
+  if (!Number.isInteger(s.start_days) || s.start_days < RS.limits.start_days[0] || s.start_days > RS.limits.start_days[1]) return `Start reminding between ${RS.limits.start_days[0]} and ${RS.limits.start_days[1]} days before the renewal date.`;
+  const [lo, hi] = RS.limits[s.repeat_unit];
+  if (!Number.isInteger(s.repeat_every) || s.repeat_every < lo || s.repeat_every > hi) return `Repeat every ${lo} to ${hi} ${s.repeat_unit}.`;
+  return null;
+}
+function rsFill(s) {
+  document.getElementById('rs-enabled').checked = !!s.enabled; document.getElementById('rs-start').value = s.start_days;
+  document.getElementById('rs-every').value = s.repeat_every; document.getElementById('rs-unit').value = s.repeat_unit; rsPreview();
+}
+function rsPreview() {
+  const s = rsRead(), prob = rsProblem(s);
+  document.getElementById('rs-onoff').textContent = s.enabled ? 'on' : 'off';
+  document.getElementById('rs-every').max = RS.limits[s.repeat_unit][1];
+  document.getElementById('rs-preview').textContent = prob && s.enabled ? prob : rsText(s);
+  document.getElementById('rs-preview').classList.toggle('is-bad', !!prob && s.enabled);
+  ['rs-start', 'rs-every', 'rs-unit'].forEach(id => { document.getElementById(id).disabled = !s.enabled; });
+}
+async function loadReminderSettings() {
+  if (!document.getElementById('rs-card')) return;
+  if (!RS.built) {
+    RS.built = true;
+    ['rs-enabled', 'rs-start', 'rs-every', 'rs-unit'].forEach(id => document.getElementById(id).addEventListener('input', rsPreview));
+    document.getElementById('rs-save').addEventListener('click', () => saveReminderSettings(rsRead()));
+    document.getElementById('rs-reset').addEventListener('click', () => { rsFill(RS.defaults); saveReminderSettings(RS.defaults); });
+  }
+  try {
+    const r = await Renewals.settings();
+    RS.limits = r.limits || RS.limits; RS.defaults = r.defaults || RS.defaults; RS.saved = r.settings;
+    rsFill(r.settings);
+    document.getElementById('rs-setup').hidden = !r.setup_required;
+    document.getElementById('rs-by').textContent = r.updated_by_name ? `Last changed by ${r.updated_by_name}${r.updated_at ? ` on ${fmtDate(String(r.updated_at).slice(0, 10))}` : ''}.` : '';
+  } catch (e) { document.getElementById('rs-error').textContent = e.message || 'The reminder settings could not be loaded.'; }
+}
+async function saveReminderSettings(s) {
+  const err = document.getElementById('rs-error'); err.textContent = '';
+  const prob = s.enabled ? rsProblem(s) : null; if (prob) { err.textContent = prob; return; }
+  const btn = document.getElementById('rs-save'); btn.disabled = true;
+  try {
+    const r = await Renewals.saveSettings(s.enabled ? s : { enabled: false });
+    RS.saved = r.settings; showToast(r.unchanged ? 'No changes were made.' : '✅ Reminder settings saved.');
+    document.getElementById('rs-preview').textContent = r.text; loadReminderSettings(); refreshBell(true);
+  } catch (e) { err.textContent = e.message || 'Could not save.'; }
+  finally { btn.disabled = false; }
+}
+
+
 /* ═══════════════════════════════════════════════════════════════════════════════
    Mobile menu — on phones and small tablets the tab bar is replaced by a slide-in menu
    ═══════════════════════════════════════════════════════════════════════════════ */
@@ -3748,6 +4165,7 @@ async function loadPermissions() {
   renderPermPeople();
   const keep = PERM.id && permPerson(PERM.id);
   if (keep) selectPermPerson(PERM.id); else { PERM.id = null; document.getElementById('perm-editor').innerHTML = '<p class="perm-empty">Choose a person on the left to see and change what they can do.</p>'; }
+  loadReminderSettings();
 }
 
 const permPerson = id => (PERM.data ? PERM.data.users : []).find(u => String(u.id) === String(id));

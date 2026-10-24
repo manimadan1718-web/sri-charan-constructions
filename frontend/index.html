@@ -36,7 +36,7 @@
   <div class="header-right">
     <span class="header-date" id="header-date"></span>
     <span class="header-user" id="header-user"></span>
-    <button class="btn btn-outline btn-sm logout-btn" onclick="Auth.logout()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>Logout</button>
+    <button class="btn btn-outline btn-sm logout-btn" onclick="confirmLogout()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>Logout</button>
   </div>
 <div class="bell-wrap" id="bell-wrap" hidden>
     <button type="button" class="bell-btn" id="bell-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="bell-panel" aria-label="Renewal reminders">
@@ -79,7 +79,7 @@
   <div class="tab" id="tab-logs" data-perms="logs.view" onclick="switchTab('logs')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span>Activity Logs</span></div>
   <div class="side-foot" id="side-foot">
     <div class="side-user"><span class="avatar" id="side-avatar" aria-hidden="true"></span><span class="side-who"><strong id="side-name"></strong><small id="side-role"></small></span></div>
-    <button type="button" class="side-logout" onclick="Auth.logout()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg><span>Logout</span></button>
+    <button type="button" class="side-logout" onclick="confirmLogout()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg><span>Logout</span></button>
   </div>
 </nav>
 </div>
@@ -1155,7 +1155,7 @@
 <div class="modal-overlay modal-top" id="confirm-overlay">
   <div class="modal-card modal-small" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-msg">
     <div class="card-header">
-      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg></span> <span id="confirm-title">Save this entry?</span></div>
+      <div class="card-title"><span class="ic" id="confirm-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg></span> <span id="confirm-title">Save this entry?</span></div>
     </div>
     <p class="reason-intro" id="confirm-msg"></p>
     <div class="btn-group">
@@ -1313,7 +1313,7 @@
   </div>
   <nav class="mm-nav" id="mm-nav" aria-label="Sections"></nav>
   <div class="mm-foot">
-    <button type="button" class="btn btn-outline" onclick="Auth.logout()">Log out</button>
+    <button type="button" class="btn btn-outline" onclick="confirmLogout()">Log out</button>
     <footer class="site-footer">
       <span>&copy; <span data-year>2026</span> Sri Charan Constructions</span>
       <a href="/privacy.html">Privacy Policy</a>

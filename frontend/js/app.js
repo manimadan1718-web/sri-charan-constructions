@@ -1406,8 +1406,10 @@ async function deleteUser(id) {
    Confirm-a-delete dialog (optionally makes the person type DELETE first)
    ═══════════════════════════════════════════════════════════════════════════════ */
 /** A plain Yes / No question. Resolves true for Yes; No, Escape or a tap outside is No. */
-function askConfirm({ title, message, yesLabel = 'Yes', noLabel = 'No' }) {
+function askConfirm({ title, message, yesLabel = 'Yes', noLabel = 'No', focusNo = false, icon = null }) {
   return new Promise(resolve => {
+    const ic = document.getElementById('confirm-ic');
+    if (ic) { if (ic.dataset.original === undefined) ic.dataset.original = ic.innerHTML; ic.innerHTML = icon || ic.dataset.original; }       // (the save icon unless the question brings its own)
     const overlay = document.getElementById('confirm-overlay');
     const yes = document.getElementById('confirm-yes'), no = document.getElementById('confirm-no');
     document.getElementById('confirm-title').textContent = title;
@@ -1431,8 +1433,15 @@ function askConfirm({ title, message, yesLabel = 'Yes', noLabel = 'No' }) {
     yes.addEventListener('click', onYes); no.addEventListener('click', onNo);
     document.addEventListener('keydown', onKey, true); overlay.addEventListener('mousedown', onBackdrop);
     overlay.classList.add('open');
-    setTimeout(() => yes.focus(), 50);
+    setTimeout(() => (focusNo ? no : yes).focus(), 50);
   });
+}
+
+/** Every Logout button asks first: "Are you sure you want to log out?"  Yes signs out; No (or Escape, or a tap outside) stays signed in. */
+const LOGOUT_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>';
+async function confirmLogout() {
+  const yes = await askConfirm({ title: 'Log out?', message: 'Are you sure you want to log out?', yesLabel: 'Yes', noLabel: 'No', focusNo: true, icon: LOGOUT_ICON });
+  if (yes) Auth.logout();
 }
 
 function askDanger({ title, message, confirmLabel = 'Delete', typeToConfirm = false }) {

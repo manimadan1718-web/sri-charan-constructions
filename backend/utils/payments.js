@@ -1,94 +1,91 @@
 /**
- * Payments: Weekly (food, etc.) and Monthly (salary, etc.) — one line per person per period.
- * The same person cannot be entered twice for the same type and period (checked here AND by a unique
- * index in the database, so two supervisors saving at the same moment cannot create a duplicate).
+ * Payments ledger — who we are paying, and reconciling it.
+ *
+ *   Company Payments          (kind "company")
+ *   Outside Rental Payments   (kind "outside")
+ *
+ * Both have the same lines:  Sl No · Name · Item · Description · Payable · Paid · Balance   with   Balance = Payable − Paid.
+ * Sl No is just the position in the list; Balance is always worked out (never typed or stored), so it can never go out of step.
+ * A negative balance means we have paid MORE than was payable (an advance) — it is allowed, and shown as such.
  */
-const MAX_ITEMS = 100;
-const TYPES = ['weekly', 'monthly'];
-const MAX_DAYS = { weekly: 7, monthly: 31 };
-const MAX_AMOUNT = 99999999.99;
+const KINDS = ['company', 'outside'];
+const KIND_LABEL = { company: 'Company Payments', outside: 'Outside Rental Payments' };
+const MAX_LINES = 60;
+const MAX_AMOUNT = 9999999999.99;
 
-const cleanName = v => String(v == null ? '' : v).replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
-const keyOf = name => cleanName(name).toLowerCase();
+const round2 = n => Math.round((Number(n) || 0) * 100 + (Number(n) < 0 ? -1e-9 : 1e-9)) / 100;
+const clean = (v, max) => String(v == null ? '' : v).replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
+const keyOf = name => clean(name, 120).toLowerCase();
+const money = n => Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-const isDate = s => {
-  if (typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
-  const d = new Date(`${s}T00:00:00Z`);
-  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
-};
-const ymd = d => d.toISOString().slice(0, 10);
-const addDays = (s, n) => { const d = new Date(`${s}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return ymd(d); };
-const dmy = s => `${s.slice(8, 10)}/${s.slice(5, 7)}/${s.slice(0, 4)}`;
-
-/**
- * Weekly: any date → the Monday–Sunday week that contains it.
- * Monthly: "YYYY-MM" (or any date in that month) → first–last day of the month.
- * Returns { start, end, label } or { error }.
- */
-function resolvePeriod(type, period) {
-  let start, end;
-  if (type === 'weekly') {
-    if (!isDate(period)) return { error: 'Choose a date inside the week.' };
-    const dow = new Date(`${period}T00:00:00Z`).getUTCDay();          // 0 = Sunday
-    start = addDays(period, -((dow + 6) % 7));
-    end = addDays(start, 6);
-  } else {
-    const m = /^(\d{4})-(\d{2})(?:-\d{2})?$/.exec(typeof period === 'string' ? period : '');
-    if (!m || +m[2] < 1 || +m[2] > 12) return { error: 'Choose the month.' };
-    start = `${m[1]}-${m[2]}-01`;
-    const next = new Date(Date.UTC(+m[1], +m[2], 1));
-    next.setUTCDate(0);
-    end = ymd(next);
-  }
-  // Catch typing mistakes such as the year 2062.
-  const limit = addDays(ymd(new Date()), 60);
-  if (start < '2015-01-01' || start > limit) return { error: 'That period looks wrong. Please check the date.' };
-  return { start, end, label: type === 'weekly' ? `week ${dmy(start)} – ${dmy(end)}` : `${['January','February','March','April','May','June','July','August','September','October','November','December'][+start.slice(5, 7) - 1]} ${start.slice(0, 4)}` };
+/** blank → 0; otherwise a number of 0 or more, at most 2 decimals worth keeping. */
+function parseAmount(raw, label, who) {
+  if (raw === undefined || raw === null || String(raw).trim() === '') return { value: 0 };
+  const n = Number(String(raw).replace(/,/g, ''));
+  if (!Number.isFinite(n) || n < 0 || n > MAX_AMOUNT) return { error: `${label} for ${who} must be an amount of 0 or more.` };
+  return { value: round2(n) };
 }
 
-/** Validates the lines. Returns { items } (cleaned, with employee_key) or { error }. */
-function parseItems(raw, type) {
-  if (!Array.isArray(raw) || !raw.length) return { error: 'Add at least one person.' };
-  if (raw.length > MAX_ITEMS) return { error: `At most ${MAX_ITEMS} people can be saved at once.` };
+/** One line → { line } or { error }. */
+function parseLine(r, n = null) {
+  const at = n ? `Line ${n}` : 'This line';
+  const party_name = clean(r && r.party_name, 120);
+  if (!party_name) return { error: `${at} needs a name.` };
+  const item = clean(r && r.item, 120), description = clean(r && r.description, 300);
+  if (!item) return { error: `${at} (${party_name}) needs an item.` };
+  if (String(r.party_name || '').trim().length > 120) return { error: `The name on ${at.toLowerCase()} is too long (120 characters at most).` };
+  const p = parseAmount(r.payable, 'Payable', party_name); if (p.error) return { error: p.error };
+  const d = parseAmount(r.paid, 'Paid', party_name); if (d.error) return { error: d.error };
+  if (p.value === 0 && d.value === 0) return { error: `${at} (${party_name}) needs a Payable or a Paid amount.` };
+  return { line: { party_name, party_key: keyOf(party_name), item, description, payable: p.value, paid: d.value } };
+}
+
+/** The lines of a save → { items } or { error }. A completely empty row is ignored. */
+function parseItems(raw) {
+  if (!Array.isArray(raw)) return { error: 'There are no payment lines to save.' };
+  const rows = raw.filter(r => r && ['party_name', 'item', 'description', 'payable', 'paid'].some(k => String(r[k] == null ? '' : r[k]).trim() !== ''));
+  if (!rows.length) return { error: 'Add at least one line.' };
+  if (rows.length > MAX_LINES) return { error: `At most ${MAX_LINES} lines can be saved at once.` };
   const items = [];
-  const seen = new Set();
-  for (let i = 0; i < raw.length; i++) {
-    const r = raw[i] || {};
-    const one = parseOne(r, type, `Line ${i + 1}`);
-    if (one.error) return { error: one.error };
-    if (seen.has(one.item.employee_key)) return { error: `"${one.item.employee_name}" is on the list twice. Each person can be paid only once for the same period.` };
-    seen.add(one.item.employee_key);
-    items.push(one.item);
-  }
+  for (let i = 0; i < rows.length; i++) { const x = parseLine(rows[i], i + 1); if (x.error) return { error: x.error }; items.push(x.line); }
   return { items };
 }
 
-function parseOne(r, type, who) {
-  const name = cleanName(r.employee_name);
-  if (!name) return { error: `${who}: enter the employee's name.` };
-  if (name.length > 80) return { error: `${who}: the name is too long (80 characters at most).` };
-  const days = Number(r.days_worked);
-  if (r.days_worked === '' || r.days_worked === null || r.days_worked === undefined || !Number.isFinite(days) || days < 0 || days > MAX_DAYS[type] || Math.round(days * 2) / 2 !== days) {
-    return { error: `${who} (${name}): days worked must be between 0 and ${MAX_DAYS[type]} (half days are allowed).` };
+const balanceOf = (payable, paid) => round2((Number(payable) || 0) - (Number(paid) || 0));
+/** 'due' (we still owe), 'settled' (nothing owed) or 'over' (we paid more than was payable). */
+const statusOf = balance => (balance > 0.004 ? 'due' : balance < -0.004 ? 'over' : 'settled');
+
+const totalsOf = rows => {
+  const payable = round2(rows.reduce((a, r) => a + (Number(r.payable) || 0), 0)), paid = round2(rows.reduce((a, r) => a + (Number(r.paid) || 0), 0));
+  return { count: rows.length, payable, paid, balance: round2(payable - paid) };
+};
+
+/** Party-wise cumulative: every line of the same name (any capitals / spaces) added together. */
+function partyWise(rows) {
+  const by = new Map();
+  for (const r of rows) {
+    const k = r.party_key || keyOf(r.party_name);
+    if (!by.has(k)) by.set(k, { party_name: r.party_name, rows: [] });
+    by.get(k).rows.push(r);
   }
-  const amount = Number(r.amount);
-  if (r.amount === '' || r.amount === null || r.amount === undefined || !Number.isFinite(amount) || amount <= 0 || amount > MAX_AMOUNT) {
-    return { error: `${who} (${name}): enter an amount greater than 0.` };
-  }
-  return { item: { employee_name: name, employee_key: keyOf(name), days_worked: days, amount: Math.round(amount * 100) / 100 } };
+  return [...by.values()].map(g => ({ party_name: g.party_name, ...totalsOf(g.rows) })).sort((a, b) => a.party_name.localeCompare(b.party_name, 'en', { sensitivity: 'base' }));
 }
 
-const money = n => `Rs. ${Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const typeLabel = t => (t === 'weekly' ? 'Weekly' : 'Monthly');
-const daysText = d => `${d} day${Number(d) === 1 ? '' : 's'}`;
+/** The whole picture: both kinds, their totals, party-wise lists, and the overall total. */
+function cumulative(rows) {
+  const out = { kinds: {} };
+  for (const k of KINDS) { const mine = rows.filter(r => r.kind === k); out.kinds[k] = { label: KIND_LABEL[k], totals: totalsOf(mine), parties: partyWise(mine) }; }
+  out.overall = totalsOf(rows.filter(r => KINDS.includes(r.kind)));
+  return out;
+}
 
+/** True when a database error only means the payment_lines table has not been created yet. */
 const isMissingPayments = err =>
-  !!err && /payments/i.test(String(err.message || '')) &&
-  (/(schema cache|does not exist|relation)/i.test(String(err.message || '')) || ['PGRST205', '42P01'].includes(err.code));
-const PAYMENTS_SETUP_MESSAGE =
-  'Payments need a one-time database update. Run run-in-supabase-3-new-features.sql in Supabase → SQL Editor, then try again.';
+  !!err && /payment_lines/i.test(String(err.message || '')) &&
+  (/(relationship|schema cache|does not exist|relation)/i.test(String(err.message || '')) || ['PGRST200', 'PGRST205', '42P01'].includes(err.code));
+const PAYMENTS_SETUP_MESSAGE = 'Payments need a one-time database update. Run run-in-supabase-7-payment-ledger.sql in Supabase > SQL Editor, then try again.';
 
 module.exports = {
-  MAX_ITEMS, TYPES, cleanName, keyOf, resolvePeriod, parseItems, parseOne, money, typeLabel, daysText, dmy,
+  KINDS, KIND_LABEL, MAX_LINES, MAX_AMOUNT, round2, clean, keyOf, money, parseAmount, parseLine, parseItems, balanceOf, statusOf, totalsOf, partyWise, cumulative,
   isMissingPayments, PAYMENTS_SETUP_MESSAGE,
 };

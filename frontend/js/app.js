@@ -1526,6 +1526,7 @@ async function runTableReport(kind, format, itemEl) {
   if (group === 'inventory')  { call = () => Reports.inventory({ type, format }); name = type; }
   else if (group === 'users') { call = () => Reports.users({ format }); name = 'users'; }
   else if (group === 'logs')  { call = () => Reports.logs(logsReportBody(format)); name = 'activity-logs'; }
+  else if (group === 'payments') { call = () => Reports.payments({ format, kind: type }); name = type === 'all' ? 'payments-cumulative' : `payments-${type}`; }
   else if (group === 'summary') {
     const per = summaryPeriod();
     if (per.from && per.to && per.from > per.to) { showToast('The "from" date cannot be after the "to" date.', true); return; }
@@ -2865,351 +2866,338 @@ async function deleteDocument(id) {
 
 
 /* ═══════════════════════════════════════════════════════════════════════════════
-   Payments — Weekly (food, …) and Monthly (salary, …)
-   A supervisor adds one line per person; once saved, the Owner and Admin see them.
-   The same person cannot be saved twice for the same week / month.
+   Payments — who we are paying, and reconciling it
+     Company Payments  ·  Outside Rental Payments  ·  Cumulative Report (both together)
+   Every line:  Sl No · Name · Item · Description · Payable · Paid · Balance     (Balance = Payable − Paid, always worked out)
    ═══════════════════════════════════════════════════════════════════════════════ */
-const PAY = { tab: 'weekly', built: false, lists: { weekly: [], monthly: [] }, mine: [], editing: null };
-const PAY_MAX_DAYS = { weekly: 7, monthly: 31 };
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const inr = n => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const payCanAdd  = () => can('payments.add');
-const payCanView = () => can('payments.view');
+const PL_LABEL = { company: 'Company Payments', outside: 'Outside Rental Payments' };
+const PL = { built: false, tab: 'company', rows: { company: null, outside: null }, filter: { company: { q: '', st: '' }, outside: { q: '', st: '' } }, mine: { company: [], outside: [] }, editing: null, setup: false };
+const PL_STATUS = { due: 'Balance due', settled: 'Settled', over: 'Advance paid' };
+const PL_MAX = 60;
 
-/** Monday–Sunday week that contains a date (local calendar maths, no time-zone surprises). */
-function weekRange(dateStr) {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const dow = (new Date(y, m - 1, d).getDay() + 6) % 7;
-  return { start: ymd(new Date(y, m - 1, d - dow)), end: ymd(new Date(y, m - 1, d - dow + 6)) };
-}
-const payPeriodLabel = (type, start, end) => (type === 'weekly' ? `${fmtDate(start)} – ${fmtDate(end)}` : `${MONTHS[+start.slice(5, 7) - 1]} ${start.slice(0, 4)}`);
-const nameKey = n => String(n || '').replace(/\s+/g, ' ').trim().toLowerCase();
+const r2 = n => Math.round((Number(n) || 0) * 100 + (Number(n) < 0 ? -1e-9 : 1e-9)) / 100;
+const plBal = (payable, paid) => r2((Number(payable) || 0) - (Number(paid) || 0));
+const plSt = b => (b > 0.004 ? 'due' : b < -0.004 ? 'over' : 'settled');
+const num2 = n => Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const inrS = n => `${Number(n) < -0.004 ? '−' : ''}₹${num2(Math.abs(Number(n) || 0))}`;
+const plTotals = rows => { const payable = r2(rows.reduce((a, x) => a + (Number(x.payable) || 0), 0)), paid = r2(rows.reduce((a, x) => a + (Number(x.paid) || 0), 0)); return { count: rows.length, payable, paid, balance: r2(payable - paid) }; };
+const plKinds = () => [...(can('payments.add') || can('payments.view') ? ['company', 'outside'] : []), ...(can('payments.view') ? ['all'] : [])];
 
-function payPanelHtml(t) {
-  const week = t === 'weekly';
-  const IC = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg>';
-  const add = !payCanAdd() ? '' : `
-    <div class="card">
-      <div class="card-header"><div class="card-title"><span class="ic">${IC}</span> Add ${week ? 'weekly' : 'monthly'} payments</div></div>
-      <div class="pay-period">
-        <div class="form-group">
-          <label for="pay-${t}-period">${week ? 'Any date in the week' : 'Month'} *</label>
-          <input type="${week ? 'date' : 'month'}" id="pay-${t}-period" onchange="onPayPeriodChange('${t}')">
-        </div>
-        <p class="pay-period-text" id="pay-${t}-period-text"></p>
-      </div>
-      <div class="pay-head" aria-hidden="true"><span>Employee name</span><span>Days worked</span><span>Amount (₹)</span><span></span></div>
-      <div class="pay-rows" id="pay-${t}-rows"></div>
-      <button type="button" class="btn btn-outline btn-sm" onclick="addPayRow('${t}')">＋ Add person</button>
-      <div class="pay-total" id="pay-${t}-total" aria-live="polite"></div>
-      <div class="form-error" id="pay-${t}-error" role="alert"></div>
-      <div class="btn-group">
-        <button type="button" class="btn btn-primary" id="pay-${t}-save" onclick="savePayments('${t}')">💾 Save payments</button>
-        <button type="button" class="btn btn-outline" onclick="resetPayForm('${t}')">✕ Clear</button>
-      </div>
-    </div>`;
-  const mine = !(payCanAdd() && !payCanView()) ? '' : `          <!-- only for people who can add but not see everybody's -->
-    <div class="card">
-      <div class="card-header"><div class="card-title"><span class="ic">${IC}</span> Recently saved by you</div></div>
-      <div class="table-wrap"><table>
-        <thead><tr><th>${week ? 'Week' : 'Month'}</th><th>Employee</th><th>Days</th><th>Amount</th><th>Saved</th></tr></thead>
-        <tbody id="pay-${t}-mine"></tbody>
-      </table></div>
-    </div>`;
-  const admin = can('payments.edit');
-  const list = !payCanView() ? '' : `
-    <div class="card">
-      <div class="card-header"><div class="card-title"><span class="ic">${IC}</span> Saved ${week ? 'weekly' : 'monthly'} payments</div><span class="doc-count" id="pay-${t}-count"></span></div>
-      <div class="log-filters">
-        <select id="pay-${t}-filter-period" onchange="renderPayList('${t}')" aria-label="Choose ${week ? 'week' : 'month'}"></select>
-        <input type="text" id="pay-${t}-search" placeholder="Search employee…" aria-label="Search employee" oninput="renderPayList('${t}')" autocomplete="off">
-      </div>
-      <div class="table-wrap"><table>
-        <thead><tr><th>${week ? 'Week' : 'Month'}</th><th>Employee</th><th>Days</th><th>Amount</th><th>Added by</th><th>Added on</th>${admin ? '<th>Edit</th><th>Delete</th>' : ''}</tr></thead>
-        <tbody id="pay-${t}-list"></tbody>
-      </table></div>
-      <div class="pay-footer" id="pay-${t}-footer"></div>
-    </div>`;
-  return add + mine + list;
-}
-
-function showPayTab(t) {
-  PAY.tab = t;
-  ['weekly', 'monthly'].forEach(k => {
-    const on = k === t;
-    const tab = document.getElementById(`paytab-${k}`);
-    tab.classList.toggle('active', on);
-    tab.setAttribute('aria-selected', String(on));
-    document.getElementById(`pay-panel-${k}`).hidden = !on;
-  });
-}
+const PL_ICON = {
+  plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
+  list: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>',
+  sum: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg>',
+};
+const plExportMenu = kind => `
+  <div class="export-menu rm">
+    <button type="button" class="btn btn-outline btn-sm rm-btn" aria-haspopup="menu" aria-expanded="false"><span class="rm-label">⬇ Export</span><span class="caret" aria-hidden="true">▾</span></button>
+    <div class="export-pop" role="menu" aria-label="Choose a report format" hidden>
+      <button type="button" role="menuitem" data-rm-kind="payments:${kind}" data-rm-format="xlsx"><span class="fmt fmt-xlsx">XLS</span><span class="fmt-text"><strong>Excel</strong><small>.xlsx · ${kind === 'all' ? 'complete report' : 'this ledger'}</small></span></button>
+      <button type="button" role="menuitem" data-rm-kind="payments:${kind}" data-rm-format="pdf"><span class="fmt fmt-pdf">PDF</span><span class="fmt-text"><strong>PDF</strong><small>.pdf · print-ready</small></span></button>
+    </div>
+  </div>`;
 
 function initPayments() {
-  if (!PAY.built) {
-    ['weekly', 'monthly'].forEach(t => {
-      const panel = document.getElementById(`pay-panel-${t}`);
-      panel.innerHTML = payPanelHtml(t);
-      const rows = document.getElementById(`pay-${t}-rows`);
-      if (rows) {
-        // Once the person changes something, the old complaint (and its red marking) is out of date — clear it.
-        const clearPayError = () => {
-          document.getElementById(`pay-${t}-error`).textContent = '';
-          rows.querySelectorAll('.has-error').forEach(r => r.classList.remove('has-error'));
-        };
-        rows.addEventListener('input', () => { clearPayError(); updatePayTotal(t); });
-        rows.addEventListener('click', ev => { const b = ev.target.closest('.lp-del'); if (b) { b.closest('.pay-row').remove(); clearPayError(); updatePayTotal(t); } });
-        rows.addEventListener('keydown', ev => {
-          // Enter in the last amount box starts the next line — quick entry for a long list.
-          if (ev.key === 'Enter' && ev.target.classList.contains('pr-amount') && ev.target.closest('.pay-row') === rows.lastElementChild) { ev.preventDefault(); addPayRow(t); }
-        });
-        resetPayForm(t);
-      }
+  if (!PL.built) {
+    PL.built = true;
+    ['company', 'outside'].forEach(buildPlPanel);
+    buildPlCumulative();
+    document.getElementById('section-payments').addEventListener('input', ev => {
+      const t = ev.target;
+      if (t.closest('.pl-rows')) { const row = t.closest('.pl-row'); plRefreshRow(row); plRefreshTotals(row.dataset.kind); }
+      if (t.matches('[data-pl-q]')) { PL.filter[t.dataset.plQ].q = t.value; renderPlTable(t.dataset.plQ); }
     });
-    PAY.built = true;
+    document.getElementById('section-payments').addEventListener('change', ev => { const t = ev.target; if (t.matches('[data-pl-st]')) { PL.filter[t.dataset.plSt].st = t.value; renderPlTable(t.dataset.plSt); } });
+    document.getElementById('section-payments').addEventListener('click', ev => {
+      const del = ev.target.closest('.pl-rm'); if (del) { const row = del.closest('.pl-row'), k = row.dataset.kind; row.remove(); plRenumber(k); plRefreshTotals(k); return; }
+      const ed = ev.target.closest('[data-pl-edit]'); if (ed) { openPayEdit(ed.dataset.plKind, ed.dataset.plEdit); return; }
+      const rm = ev.target.closest('[data-pl-del]'); if (rm) deletePayment(rm.dataset.plKind, rm.dataset.plDel);
+    });
+    ['company', 'outside'].forEach(k => plAddLine(k, {}, false));
+    ['pe-payable', 'pe-paid'].forEach(id => document.getElementById(id).addEventListener('input', plEditBalance));
   }
-  showPayTab(PAY.tab);
-  refreshPayments();
+  const allowed = plKinds();
+  if (!allowed.includes(PL.tab)) PL.tab = allowed[0] || 'company';
+  showPayTab(PL.tab);
 }
 
-async function refreshPayments() {
-  if (payCanAdd()) {
-    Payments.employees().then(res => {
-      document.getElementById('pay-employees').innerHTML = (res.data || []).map(n => `<option value="${esc(n)}"></option>`).join('');
-    }).catch(() => {});
-    Payments.mine().then(res => { PAY.mine = res.data || []; renderPayMine(); }).catch(() => {});
-  }
-  if (payCanView()) {
-    for (const t of ['weekly', 'monthly']) {
-      // eslint-disable-next-line no-await-in-loop
-      await loadPayList(t);
-    }
-  }
+function showPayTab(kind) {
+  if (!plKinds().includes(kind)) return;
+  PL.tab = kind;
+  ['company', 'outside', 'all'].forEach(k => {
+    const on = k === kind, btn = document.getElementById(`pltab-${k}`);
+    btn.classList.toggle('active', on); btn.setAttribute('aria-selected', String(on));
+    document.getElementById(`pl-panel-${k}`).hidden = !on;
+  });
+  if (kind === 'all') loadPlCumulative(); else loadPlLedger(kind);
 }
 
-function onPayPeriodChange(t) {
-  const v = document.getElementById(`pay-${t}-period`).value;
-  const el = document.getElementById(`pay-${t}-period-text`);
-  if (!v) { el.textContent = ''; return; }
-  if (t === 'weekly') { const w = weekRange(v); el.textContent = `Week: ${fmtDate(w.start)} (Mon) – ${fmtDate(w.end)} (Sun)`; }
-  else el.textContent = `Month: ${MONTHS[+v.slice(5, 7) - 1]} ${v.slice(0, 4)}`;
+/* ── a ledger panel (Company or Outside Rental) ───────────────────────────────────────── */
+function buildPlPanel(k) {
+  const label = PL_LABEL[k];
+  document.getElementById(`pl-panel-${k}`).innerHTML = `
+    <div class="pl-cards perm-payments-view" id="pl-cards-${k}"></div>
+
+    <div class="card pl-card perm-payments-add">
+      <div class="pl-card-head">
+        <div class="pl-card-title"><span class="pl-ic">${PL_ICON.plus}</span><div><h3>Add ${label.toLowerCase()}</h3><p>Each line: who we are paying, for what, how much is payable and how much has been paid. Balance is worked out for you.</p></div></div>
+      </div>
+      <div class="pl-grid" role="table" aria-label="New ${label.toLowerCase()} lines">
+        <div class="pl-thead" role="row"><span>Sl No</span><span>Name</span><span>Item</span><span>Description</span><span class="r">Payable (₹)</span><span class="r">Paid (₹)</span><span class="r">Balance (₹)</span><span aria-hidden="true"></span></div>
+        <div class="pl-rows" id="pl-rows-${k}"></div>
+        <div class="pl-foot" id="pl-foot-${k}"><span class="pl-foot-label">Total</span><span class="r" data-l="Payable ₹: " id="pl-t-payable-${k}">0.00</span><span class="r" data-l="Paid ₹: " id="pl-t-paid-${k}">0.00</span><span class="r" data-l="Balance ₹: " id="pl-t-balance-${k}">0.00</span></div>
+      </div>
+      <datalist id="pl-names-${k}"></datalist>
+      <div class="form-error" id="pl-err-${k}" role="alert"></div>
+      <div class="pl-actions">
+        <button type="button" class="btn btn-outline" onclick="plAddLine('${k}')">+ Add line</button>
+        <button type="button" class="btn btn-primary" id="pl-save-${k}" onclick="savePayments('${k}')">💾 Save payments</button>
+        <button type="button" class="btn btn-outline" onclick="plClear('${k}')">✕ Clear</button>
+      </div>
+    </div>
+
+    <div class="card pl-card perm-payments-view">
+      <div class="pl-card-head">
+        <div class="pl-card-title"><span class="pl-ic">${PL_ICON.list}</span><div><h3>${label} — ledger</h3><p id="pl-count-${k}"></p></div></div>
+        ${plExportMenu(k)}
+      </div>
+      <div class="pl-toolbar">
+        <input type="search" data-pl-q="${k}" placeholder="Search name, item or description…" aria-label="Search ${label}" autocomplete="off">
+        <select data-pl-st="${k}" aria-label="Show"><option value="">All lines</option><option value="due">Balance due</option><option value="settled">Settled</option><option value="over">Advance paid</option></select>
+      </div>
+      <div class="table-wrap pl-wrap">
+        <table class="pl-table">
+          <thead><tr><th>Sl No</th><th>Name</th><th>Item</th><th>Description</th><th class="r">Payable</th><th class="r">Paid</th><th class="r">Balance</th><th class="pl-act perm-payments-edit">Actions</th></tr></thead>
+          <tbody id="pl-body-${k}"></tbody>
+          <tfoot id="pl-tfoot-${k}"></tfoot>
+        </table>
+      </div>
+    </div>
+
+    <div class="card pl-card" id="pl-mine-${k}" hidden>
+      <div class="pl-card-head"><div class="pl-card-title"><span class="pl-ic">${PL_ICON.list}</span><div><h3>Saved by you</h3><p>Your latest lines. The owner and admin see the full ledger.</p></div></div></div>
+      <div class="table-wrap pl-wrap"><table class="pl-table"><thead><tr><th>Name</th><th>Item</th><th class="r">Payable</th><th class="r">Paid</th><th class="r">Balance</th></tr></thead><tbody id="pl-mine-body-${k}"></tbody></table></div>
+    </div>`;
 }
 
-function resetPayForm(t) {
-  const period = document.getElementById(`pay-${t}-period`);
-  if (!period) return;
-  period.value = t === 'weekly' ? today() : today().slice(0, 7);
-  onPayPeriodChange(t);
-  document.getElementById(`pay-${t}-rows`).innerHTML = '';
-  document.getElementById(`pay-${t}-error`).textContent = '';
-  addPayRow(t, '', '', '', false);
-  updatePayTotal(t);
-}
-
-function addPayRow(t, name = '', days = '', amount = '', focus = true) {
-  const wrap = document.getElementById(`pay-${t}-rows`);
-  if (wrap.children.length >= 100) { showToast('At most 100 people can be saved at once.', true); return; }
+function plAddLine(k, v = {}, focus = true) {
+  const wrap = document.getElementById(`pl-rows-${k}`);
+  if (wrap.children.length >= PL_MAX) { showToast(`At most ${PL_MAX} lines at a time.`, true); return; }
   const row = document.createElement('div');
-  row.className = 'pay-row';
+  row.className = 'pl-row'; row.dataset.kind = k; row.setAttribute('role', 'row');
   row.innerHTML = `
-    <input type="text" class="pr-name" list="pay-employees" placeholder="Employee name" maxlength="80" autocomplete="off" aria-label="Employee name" value="${esc(name)}">
-    <input type="number" class="pr-days" min="0" max="${PAY_MAX_DAYS[t]}" step="0.5" inputmode="decimal" placeholder="Days" aria-label="Days worked" value="${esc(days)}">
-    <input type="number" class="pr-amount" min="0" step="0.01" inputmode="decimal" placeholder="Amount" aria-label="Amount in rupees" value="${esc(amount)}">
-    <button type="button" class="lp-del" aria-label="Remove this person">✕</button>`;
+    <span class="pl-sl" data-label="Sl No"></span>
+    <label class="pl-f pl-f-name"><span class="pl-fl">Name</span><input type="text" class="pl-name" list="pl-names-${k}" placeholder="Who we are paying" maxlength="120" autocomplete="off" value="${esc(v.party_name || '')}"></label>
+    <label class="pl-f pl-f-item"><span class="pl-fl">Item</span><input type="text" class="pl-item" placeholder="What for" maxlength="120" autocomplete="off" value="${esc(v.item || '')}"></label>
+    <label class="pl-f pl-f-desc"><span class="pl-fl">Description</span><input type="text" class="pl-desc" placeholder="Details (optional)" maxlength="300" autocomplete="off" value="${esc(v.description || '')}"></label>
+    <label class="pl-f pl-f-num"><span class="pl-fl">Payable (₹)</span><input type="number" class="pl-payable" min="0" step="0.01" inputmode="decimal" placeholder="0.00" value="${esc(v.payable || '')}"></label>
+    <label class="pl-f pl-f-num"><span class="pl-fl">Paid (₹)</span><input type="number" class="pl-paid" min="0" step="0.01" inputmode="decimal" placeholder="0.00" value="${esc(v.paid || '')}"></label>
+    <div class="pl-f pl-f-bal"><span class="pl-fl">Balance (₹)</span><output class="pl-balance">0.00</output></div>
+    <button type="button" class="pl-rm" aria-label="Remove this line">✕</button>`;
   wrap.appendChild(row);
-  updatePayTotal(t);
-  if (focus) row.querySelector('.pr-name').focus();
+  plRefreshRow(row); plRenumber(k); plRefreshTotals(k);
+  if (focus) row.querySelector('.pl-name').focus();
 }
-
-function readPayRows(t) {
-  return [...document.getElementById(`pay-${t}-rows`).querySelectorAll('.pay-row')].map(row => ({
-    row,
-    employee_name: row.querySelector('.pr-name').value.replace(/\s+/g, ' ').trim(),
-    days_worked: row.querySelector('.pr-days').value.trim(),
-    amount: row.querySelector('.pr-amount').value.trim(),
-  })).filter(r => r.employee_name || r.days_worked !== '' || r.amount !== '');
+function plRenumber(k) { [...document.querySelectorAll(`#pl-rows-${k} .pl-row`)].forEach((row, i) => { row.querySelector('.pl-sl').textContent = i + 1; row.setAttribute('aria-label', `Line ${i + 1}`); }); }
+function plRefreshRow(row) {
+  const b = plBal(row.querySelector('.pl-payable').value, row.querySelector('.pl-paid').value), out = row.querySelector('.pl-balance');
+  out.textContent = (b < -0.004 ? '−' : '') + num2(Math.abs(b)); out.className = `pl-balance pl-bal-${plSt(b)}`;
 }
-
-function updatePayTotal(t) {
-  const el = document.getElementById(`pay-${t}-total`);
-  if (!el) return;
-  const rows = readPayRows(t);
-  const total = rows.reduce((a, r) => a + (Number(r.amount) > 0 ? Number(r.amount) : 0), 0);
-  el.textContent = rows.length ? `${rows.length} ${rows.length === 1 ? 'person' : 'people'} · Total ${inr(total)}` : '';
+function plReadLines(k) {
+  return [...document.querySelectorAll(`#pl-rows-${k} .pl-row`)].map(row => ({
+    party_name: row.querySelector('.pl-name').value.replace(/\s+/g, ' ').trim(), item: row.querySelector('.pl-item').value.replace(/\s+/g, ' ').trim(),
+    description: row.querySelector('.pl-desc').value.replace(/\s+/g, ' ').trim(), payable: row.querySelector('.pl-payable').value.trim(), paid: row.querySelector('.pl-paid').value.trim(),
+  })).filter(r => r.party_name || r.item || r.description || r.payable !== '' || r.paid !== '');
 }
+function plRefreshTotals(k) {
+  const t = plTotals(plReadLines(k).map(r => ({ payable: r.payable, paid: r.paid })));
+  document.getElementById(`pl-t-payable-${k}`).textContent = num2(t.payable); document.getElementById(`pl-t-paid-${k}`).textContent = num2(t.paid);
+  const b = document.getElementById(`pl-t-balance-${k}`); b.textContent = (t.balance < -0.004 ? '−' : '') + num2(Math.abs(t.balance)); b.className = `r pl-bal-${plSt(t.balance)}`;
+}
+function plClear(k) { document.getElementById(`pl-rows-${k}`).innerHTML = ''; document.getElementById(`pl-err-${k}`).textContent = ''; plAddLine(k, {}, false); plRefreshTotals(k); }
 
-/** Returns { error, bad: [rows] } — mirrors the server's rules so mistakes are caught before saving. */
-function checkPayRows(t, rows) {
-  if (!rows.length) return { error: 'Add at least one person.', bad: [] };
-  const seen = new Map();
-  for (const r of rows) {
-    const label = r.employee_name || 'This line';
-    if (!r.employee_name) return { error: "Enter the employee's name on every line.", bad: [r.row] };
-    const d = Number(r.days_worked);
-    if (r.days_worked === '' || !Number.isFinite(d) || d < 0 || d > PAY_MAX_DAYS[t] || Math.round(d * 2) / 2 !== d) {
-      return { error: `${label}: days worked must be between 0 and ${PAY_MAX_DAYS[t]} (half days are allowed).`, bad: [r.row] };
-    }
-    const a = Number(r.amount);
-    if (r.amount === '' || !Number.isFinite(a) || a <= 0) return { error: `${label}: enter an amount greater than 0.`, bad: [r.row] };
-    const k = nameKey(r.employee_name);
-    if (seen.has(k)) return { error: `"${r.employee_name}" is on the list twice. Each person can be paid only once for the same period.`, bad: [seen.get(k), r.row] };
-    seen.set(k, r.row);
+/** The same rules as the server (backend/utils/payments.js). Returns a message or null. */
+function plValidate(lines) {
+  if (!lines.length) return 'Add at least one line.';
+  for (let i = 0; i < lines.length; i++) {
+    const r = lines[i], at = `Line ${i + 1}`;
+    if (!r.party_name) return `${at} needs a name.`;
+    if (!r.item) return `${at} (${r.party_name}) needs an item.`;
+    for (const [k, lab] of [['payable', 'Payable'], ['paid', 'Paid']]) { const v = r[k] === '' ? 0 : Number(r[k]); if (!Number.isFinite(v) || v < 0) return `${lab} for ${r.party_name} must be an amount of 0 or more.`; }
+    if ((Number(r.payable) || 0) === 0 && (Number(r.paid) || 0) === 0) return `${at} (${r.party_name}) needs a Payable or a Paid amount.`;
   }
-  return { error: null, bad: [] };
+  return null;
 }
 
-async function savePayments(t) {
-  const err = document.getElementById(`pay-${t}-error`);
-  err.textContent = '';
-  const period = document.getElementById(`pay-${t}-period`).value;
-  if (!period) { err.textContent = t === 'weekly' ? 'Choose a date inside the week.' : 'Choose the month.'; return; }
-  document.querySelectorAll(`#pay-${t}-rows .pay-row`).forEach(r => r.classList.remove('has-error'));
-  const rows = readPayRows(t);
-  const check = checkPayRows(t, rows);
-  if (check.error) { err.textContent = check.error; check.bad.forEach(r => r.classList.add('has-error')); (check.bad[0] && check.bad[0].querySelector('input'))?.focus(); return; }
-
-  const btn = document.getElementById(`pay-${t}-save`);
-  btn.disabled = true;
+async function savePayments(k) {
+  const err = document.getElementById(`pl-err-${k}`); err.textContent = '';
+  const lines = plReadLines(k), problem = plValidate(lines);
+  if (problem) { err.textContent = problem; return; }
+  const btn = document.getElementById(`pl-save-${k}`); btn.disabled = true;
   try {
-    const res = await Payments.create({
-      pay_type: t, period,
-      items: rows.map(r => ({ employee_name: r.employee_name, days_worked: Number(r.days_worked), amount: Number(r.amount) })),
-    });
-    showToast(`✅ Saved ${res.count} ${res.count === 1 ? 'payment' : 'payments'} for ${res.period.label} — total ${inr(res.total)}.`);
-    resetPayForm(t);
-    refreshPayments();
-  } catch (e) {
-    err.textContent = e.message || 'Could not save the payments.';
-    const dups = new Set(((e.data && e.data.duplicates) || []).map(d => nameKey(d.employee_name)));   // point at exactly who is already saved
-    rows.forEach(r => { if (dups.has(nameKey(r.employee_name))) r.row.classList.add('has-error'); });
-  } finally {
-    btn.disabled = false;
+    const res = await Payments.create({ kind: k, items: lines });
+    showToast(`✅ ${res.count} line${res.count === 1 ? '' : 's'} saved to ${PL_LABEL[k]}.`);
+    plClear(k); loadPlLedger(k);
+  } catch (e) { err.textContent = e.message || 'Could not save. Please try again.'; }
+  finally { btn.disabled = false; }
+}
+
+async function loadPlLedger(k) {
+  const canView = can('payments.view'), canAdd = can('payments.add');
+  if (canAdd) {
+    Payments.names(k).then(r => { document.getElementById(`pl-names-${k}`).innerHTML = (r.data || []).map(n => `<option value="${esc(n)}"></option>`).join(''); }).catch(() => {});
+    if (!canView) loadPlMine(k);
   }
-}
-
-function renderPayMine() {
-  ['weekly', 'monthly'].forEach(t => {
-    const body = document.getElementById(`pay-${t}-mine`);
-    if (!body) return;
-    const rows = PAY.mine.filter(r => r.pay_type === t).slice(0, 20);
-    body.innerHTML = rows.length ? rows.map(r => `
-      <tr><td>${esc(payPeriodLabel(t, r.period_start, r.period_end))}</td><td><strong>${esc(r.employee_name)}</strong></td>
-      <td>${esc(r.days_worked)}</td><td>${esc(inr(r.amount))}</td><td class="log-time">${fmtDateTime(r.created_at)}</td></tr>`).join('')
-      : '<tr class="empty-row"><td colspan="5">Nothing saved by you yet.</td></tr>';
-  });
-}
-
-async function loadPayList(t) {
-  const body = document.getElementById(`pay-${t}-list`);
-  if (!body) return;
+  if (!canView) return;
   try {
-    const res = await Payments.list(t);
-    PAY.lists[t] = res.data || [];
-    renderPayList(t, true);
+    const res = await Payments.list(k);
+    PL.rows[k] = res.data || []; PL.setup = !!res.setup_required;
+    renderPlCards(k); renderPlTable(k);
+    if (res.setup_required) document.getElementById(`pl-count-${k}`).textContent = 'Payments need a one-time database update — run run-in-supabase-7-payment-ledger.sql in Supabase, then reload this page.';
   } catch (e) {
-    const setup = e.data && e.data.setup_required;
-    body.innerHTML = `<tr class="empty-row"><td colspan="8">${setup
-      ? '⚠️ Payments need a one-time database update.<br><small>Open Supabase → SQL Editor and run <strong>run-in-supabase-3-new-features.sql</strong>, then reload this page.</small>'
-      : esc(e.message || 'Could not load the payments.')}</td></tr>`;
+    document.getElementById(`pl-body-${k}`).innerHTML = `<tr class="empty-row"><td colspan="8">${esc(e.message || 'The payments could not be loaded.')}</td></tr>`;
   }
 }
+async function loadPlMine(k) {
+  try {
+    const res = await Payments.mine(); const mine = (res.data || []).filter(x => x.kind === k);
+    document.getElementById(`pl-mine-${k}`).hidden = false;
+    document.getElementById(`pl-mine-body-${k}`).innerHTML = mine.length ? mine.map(x => `<tr><td data-label="Name"><strong>${esc(x.party_name)}</strong></td><td data-label="Item">${esc(x.item)}</td><td class="r" data-label="Payable">${inrS(x.payable)}</td><td class="r" data-label="Paid">${inrS(x.paid)}</td><td class="r" data-label="Balance"><span class="pl-bal-${x.status}">${inrS(x.balance)}</span></td></tr>`).join('') : '<tr class="empty-row"><td colspan="5">Nothing saved yet.</td></tr>';
+  } catch { /* the list is a convenience */ }
+}
 
-function renderPayList(t, rebuildPeriods = false) {
-  const body = document.getElementById(`pay-${t}-list`);
-  if (!body) return;
-  const all = PAY.lists[t] || [];
-  const sel = document.getElementById(`pay-${t}-filter-period`);
-  if (rebuildPeriods || !sel.options.length) {
-    const keep = sel.value;
-    const seen = new Map();
-    all.forEach(r => { if (!seen.has(r.period_start)) seen.set(r.period_start, r.period_end); });      // already newest first
-    sel.innerHTML = '<option value="">All periods</option>' + [...seen].map(([s, e]) => `<option value="${esc(s)}">${esc(payPeriodLabel(t, s, e))}</option>`).join('');
-    const first = [...seen.keys()][0] || '';
-    sel.value = rebuildPeriods && keep && seen.has(keep) ? keep : (rebuildPeriods && !sel.dataset.touched ? first : (keep || ''));
-    sel.dataset.touched = '1';
-  }
-  const q = document.getElementById(`pay-${t}-search`).value.trim().toLowerCase();
-  const rows = all.filter(r => (!sel.value || r.period_start === sel.value) && (!q || r.employee_name.toLowerCase().includes(q)));
-  const admin = can('payments.edit');
-  body.innerHTML = rows.length ? rows.map(r => `
+function renderPlCards(k) {
+  const t = plTotals(PL.rows[k] || []), st = plSt(t.balance);
+  const note = st === 'due' ? 'Still to be paid' : st === 'over' ? 'Paid more than payable (advance)' : 'Fully settled';
+  document.getElementById(`pl-cards-${k}`).innerHTML = `
+    <div class="pl-stat pl-s-payable"><span class="pl-lbl">Total Payable</span><span class="pl-val">${inrS(t.payable)}</span><span class="pl-note">${t.count} line${t.count === 1 ? '' : 's'}</span></div>
+    <div class="pl-stat pl-s-paid"><span class="pl-lbl">Total Paid</span><span class="pl-val">${inrS(t.paid)}</span><span class="pl-note">Payments made so far</span></div>
+    <div class="pl-stat pl-s-bal pl-s-${st}"><span class="pl-lbl">Balance</span><span class="pl-val">${inrS(t.balance)}</span><span class="pl-note">${note} · Payable − Paid</span></div>`;
+}
+
+function renderPlTable(k) {
+  const all = PL.rows[k] || [], f = PL.filter[k], q = f.q.trim().toLowerCase();
+  const shown = all.map((r, i) => ({ ...r, sl: i + 1 })).filter(r => (!f.st || r.status === f.st) && (!q || `${r.party_name} ${r.item} ${r.description}`.toLowerCase().includes(q)));
+  const body = document.getElementById(`pl-body-${k}`), foot = document.getElementById(`pl-tfoot-${k}`);
+  const canEdit = can('payments.edit');
+  document.getElementById(`pl-count-${k}`).textContent = all.length ? `${all.length} line${all.length === 1 ? '' : 's'}${shown.length !== all.length ? ` · showing ${shown.length}` : ''}` : 'No lines yet.';
+  if (!shown.length) { body.innerHTML = `<tr class="empty-row"><td colspan="${canEdit ? 8 : 7}">${all.length ? 'No lines match your search.' : 'No payments saved yet.'}</td></tr>`; foot.innerHTML = ''; return; }
+  body.innerHTML = shown.map(r => `
     <tr>
-      <td>${esc(payPeriodLabel(t, r.period_start, r.period_end))}</td>
-      <td><strong>${esc(r.employee_name)}</strong></td>
-      <td>${esc(r.days_worked)}</td>
-      <td class="pay-amount">${esc(inr(r.amount))}</td>
-      <td>${esc(r.created_by_name || '')}</td>
-      <td class="log-time">${fmtDateTime(r.created_at)}</td>
-      ${admin ? `<td><button type="button" class="btn btn-outline btn-sm" onclick="openPayEdit('${t}','${esc(r.id)}')" aria-label="Edit ${esc(r.employee_name)}">✏️ Edit</button></td>
-      <td><button type="button" class="btn btn-danger btn-sm" onclick="deletePayment('${t}','${esc(r.id)}')" aria-label="Delete ${esc(r.employee_name)}">🗑</button></td>` : ''}
-    </tr>`).join('')
-    : `<tr class="empty-row"><td colspan="8">${all.length ? 'No payments match these filters.' : 'No payments saved yet.'}</td></tr>`;
-  const total = rows.reduce((a, r) => a + r.amount, 0);
-  document.getElementById(`pay-${t}-footer`).textContent = rows.length ? `${rows.length} ${rows.length === 1 ? 'line' : 'lines'} · Total ${inr(total)}` : '';
-  document.getElementById(`pay-${t}-count`).textContent = all.length ? `${all.length} in total` : '';
+      <td data-label="Sl No">${r.sl}</td>
+      <td data-label="Name"><strong>${esc(r.party_name)}</strong></td>
+      <td data-label="Item">${esc(r.item)}</td>
+      <td data-label="Description" class="pl-desc-cell">${esc(r.description) || '<span class="pl-none">—</span>'}</td>
+      <td class="r" data-label="Payable">${inrS(r.payable)}</td>
+      <td class="r" data-label="Paid">${inrS(r.paid)}</td>
+      <td class="r" data-label="Balance"><span class="pl-bal-${r.status}">${inrS(r.balance)}</span><span class="pl-chip pl-chip-${r.status}">${PL_STATUS[r.status]}</span></td>
+      ${canEdit ? `<td class="pl-act" data-label="Actions"><button type="button" class="btn btn-outline btn-sm" data-pl-edit="${esc(r.id)}" data-pl-kind="${k}" aria-label="Edit line ${r.sl}">Edit</button> <button type="button" class="btn btn-outline btn-sm pl-danger" data-pl-del="${esc(r.id)}" data-pl-kind="${k}" aria-label="Delete line ${r.sl}">Delete</button></td>` : ''}
+    </tr>`).join('');
+  const t = plTotals(shown), st = plSt(t.balance);
+  foot.innerHTML = `<tr class="pl-total"><td colspan="4" data-label="">${shown.length === all.length ? 'Total' : `Total of ${shown.length} shown`}</td><td class="r" data-label="Payable">${inrS(t.payable)}</td><td class="r" data-label="Paid">${inrS(t.paid)}</td><td class="r" data-label="Balance"><span class="pl-bal-${st}">${inrS(t.balance)}</span></td>${canEdit ? '<td></td>' : ''}</tr>`;
 }
 
-/* Admin: edit / delete a saved line (both need a written reason, like entries) */
-function openPayEdit(t, id) {
-  const row = (PAY.lists[t] || []).find(r => String(r.id) === String(id));
-  if (!row) return;
-  PAY.editing = { t, row };
-  document.getElementById('pay-edit-title').textContent = 'Edit payment';
-  document.getElementById('pay-edit-period').textContent = `${t === 'weekly' ? 'Week' : 'Month'}: ${payPeriodLabel(t, row.period_start, row.period_end)}`;
-  document.getElementById('pe-name').value = row.employee_name;
-  document.getElementById('pe-days').value = row.days_worked;
-  document.getElementById('pe-days').max = PAY_MAX_DAYS[t];
-  document.getElementById('pe-amount').value = row.amount;
-  document.getElementById('pe-error').textContent = '';
-  document.getElementById('pay-edit-overlay').classList.add('open');
-  setTimeout(() => document.getElementById('pe-name').focus(), 50);
+/* ── the cumulative report: both kinds together ───────────────────────────────────────── */
+function buildPlCumulative() {
+  document.getElementById('pl-panel-all').innerHTML = `
+    <div class="pl-kinds" id="pl-kinds"></div>
+    <div class="card pl-card">
+      <div class="pl-card-head">
+        <div class="pl-card-title"><span class="pl-ic">${PL_ICON.sum}</span><div><h3>Cumulative report</h3><p id="pl-cum-note">Company and outside rental payments together.</p></div></div>
+        ${plExportMenu('all')}
+      </div>
+      <h4 class="pl-h4">Party-wise — what each name has been paid and what is left</h4>
+      <div class="table-wrap pl-wrap"><table class="pl-table"><thead><tr><th>Sl No</th><th>Name</th><th>Lines</th><th class="r">Payable</th><th class="r">Paid</th><th class="r">Balance</th></tr></thead><tbody id="pl-cum-party"></tbody></table></div>
+    </div>
+    <div class="card pl-card">
+      <div class="pl-card-head"><div class="pl-card-title"><span class="pl-ic">${PL_ICON.list}</span><div><h3>Complete statement</h3><p>Every line of both ledgers.</p></div></div></div>
+      <div class="table-wrap pl-wrap"><table class="pl-table"><thead><tr><th>Sl No</th><th>Name</th><th>Item</th><th>Description</th><th class="r">Payable</th><th class="r">Paid</th><th class="r">Balance</th></tr></thead><tbody id="pl-cum-all"></tbody></table></div>
+    </div>`;
 }
-function closePayEdit() { document.getElementById('pay-edit-overlay').classList.remove('open'); PAY.editing = null; }
 
-async function savePayEdit() {
-  if (!PAY.editing) return;
-  const { t, row } = PAY.editing;
-  const err = document.getElementById('pe-error');
-  err.textContent = '';
-  const body = {
-    employee_name: document.getElementById('pe-name').value.replace(/\s+/g, ' ').trim(),
-    days_worked: document.getElementById('pe-days').value.trim(),
-    amount: document.getElementById('pe-amount').value.trim(),
-  };
-  const chk = checkPayRows(t, [{ row: null, ...body }]);
-  if (chk.error) { err.textContent = chk.error; return; }
-  body.days_worked = Number(body.days_worked); body.amount = Number(body.amount);
-
-  const changes = [];
-  if (body.employee_name !== row.employee_name) changes.push({ field: 'Employee', from: row.employee_name, to: body.employee_name });
-  if (body.days_worked !== row.days_worked)     changes.push({ field: 'Days worked', from: String(row.days_worked), to: String(body.days_worked) });
-  if (body.amount !== row.amount)               changes.push({ field: 'Amount', from: inr(row.amount), to: inr(body.amount) });
-  if (!changes.length) { showToast('No changes were made.'); closePayEdit(); return; }
-
-  const reason = await askReason({ title: 'Reason for Changes', intro: 'Please explain why this payment is being changed. It is saved in the Activity Log.', confirmLabel: 'Confirm & Save', changes });
-  if (!reason) return;
-  const btn = document.getElementById('pe-save');
-  btn.disabled = true;
+async function loadPlCumulative() {
   try {
-    await Payments.update(row.id, { ...body, reason });
-    closePayEdit();
-    showToast('✅ Payment updated.');
-    loadPayList(t);
-  } catch (e) {
-    err.textContent = e.message || 'Could not save the changes.';
-  } finally {
-    btn.disabled = false;
-  }
+    const [sum, c, o] = await Promise.all([Payments.summary(), Payments.list('company'), Payments.list('outside')]);
+    PL.rows.company = c.data || []; PL.rows.outside = o.data || [];
+    renderPlCumulative(sum.data);
+    if (sum.setup_required) document.getElementById('pl-cum-note').textContent = 'Payments need a one-time database update — run run-in-supabase-7-payment-ledger.sql in Supabase, then reload this page.';
+  } catch (e) { document.getElementById('pl-cum-party').innerHTML = `<tr class="empty-row"><td colspan="6">${esc(e.message || 'The report could not be loaded.')}</td></tr>`; }
 }
 
-async function deletePayment(t, id) {
-  const row = (PAY.lists[t] || []).find(r => String(r.id) === String(id));
-  if (!row) return;
-  const reason = await askReason({
-    title: 'Delete this payment?',
-    intro: `<strong>${esc(row.employee_name)}</strong> · ${esc(payPeriodLabel(t, row.period_start, row.period_end))} · ${esc(inr(row.amount))}<br>Please explain why it is being deleted. This is saved in the Activity Log.`,
-    confirmLabel: 'Delete payment', danger: true,
+function renderPlCumulative(sm) {
+  const stat = (title, t, cls) => { const st = plSt(t.balance); return `
+    <section class="pl-kind ${cls}" aria-label="${esc(title)}">
+      <h3>${esc(title)}</h3>
+      <dl><div><dt>Payable</dt><dd>${inrS(t.payable)}</dd></div><div><dt>Paid</dt><dd>${inrS(t.paid)}</dd></div><div class="pl-kind-bal pl-s-${st}"><dt>Balance</dt><dd>${inrS(t.balance)}</dd></div></dl>
+      <p>${t.count} line${t.count === 1 ? '' : 's'} · ${PL_STATUS[st].toLowerCase()}</p>
+    </section>`; };
+  document.getElementById('pl-kinds').innerHTML = stat('Company Payments', sm.kinds.company.totals, 'pl-k-company') + stat('Outside Rental Payments', sm.kinds.outside.totals, 'pl-k-outside') + stat('Grand total', sm.overall, 'pl-k-all');
+  const tr = (cells, cls = '') => `<tr class="${cls}">${cells}</tr>`;
+  const nums = t => `<td class="r" data-label="Payable">${inrS(t.payable)}</td><td class="r" data-label="Paid">${inrS(t.paid)}</td><td class="r" data-label="Balance"><span class="pl-bal-${plSt(t.balance)}">${inrS(t.balance)}</span></td>`;
+  let party = '';
+  ['company', 'outside'].forEach(k => {
+    const kd = sm.kinds[k];
+    party += `<tr class="pl-sec"><th colspan="6">${esc(PL_LABEL[k])} — party-wise</th></tr>`;
+    party += kd.parties.length ? kd.parties.map((p, i) => tr(`<td data-label="Sl No">${i + 1}</td><td data-label="Name"><strong>${esc(p.party_name)}</strong></td><td data-label="Lines">${p.count}</td>${nums(p)}`)).join('') : '<tr class="empty-row"><td colspan="6">Nothing saved yet.</td></tr>';
+    party += tr(`<td colspan="3" data-label="">Total — ${esc(PL_LABEL[k])}</td>${nums(kd.totals)}`, 'pl-subtotal');
   });
+  party += tr(`<td colspan="3" data-label="">Grand total</td>${nums(sm.overall)}`, 'pl-total');
+  document.getElementById('pl-cum-party').innerHTML = party;
+  let all = '';
+  ['company', 'outside'].forEach(k => {
+    const rows = PL.rows[k] || [];
+    all += `<tr class="pl-sec"><th colspan="7">${esc(PL_LABEL[k])}</th></tr>`;
+    all += rows.length ? rows.map((r, i) => tr(`<td data-label="Sl No">${i + 1}</td><td data-label="Name"><strong>${esc(r.party_name)}</strong></td><td data-label="Item">${esc(r.item)}</td><td data-label="Description" class="pl-desc-cell">${esc(r.description) || '<span class="pl-none">—</span>'}</td>${nums(r)}`)).join('') : '<tr class="empty-row"><td colspan="7">Nothing saved yet.</td></tr>';
+    all += tr(`<td colspan="4" data-label="">Total — ${esc(PL_LABEL[k])}</td>${nums(sm.kinds[k].totals)}`, 'pl-subtotal');
+  });
+  all += tr(`<td colspan="4" data-label="">Grand total — Company + Outside Rental</td>${nums(sm.overall)}`, 'pl-total');
+  document.getElementById('pl-cum-all').innerHTML = all;
+}
+
+/* ── editing and deleting a saved line (Admin; a written reason is always needed) ─────── */
+function openPayEdit(k, id) {
+  const row = (PL.rows[k] || []).find(r => String(r.id) === String(id)); if (!row) return;
+  PL.editing = { id: row.id, row };
+  document.getElementById('pe-kind').value = row.kind;
+  document.getElementById('pe-name').value = row.party_name; document.getElementById('pe-item').value = row.item;
+  document.getElementById('pe-desc').value = row.description || ''; document.getElementById('pe-payable').value = row.payable; document.getElementById('pe-paid').value = row.paid;
+  document.getElementById('pe-error').textContent = ''; plEditBalance();
+  Payments.names().then(r => { document.getElementById('pl-names-edit').innerHTML = (r.data || []).map(n => `<option value="${esc(n)}"></option>`).join(''); }).catch(() => {});
+  document.getElementById('pay-edit-overlay').classList.add('open');
+  setTimeout(() => document.getElementById('pe-name').focus(), 60);
+}
+function closePayEdit() { document.getElementById('pay-edit-overlay').classList.remove('open'); PL.editing = null; }
+function plEditBalance() {
+  const b = plBal(document.getElementById('pe-payable').value, document.getElementById('pe-paid').value), out = document.getElementById('pe-balance');
+  out.textContent = (b < -0.004 ? '−' : '') + num2(Math.abs(b)); out.className = `pl-edit-balance pl-bal-${plSt(b)}`;
+}
+async function savePayEdit() {
+  if (!PL.editing) return;
+  const err = document.getElementById('pe-error'); err.textContent = '';
+  const before = PL.editing.row;
+  const body = {
+    kind: document.getElementById('pe-kind').value, party_name: document.getElementById('pe-name').value.replace(/\s+/g, ' ').trim(), item: document.getElementById('pe-item').value.replace(/\s+/g, ' ').trim(),
+    description: document.getElementById('pe-desc').value.replace(/\s+/g, ' ').trim(), payable: document.getElementById('pe-payable').value.trim(), paid: document.getElementById('pe-paid').value.trim(),
+  };
+  const problem = plValidate([body]); if (problem) { err.textContent = problem.replace(/^Line 1 /, 'This line '); return; }
+  const changes = [];
+  const push = (field, a, b) => { if (String(a ?? '') !== String(b ?? '')) changes.push({ field, from: a || null, to: b || null }); };
+  push('Paying', PL_LABEL[before.kind], PL_LABEL[body.kind]); push('Name', before.party_name, body.party_name); push('Item', before.item, body.item); push('Description', before.description, body.description);
+  push('Payable', inrS(before.payable), inrS(Number(body.payable) || 0)); push('Paid', inrS(before.paid), inrS(Number(body.paid) || 0));
+  if (!changes.length) { showToast('No changes were made.'); closePayEdit(); return; }
+  const reason = await askReason({ title: 'Reason for change', intro: 'Please explain why this payment line is being changed. It is saved in the Activity Log.', confirmLabel: 'Confirm & Save', changes });
   if (!reason) return;
-  try { await Payments.remove(row.id, reason); showToast('Payment deleted.'); loadPayList(t); }
+  try {
+    await Payments.update(PL.editing.id, { ...body, reason });
+    showToast('✅ Payment line updated.'); closePayEdit();
+    if (PL.tab === 'all') loadPlCumulative(); else { loadPlLedger(PL.tab); if (body.kind !== PL.tab) loadPlLedger(body.kind); }
+  } catch (e) { err.textContent = e.message || 'Update failed.'; }
+}
+async function deletePayment(k, id) {
+  const row = (PL.rows[k] || []).find(r => String(r.id) === String(id)); if (!row) return;
+  const reason = await askReason({ title: 'Delete this payment line?', intro: `<strong>${esc(row.party_name)}</strong> — ${esc(row.item)} — payable ${esc(inrS(row.payable))}, paid ${esc(inrS(row.paid))}. The reason is saved in the Activity Log.`, confirmLabel: 'Delete line', danger: true });
+  if (!reason) return;
+  try { await Payments.remove(row.id, reason); showToast('Payment line deleted.'); loadPlLedger(k); }
   catch (e) { showToast('❌ ' + (e.message || 'Delete failed.'), true); }
 }
 

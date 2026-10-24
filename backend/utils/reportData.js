@@ -7,6 +7,8 @@ const { istDate, istTime } = require('./tableReports');
 const lq = require('./logQuery');
 const { summaryFor } = require('./summary');
 const { fmtMileage } = require('./mileage');
+const { fetchAll } = require('./db');
+const pay = require('./payments');
 const { fmtDateDMY } = require('./activity');
 
 const MAX_LOG_ROWS_XLSX = parseInt(process.env.REPORT_MAX_LOG_ROWS_XLSX, 10) || 20000;
@@ -278,4 +280,54 @@ async function summaryReport(range) {
   };
 }
 
-module.exports = { inventoryReport, usersReport, logsReport, summaryReport, rangeText, INVENTORY, MAX_LOG_ROWS_XLSX, MAX_LOG_ROWS_PDF, activityLabel, changesText, deviceLabel };
+/* ── Payments: one kind (Company / Outside Rental), or the complete cumulative report of both ───────────── */
+const PAY_COLUMNS = [
+  { key: 'n', header: 'Sl No', width: 7, weight: 5, align: 'right' },
+  { key: 'name', header: 'Name', width: 28, weight: 20, bold: true, wrap: true },
+  { key: 'item', header: 'Item', width: 24, weight: 16, wrap: true },
+  { key: 'description', header: 'Description', width: 36, weight: 26, wrap: true },
+  { key: 'payable', header: 'Payable', width: 16, weight: 12, align: 'right', numFmt: '#,##0.00', fmt: pay.money },
+  { key: 'paid', header: 'Paid', width: 16, weight: 12, align: 'right', numFmt: '#,##0.00', fmt: pay.money },
+  { key: 'balance', header: 'Balance', width: 16, weight: 12, align: 'right', numFmt: '#,##0.00', fmt: pay.money },
+];
+const numbers = t => ({ payable: t.payable, paid: t.paid, balance: t.balance });
+
+async function paymentsReport(kind) {
+  const { data, error } = await fetchAll(() => supabase.from('payment_lines').select('*').order('created_at', { ascending: true }).order('id', { ascending: true }), 20000)
+    .then(r => (r.error ? r : r)).catch(e => ({ data: null, error: e }));
+  if (error) {
+    if (pay.isMissingPayments(error)) throw Object.assign(new Error('payment_lines missing'), { status: 503, userMessage: pay.PAYMENTS_SETUP_MESSAGE });
+    throw error;
+  }
+  const lines = data.map(p => ({ ...p, payable: Number(p.payable) || 0, paid: Number(p.paid) || 0, balance: pay.balanceOf(p.payable, p.paid), party_key: pay.keyOf(p.party_name) }));
+  const lineRow = (p, i) => ({ n: i + 1, name: p.party_name, item: p.item || '', description: p.description || '', ...numbers(p) });
+  const note = 'Balance = Payable − Paid  ·  amounts in rupees  ·  a negative balance means more was paid than was payable';
+
+  if (kind === 'company' || kind === 'outside') {
+    const mine = lines.filter(l => l.kind === kind), t = pay.totalsOf(mine);
+    const rows = mine.map(lineRow);
+    if (rows.length) rows.push({ n: '', name: 'TOTAL', item: `${t.count} line${t.count === 1 ? '' : 's'}`, description: '', ...numbers(t), _kind: 'total' });
+    return { title: pay.KIND_LABEL[kind], sheet: pay.KIND_LABEL[kind], columns: PAY_COLUMNS, rows, subtitle: `${pay.KIND_LABEL[kind]}  ·  ${t.count} line${t.count === 1 ? '' : 's'}  ·  ${note}`, realRows: mine.length };
+  }
+
+  // The complete cumulative report: both kinds together.
+  const c = pay.cumulative(lines), rows = [];
+  rows.push({ _kind: 'section', _label: 'CUMULATIVE SUMMARY — COMPANY AND OUTSIDE RENTAL PAYMENTS' });
+  pay.KINDS.forEach((k, i) => rows.push({ n: i + 1, name: pay.KIND_LABEL[k], item: `${c.kinds[k].totals.count} line${c.kinds[k].totals.count === 1 ? '' : 's'}`, description: `${c.kinds[k].parties.length} ${c.kinds[k].parties.length === 1 ? 'party' : 'parties'}`, ...numbers(c.kinds[k].totals) }));
+  rows.push({ n: '', name: 'GRAND TOTAL', item: `${c.overall.count} line${c.overall.count === 1 ? '' : 's'}`, description: '', ...numbers(c.overall), _kind: 'total' });
+  for (const k of pay.KINDS) {
+    rows.push({ _kind: 'section', _label: `${pay.KIND_LABEL[k].toUpperCase()} — PARTY-WISE` });
+    c.kinds[k].parties.forEach((p, i) => rows.push({ n: i + 1, name: p.party_name, item: `${p.count} line${p.count === 1 ? '' : 's'}`, description: '', ...numbers(p) }));
+    rows.push({ n: '', name: `Total — ${pay.KIND_LABEL[k]}`, item: '', description: '', ...numbers(c.kinds[k].totals), _kind: 'subtotal' });
+  }
+  for (const k of pay.KINDS) {
+    const mine = lines.filter(l => l.kind === k);
+    rows.push({ _kind: 'section', _label: `COMPLETE STATEMENT — ${pay.KIND_LABEL[k].toUpperCase()}` });
+    mine.forEach((p, i) => rows.push(lineRow(p, i)));
+    rows.push({ n: '', name: `Total — ${pay.KIND_LABEL[k]}`, item: `${mine.length} line${mine.length === 1 ? '' : 's'}`, description: '', ...numbers(c.kinds[k].totals), _kind: 'subtotal' });
+  }
+  rows.push({ n: '', name: 'GRAND TOTAL — COMPANY + OUTSIDE RENTAL', item: '', description: '', ...numbers(c.overall), _kind: 'total' });
+  return { title: 'Cumulative Payments Report', sheet: 'Cumulative', columns: PAY_COLUMNS, rows, subtitle: `Company + Outside Rental  ·  ${c.overall.count} line${c.overall.count === 1 ? '' : 's'}  ·  ${note}`, realRows: lines.length };
+}
+
+module.exports = { paymentsReport, inventoryReport, usersReport, logsReport, summaryReport, rangeText, INVENTORY, MAX_LOG_ROWS_XLSX, MAX_LOG_ROWS_PDF, activityLabel, changesText, deviceLabel };

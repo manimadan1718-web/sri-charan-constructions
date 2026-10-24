@@ -14,6 +14,7 @@ const argb = hex => ({ argb: 'FF' + hex });
 const thin = { style: 'thin', color: argb(COLORS.line) };
 const BORDER = { top: thin, left: thin, bottom: thin, right: thin };
 const TONES = { danger: 'B4372A', muted: '8A94A6' };
+const KIND_FILL = { subtotal: 'FFF3E6', total: 'FFE2C2' };      // rows may also be { _kind: 'section', _label } (a heading band), 'subtotal' or 'total'
 
 /** "09/10/2026" and "08:43 pm" in the report time zone, from a stored timestamp. */
 function istDate(iso) {
@@ -69,15 +70,29 @@ async function buildTableXlsx({ sheetName, title, columns, rows, meta }) {
 
   rows.forEach((r, idx) => {
     const row = ws.getRow(HEADER_ROW + 1 + idx);
+    if (r._kind === 'section') {                                  // a heading band across the whole table
+      ws.mergeCells(HEADER_ROW + 1 + idx, 1, HEADER_ROW + 1 + idx, lastCol);
+      const cell = row.getCell(1);
+      cell.value = r._label || '';
+      cell.font = { name: 'Calibri', size: 11.5, bold: true, color: argb(COLORS.orange) };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: argb('FDECD8') };
+      cell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+      cell.border = { top: thin, bottom: { style: 'medium', color: argb(COLORS.orange) } };
+      row.height = 26;
+      return;
+    }
+    const strong = r._kind === 'subtotal' || r._kind === 'total';
     let lines = 1;
     columns.forEach((c, i) => {
       const cell = row.getCell(i + 1);
       const v = r[c.key];
       cell.value = v === undefined || v === null ? '' : v;
-      cell.font = { name: 'Calibri', size: 10.5, color: argb(TONES[r._tone] || COLORS.ink), bold: !!c.bold };
+      if (c.numFmt && typeof v === 'number') cell.numFmt = c.numFmt;
+      cell.font = { name: 'Calibri', size: 10.5, color: argb(TONES[r._tone] || COLORS.ink), bold: !!c.bold || strong };
       cell.alignment = { vertical: 'top', horizontal: c.align || 'left', wrapText: !!c.wrap, indent: c.align === 'center' ? 0 : 1 };
       cell.border = BORDER;
-      if (idx % 2 === 1) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: argb(COLORS.paper) };
+      if (strong) { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: argb(KIND_FILL[r._kind]) }; if (r._kind === 'total') cell.border = { ...BORDER, top: { style: 'medium', color: argb(COLORS.orange) } }; }
+      else if (idx % 2 === 1) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: argb(COLORS.paper) };
       if (c.wrap) lines = Math.max(lines, wrappedLines(v, c.width));
     });
     row.height = Math.max(20, Math.min(160, lines * 14 + 8));
@@ -128,20 +143,32 @@ async function buildTablePdf({ title, columns, rows, meta }) {
   drawHeader();
 
   rows.forEach((r, idx) => {
+    if (r._kind === 'section') {                                  // a heading band across the whole table
+      if (y + 40 > bottom) { doc.addPage(); y = M; drawHeader(); }
+      y += 4;
+      doc.rect(M, y, usableW, 17).fill('#FDECD8');
+      doc.moveTo(M, y + 17).lineTo(M + usableW, y + 17).lineWidth(1).strokeColor(hex(COLORS.orange)).stroke();
+      doc.font('Helvetica-Bold').fontSize(8.5).fillColor(hex(COLORS.orange)).text(pdfText(r._label || ''), M + PAD + 2, y + 4.5, { width: usableW - PAD * 2, lineBreak: false, ellipsis: true });
+      y += 19;
+      return;
+    }
+    const strong = r._kind === 'subtotal' || r._kind === 'total';
     doc.font('Helvetica').fontSize(FONT);
     let textH = 11;
     const texts = columns.map((c, i) => {
-      const t = pdfText(r[c.key] === undefined || r[c.key] === null ? '' : r[c.key]);
+      const raw = r[c.key] === undefined || r[c.key] === null ? '' : r[c.key];
+      const t = pdfText(c.fmt && typeof raw === 'number' ? c.fmt(raw) : raw);
       doc.font(c.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(FONT);
       textH = Math.max(textH, Math.min(MAX_TEXT_H, doc.heightOfString(t || ' ', { width: widths[i] - PAD * 2 })));
       return t;
     });
     const rowH = textH + PAD * 2 + 2;
     if (y + rowH > bottom) { doc.addPage(); y = M; drawHeader(); }
-    if (idx % 2 === 1) doc.rect(M, y, usableW, rowH).fill(hex(COLORS.paper));
+    if (strong) { doc.rect(M, y, usableW, rowH).fill('#' + KIND_FILL[r._kind]); if (r._kind === 'total') doc.moveTo(M, y).lineTo(M + usableW, y).lineWidth(1.2).strokeColor(hex(COLORS.orange)).stroke(); }
+    else if (idx % 2 === 1) doc.rect(M, y, usableW, rowH).fill(hex(COLORS.paper));
     const tone = hex(TONES[r._tone] || COLORS.ink);
     columns.forEach((c, i) => {
-      doc.font(c.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(FONT).fillColor(tone)
+      doc.font(c.bold || strong ? 'Helvetica-Bold' : 'Helvetica').fontSize(FONT).fillColor(tone)
         .text(texts[i], xs[i] + PAD, y + PAD + 1, { width: widths[i] - PAD * 2, height: MAX_TEXT_H, ellipsis: true, align: c.align || 'left' });
     });
     doc.moveTo(M, y + rowH).lineTo(M + usableW, y + rowH).lineWidth(0.4).strokeColor(hex(COLORS.line)).stroke();

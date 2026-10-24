@@ -33,8 +33,8 @@ const CATALOG = [
   { key: 'documents.upload',   group: 'Documents',     label: 'Upload and edit documents',        desc: 'Add new documents and change their name, type, site or notes.', requires: 'documents.view' },
   { key: 'documents.delete',   group: 'Documents',     label: 'Delete documents',                 desc: 'Remove a stored document permanently.', requires: 'documents.view' },
 
-  { key: 'payments.add',       group: 'Payments',      label: 'Add payments',                     desc: 'Enter weekly and monthly payments. Sees the lines they saved themselves.' },
-  { key: 'payments.view',      group: 'Payments',      label: 'See all payments',                 desc: 'Open the full payment lists with totals.' },
+  { key: 'payments.add',       group: 'Payments',      label: 'Add payments',                     desc: 'Enter Company and Outside Rental payment lines (name, item, payable, paid). Sees the lines they saved themselves.' },
+  { key: 'payments.view',      group: 'Payments',      label: 'See all payments',                 desc: 'Open the full payment ledgers and the cumulative report, and export them.' },
   { key: 'payments.edit',      group: 'Payments',      label: 'Edit and delete payments',         desc: 'Change or remove a saved payment line (a written reason is always needed).', requires: 'payments.view' },
 
   { key: 'inventory.manage',   group: 'Inventory',     label: 'Manage Inventory',                 desc: 'Add, edit and switch off vehicles, sites and operators, and export them.' },

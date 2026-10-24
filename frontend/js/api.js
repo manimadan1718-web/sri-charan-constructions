@@ -287,6 +287,10 @@ const Reports = {
   summary(body) {
     return apiFetch('/reports/summary', { method: 'POST', body: JSON.stringify(body), asBlob: true });
   },
+  // { format: 'xlsx' | 'pdf', kind: 'company' | 'outside' | 'all' }   (Owner + Admin) ? the Payments ledgers and the cumulative report
+  payments(body) {
+    return apiFetch('/reports/payments', { method: 'POST', body: JSON.stringify(body), asBlob: true });
+  },
 };
 
 // ── Documents (Owner + Admin) ─────────────────────────────────────────────────
@@ -343,25 +347,14 @@ const Documents = {
 
 // ── Payments (Supervisor adds · Owner + Admin see · Admin edits) ───────────────
 const Payments = {
-  list(type) {
-    return apiFetch(`/payments?type=${encodeURIComponent(type)}`);
-  },
-  mine() {
-    return apiFetch('/payments/mine');
-  },
-  employees() {
-    return apiFetch('/payments/employees');
-  },
-  // { pay_type, period, items: [{ employee_name, days_worked, amount }] } — all lines saved together, or none
-  create(payload) {
-    return apiFetch('/payments', { method: 'POST', body: JSON.stringify(payload) });
-  },
-  update(id, payload) {
-    return apiFetch(`/payments/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(payload) });
-  },
-  remove(id, reason) {
-    return apiFetch(`/payments/${encodeURIComponent(id)}`, { method: 'DELETE', body: JSON.stringify({ reason }) });
-  },
+  list(kind) { return apiFetch(`/payments${kind ? '?kind=' + encodeURIComponent(kind) : ''}`); },                  // every saved line of a kind (Owner / Admin)
+  summary() { return apiFetch('/payments/summary'); },                                                              // the cumulative picture (Owner / Admin)
+  mine() { return apiFetch('/payments/mine'); },                                                                    // what THIS person saved recently
+  names(kind) { return apiFetch(`/payments/names${kind ? '?kind=' + encodeURIComponent(kind) : ''}`); },            // names used before (type-ahead)
+  // { kind: 'company' | 'outside', items: [{ party_name, item, description, payable, paid }] } — all lines saved together, or none
+  create(payload) { return apiFetch('/payments', { method: 'POST', body: JSON.stringify(payload) }); },
+  update(id, payload) { return apiFetch(`/payments/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(payload) }); },
+  remove(id, reason) { return apiFetch(`/payments/${encodeURIComponent(id)}`, { method: 'DELETE', body: JSON.stringify({ reason }) }); },
 };
 
 // ── Purchases (Supervisor adds · Owner + Admin see · Admin edits) ──────────────

@@ -120,6 +120,14 @@ async function serveTableReport(req, res, { format, filePrefix, category, load }
   }
 }
 
+// ── POST /api/reports/payments  (people who may see payments) — { format: 'xlsx' | 'pdf', kind: 'company' | 'outside' | 'all' } ──
+router.post('/payments', requirePerm('payments.view'), (req, res) => {
+  const body = req.body || {};
+  const kind = body.kind === undefined ? 'all' : body.kind;
+  if (!['company', 'outside', 'all'].includes(kind)) return res.status(400).json({ error: 'Choose Company Payments, Outside Rental Payments or the cumulative report.' });
+  return serveTableReport(req, res, { format: body.format, filePrefix: kind === 'all' ? 'payments-cumulative' : `payments-${kind}`, category: 'payment', load: () => reportData.paymentsReport(kind) });
+});
+
 // ── POST /api/reports/inventory  (Admin) — { type: 'vehicles' | 'sites' | 'operators', format } ──
 router.post('/inventory', requirePerm('inventory.manage'), (req, res) => {
   const { type, format } = req.body || {};

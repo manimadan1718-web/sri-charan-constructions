@@ -18,6 +18,7 @@ const { mileageOf, fmtMileage, fmtEntryMileage } = require('./mileage');
 const photos = require('./photos');
 const { fmtDateDMY } = require('./activity');
 const lp = require('./loadPoints');
+const progressUtil = require('./progress');
 
 const REPORT_TZ  = process.env.REPORT_TZ || 'Asia/Kolkata';
 const MAX_ROWS   = parseInt(process.env.REPORT_MAX_ROWS, 10)   || 2000;
@@ -83,7 +84,6 @@ function toRow(e, i) {
     dieselPhoto: photos.isReadingPath(e.diesel_photo) ? e.diesel_photo : null,
     mileage: fmtEntryMileage(e),                       // this entry's own diesel per hour (or km per litre); '' when it cannot be worked out
     loads: parseInt(e.loads, 10) || 0,
-    unload: lp.pointsText(e.load_points) || '',
     operator: e.operator || '',
     remarks: e.remarks || '',
     hadStartPhoto: !!e.start_photo,
@@ -94,6 +94,35 @@ function toRow(e, i) {
 
 /** The overall mileage of the rows in a report (used for the closing Total line). */
 const totalMileageText = rows => fmtMileage(mileageOf(rows.map(r => ({ vehicle_no: r.vehicle, diesel: r.diesel, working_hours: r.hours }))));
+
+/* ── Under the table: Loads breakup summary, then Site Working Progress ──────────────────────────────── */
+const round2 = n => Math.round(n * 100) / 100;
+const fmtMoney = n => Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/** One line per breakup line of every entry in the report (in the report's order). */
+function breakupLines(entries) {
+  return (entries || []).flatMap(e => lp.withAmounts(e.load_points || []).map(p => ({
+    date: fmtDateDMY(e.date), vehicle: e.vehicle_no || '', name: p.point_name, material: p.material, location: p.location, loads: p.loads, rate: p.rate, amount: p.amount,
+  })));
+}
+const breakupTotals = lines => ({ loads: lines.reduce((a, l) => a + l.loads, 0), amount: round2(lines.reduce((a, l) => a + l.amount, 0)) });
+
+/** The site working progress images of the entries in the report. [] when there are none (or before the one-time database update). */
+async function fetchProgress(entries) {
+  const byId = new Map((entries || []).map((e, i) => [String(e.id), { e, i }]));
+  const ids = [...byId.keys()];
+  let rows = [];
+  for (let i = 0; i < ids.length; i += 100) {
+    // eslint-disable-next-line no-await-in-loop
+    const r = await supabase.from('progress_photos').select('*').in('entry_id', ids.slice(i, i + 100));
+    if (r.error) { if (progressUtil.isMissingProgress(r.error)) return []; throw r.error; }
+    rows = rows.concat(r.data || []);
+  }
+  return rows
+    .filter(p => photos.isProgressPath(p.storage_path))
+    .sort((a, b) => (byId.get(String(a.entry_id)).i - byId.get(String(b.entry_id)).i) || String(a.created_at).localeCompare(String(b.created_at)) || String(a.id).localeCompare(String(b.id)))
+    .map(p => { const { e } = byId.get(String(p.entry_id)); return { key: p.storage_path, date: fmtDateDMY(e.date), site: e.site || '', vehicle: e.vehicle_no || '', caption: p.caption || '', by: p.uploaded_by_name || '' }; });
+}
 
 const PHOTO_KEYS = ['startPhoto', 'closePhoto', 'dieselPhoto'];
 const countPhotos = rows => rows.reduce((n, r) => n + PHOTO_KEYS.filter(k => r[k]).length, 0);
@@ -121,8 +150,8 @@ async function makeThumb(sharp, photoPath) {
 }
 
 /** Map of photo path → { buffer, width, height }. A photo that can't be read is simply left out. */
-async function loadThumbnails(rows) {
-  const wanted = [...new Set(rows.flatMap(r => PHOTO_KEYS.map(k => r[k])).filter(Boolean))];
+async function loadThumbnails(rows, extraPaths = []) {
+  const wanted = [...new Set([...rows.flatMap(r => PHOTO_KEYS.map(k => r[k])), ...extraPaths].filter(Boolean))];
   const out = new Map();
   if (!wanted.length) return out;
   const sharp = lib('sharp');
@@ -151,16 +180,29 @@ function csvEscape(val) {
   return s;
 }
 
-function buildCsv(rows) {
-  const headers = ['Date', 'Site', 'Category', 'Vehicle No.', 'Start', 'Start Photo', 'Close', 'Close Photo', 'Working Hrs', 'Diesel (L)', 'Diesel Photo', 'Mileage', 'Loads', 'Unload points', 'Operator', 'Remarks'];
+function buildCsv(rows, extras = {}) {
+  const headers = ['Date', 'Site', 'Category', 'Vehicle No.', 'Start', 'Start Photo', 'Close', 'Close Photo', 'Working Hrs', 'Diesel (L)', 'Diesel Photo', 'Mileage', 'Loads', 'Operator', 'Remarks'];
   const lines = rows.map(r => [
     r.date, r.site, r.category, r.vehicle, r.start, r.hadStartPhoto ? 'Yes' : 'No', r.close, r.hadClosePhoto ? 'Yes' : 'No',
-    r.hours, r.diesel, r.hadDieselPhoto ? 'Yes' : 'No', r.mileage, r.loads, r.unload, r.operator, r.remarks,
+    r.hours, r.diesel, r.hadDieselPhoto ? 'Yes' : 'No', r.mileage, r.loads, r.operator, r.remarks,
   ]);
   // The same closing line the Excel and PDF reports have: the totals under Vehicle No., Diesel and Loads.
   const hrsTotal = hoursFromMinutes(rows.reduce((a, r) => a + (r.hoursMin || 0), 0));
-  const total = rows.length ? [['', '', '', 'Total', '', '', '', '', rows.some(r => r.hoursMin !== null) ? hrsTotal : '', Number(rows.reduce((a, r) => a + r.diesel, 0).toFixed(2)), '', totalMileageText(rows), rows.reduce((a, r) => a + r.loads, 0), '', '', '']] : [];
-  const csv = [headers, ...lines, ...total].map(l => l.map(csvEscape).join(',')).join('\n');
+  const total = rows.length ? [['', '', '', 'Total', '', '', '', '', rows.some(r => r.hoursMin !== null) ? hrsTotal : '', Number(rows.reduce((a, r) => a + r.diesel, 0).toFixed(2)), '', totalMileageText(rows), rows.reduce((a, r) => a + r.loads, 0), '', '']] : [];
+  const more = [];
+  const bl = extras.breakup || [];
+  if (bl.length) {
+    const t = breakupTotals(bl);
+    more.push([], ['Loads breakup summary'], ['Sl No', 'Date', 'Vehicle No.', 'Name', 'Material', 'Location', 'Loads', 'Rate', 'Amount']);
+    bl.forEach((l, i) => more.push([i + 1, l.date, l.vehicle, l.name, l.material, l.location, l.loads, l.rate, l.amount]));
+    more.push(['', '', '', '', '', 'Total', t.loads, '', t.amount]);
+  }
+  const pg = extras.progress || [];
+  if (pg.length) {                                   // (a CSV cannot hold pictures — they are in the Excel and PDF reports)
+    more.push([], ['Site working progress images (the pictures are in the Excel and PDF reports)'], ['Sl No', 'Date', 'Site', 'Vehicle No.', 'Caption', 'Added by']);
+    pg.forEach((x, i) => more.push([i + 1, x.date, x.site, x.vehicle, x.caption, x.by]));
+  }
+  const csv = [headers, ...lines, ...total, ...more].map(l => l.map(csvEscape).join(',')).join('\n');
   return Buffer.from('\uFEFF' + csv, 'utf8');   // BOM so Excel reads accents/₹ correctly
 }
 
@@ -180,7 +222,6 @@ const XL_COLS = [
   { key: 'dieselPhoto', header: 'Diesel Photo', width: 23, photo: true },
   { key: 'mileage',    header: 'Mileage',      width: 13 },
   { key: 'loads',      header: 'Loads',        width: 8 },
-  { key: 'unload',     header: 'Unload points', width: 30 },
   { key: 'operator',   header: 'Operator',     width: 16 },
   { key: 'remarks',    header: 'Remarks',      width: 30 },
 ];
@@ -190,7 +231,7 @@ const PHOTO_ROW_PT = (IMG_BOX_H + 14) * 0.75; // a row that holds a photo is a l
 const EMU = 9525;                             // English Metric Units per pixel
 
 // Excel does not resize a row by itself when its height is set, so estimate how many lines the wrapped columns need.
-const WRAP_WIDTHS = { site: 20, remarks: 30, unload: 30 };
+const WRAP_WIDTHS = { site: 20, remarks: 30 };
 const wrappedLines = (text, widthChars) =>
   !text ? 1 : String(text).split(/\r?\n/).reduce((n, line) => n + Math.max(1, Math.ceil(line.length / (widthChars * 1.08))), 0);
 
@@ -198,7 +239,7 @@ const argb = hex => ({ argb: 'FF' + hex });
 const thin = { style: 'thin', color: argb(COLORS.line) };
 const BORDER = { top: thin, left: thin, bottom: thin, right: thin };
 
-async function buildXlsx(rows, meta, thumbs) {
+async function buildXlsx(rows, meta, thumbs, extras = {}) {
   const ExcelJS = lib('exceljs');
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Sri Charan Constructions';
@@ -308,6 +349,73 @@ async function buildXlsx(rows, meta, thumbs) {
     totalRow.height = 24;
   }
 
+  // ── Under the table: Loads breakup summary, then Site Working Progress ──
+  let r0 = firstData + rows.length + 2;
+  const merged = (row, c1, c2, value, o = {}) => {
+    if (c2 > c1) ws.mergeCells(row, c1, row, c2);
+    for (let c = c1; c <= c2; c++) { const cell = ws.getCell(row, c); cell.border = BORDER; if (o.fill) cell.fill = o.fill; }
+    const cell = ws.getCell(row, c1);
+    cell.value = value;
+    cell.font = { name: 'Calibri', size: o.size || 10.5, bold: !!o.bold, color: argb(o.color || COLORS.ink) };
+    cell.alignment = { vertical: o.top ? 'top' : 'middle', horizontal: o.right ? 'right' : 'left', wrapText: !!o.wrap, indent: o.right ? 1 : 1 };
+    if (o.numFmt) cell.numFmt = o.numFmt;
+  };
+  const title = (row, text) => {
+    ws.mergeCells(row, 1, row, lastCol);
+    const c = ws.getCell(row, 1);
+    c.value = text; c.font = { name: 'Calibri', size: 12, bold: true, color: argb(COLORS.orange) };
+    c.border = { bottom: { style: 'medium', color: argb(COLORS.orange) } };
+    ws.getRow(row).height = 22;
+  };
+  const headFill = { type: 'pattern', pattern: 'solid', fgColor: argb(COLORS.ink) };
+  const bl = extras.breakup || [];
+  if (bl.length) {
+    title(r0, 'LOADS BREAKUP SUMMARY'); r0 += 1;
+    const spans = [[1, 1, 'Sl No'], [2, 2, 'Date'], [3, 3, 'Vehicle No.'], [4, 5, 'Name'], [6, 7, 'Material'], [8, 9, 'Location'], [10, 10, 'Loads'], [11, 11, 'Rate (₹)'], [12, 12, 'Amount (₹)']];
+    spans.forEach(([a, b, t]) => merged(r0, a, b, t, { bold: true, color: 'FFFFFF', fill: headFill, right: ['Loads', 'Rate (₹)', 'Amount (₹)', 'Sl No'].includes(t) }));
+    ws.getRow(r0).height = 22; r0 += 1;
+    bl.forEach((l, i) => {
+      const f = i % 2 === 1 ? { type: 'pattern', pattern: 'solid', fgColor: argb(COLORS.paper) } : undefined;
+      merged(r0, 1, 1, i + 1, { right: true, fill: f }); merged(r0, 2, 2, l.date, { fill: f }); merged(r0, 3, 3, l.vehicle, { bold: true, fill: f });
+      merged(r0, 4, 5, l.name, { fill: f, wrap: true }); merged(r0, 6, 7, l.material, { fill: f, wrap: true }); merged(r0, 8, 9, l.location, { fill: f, wrap: true });
+      merged(r0, 10, 10, l.loads, { right: true, fill: f }); merged(r0, 11, 11, l.rate, { right: true, fill: f, numFmt: '#,##0.00' }); merged(r0, 12, 12, l.amount, { right: true, fill: f, numFmt: '#,##0.00' });
+      ws.getRow(r0).height = Math.max(20, wrappedLines(l.name, 27) * 14 + 6, wrappedLines(l.material, 35) * 14 + 6, wrappedLines(l.location, 35) * 14 + 6);
+      r0 += 1;
+    });
+    const t = breakupTotals(bl), tf = { type: 'pattern', pattern: 'solid', fgColor: argb('FFF3E6') };
+    [[1, 9, 'Total'], [10, 10, t.loads], [11, 11, ''], [12, 12, t.amount]].forEach(([a, b, v]) => merged(r0, a, b, v, { bold: true, fill: tf, right: a >= 10, numFmt: a === 12 ? '#,##0.00' : undefined }));
+    ws.getRow(r0).height = 24; r0 += 2;
+  }
+  const pgList = extras.progress || [];
+  if (pgList.length) {
+    title(r0, `SITE WORKING PROGRESS (${pgList.length} image${pgList.length === 1 ? '' : 's'})`); r0 += 1;
+    [[1, 1, 'Sl No'], [2, 2, 'Date'], [3, 3, 'Site'], [4, 6, 'Vehicle / added by'], [7, 7, 'Picture'], [8, lastCol, 'Caption']].forEach(([a, b, t]) => merged(r0, a, b, t, { bold: true, color: 'FFFFFF', fill: headFill, right: t === 'Sl No' }));
+    ws.getRow(r0).height = 22; r0 += 1;
+    pgList.forEach((x, i) => {
+      const f = i % 2 === 1 ? { type: 'pattern', pattern: 'solid', fgColor: argb(COLORS.paper) } : undefined;
+      merged(r0, 1, 1, i + 1, { right: true, fill: f, top: true }); merged(r0, 2, 2, x.date, { fill: f, top: true }); merged(r0, 3, 3, x.site || '(no site)', { fill: f, wrap: true, top: true });
+      merged(r0, 4, 6, `${x.vehicle}${x.by ? `\nAdded by ${x.by}` : ''}`, { fill: f, wrap: true, top: true }); merged(r0, 8, lastCol, x.caption, { fill: f, wrap: true, top: true });
+      const cell7 = ws.getCell(r0, 7); cell7.border = BORDER; if (f) cell7.fill = f;
+      ws.getRow(r0).height = PHOTO_ROW_PT;
+      const t = thumbs.get(x.key);
+      if (t) {
+        const scale = Math.min(IMG_BOX_W / t.width, IMG_BOX_H / t.height, 1);
+        const w = Math.max(1, Math.round(t.width * scale)), h = Math.max(1, Math.round(t.height * scale));
+        const cellPx = XL_COLS[6].width * 7 + 5, rowPx = PHOTO_ROW_PT / 0.75;
+        const offX = Math.max(0, (cellPx - w) / 2), offY = Math.max(0, (rowPx - h) / 2);
+        const id = wb.addImage({ buffer: t.buffer, extension: 'jpeg' });
+        ws.addImage(id, {
+          tl: { nativeCol: 6, nativeColOff: Math.round(offX * EMU), nativeRow: r0 - 1, nativeRowOff: Math.round(offY * EMU) },
+          br: { nativeCol: 6, nativeColOff: Math.round((offX + w) * EMU), nativeRow: r0 - 1, nativeRowOff: Math.round((offY + h) * EMU) },
+          editAs: 'twoCell',
+        });
+      } else {
+        cell7.value = '(photo unavailable)'; cell7.font = { name: 'Calibri', size: 9, italic: true, color: argb('B4372A') }; cell7.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+      }
+      r0 += 1;
+    });
+  }
+
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
@@ -321,7 +429,7 @@ const pdfText = s => String(s == null ? '' : s)
 const PDF_COLS = [
   { key: 'n',          header: '#',           w: 18 },
   { key: 'date',       header: 'Date',        w: 46 },
-  { key: 'site',       header: 'Site',        w: 48 },
+  { key: 'site',       header: 'Site',        w: 56 },
   { key: 'category',   header: 'Cat.',        w: 34 },
   { key: 'vehicle',    header: 'Vehicle No.', w: 62, bold: true },
   { key: 'start',      header: 'Start',       w: 40 },
@@ -333,12 +441,11 @@ const PDF_COLS = [
   { key: 'dieselPhoto', header: 'Diesel photo', w: 70, photo: true },
   { key: 'mileage',    header: 'Mileage',     w: 42 },
   { key: 'loads',      header: 'Loads',       w: 28, right: true },
-  { key: 'unload',     header: 'Unload points', w: 52 },
-  { key: 'operator',   header: 'Operator',    w: 44 },
-  { key: 'remarks',    header: 'Remarks',     w: 37 },
+  { key: 'operator',   header: 'Operator',    w: 52 },
+  { key: 'remarks',    header: 'Remarks',     w: 77 },
 ];
 
-async function buildPdf(rows, meta, thumbs) {
+async function buildPdf(rows, meta, thumbs, extras = {}) {
   const PDFDocument = lib('pdfkit');
   const M = 28;
   const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: M, bufferPages: true, info: { Title: 'Site Activity Log — Sri Charan Constructions', Author: 'Sri Charan Constructions' } });
@@ -428,6 +535,70 @@ async function buildPdf(rows, meta, thumbs) {
     doc.text(String(rows.reduce((a, r) => a + r.loads, 0)), x0[ci('loads')] + PAD, y + 5.5, { width: PDF_COLS[ci('loads')].w - PAD * 2, align: 'right', lineBreak: false });
   }
 
+  // ── Under the table: Loads breakup summary, then Site Working Progress ──
+  const sectionTitle = text => {
+    if (y + 46 > bottom) { doc.addPage(); y = M; }
+    y += 16;
+    doc.font('Helvetica-Bold').fontSize(9.5).fillColor(hex(COLORS.orange)).text(pdfText(text), M, y, { lineBreak: false });
+    y += 14;
+    doc.moveTo(M, y).lineTo(M + usableW, y).lineWidth(1).strokeColor(hex(COLORS.orange)).stroke();
+    y += 6;
+  };
+  const bl = extras.breakup || [];
+  if (bl.length) {
+    const fixed = [['Sl No', 28, 'left'], ['Date', 56, 'left'], ['Vehicle No.', 84, 'left'], ['Name', 150, 'left'], ['Material', 110, 'left'], ['Location', 0, 'left'], ['Loads', 46, 'right'], ['Rate (Rs)', 62, 'right'], ['Amount (Rs)', 78, 'right']];
+    fixed[5][1] = usableW - fixed.reduce((a, c) => a + c[1], 0);
+    const bx = fixed.reduce((acc, c, i) => { acc.push(i ? acc[i - 1] + fixed[i - 1][1] : M); return acc; }, []);
+    const bHead = () => {
+      doc.rect(M, y, usableW, 16).fill(hex(COLORS.ink));
+      doc.font('Helvetica-Bold').fontSize(6.8).fillColor('#FFFFFF');
+      fixed.forEach((c, i) => doc.text(c[0], bx[i] + PAD, y + 5.5, { width: c[1] - PAD * 2, align: c[2], lineBreak: false }));
+      y += 16;
+    };
+    sectionTitle(`LOADS BREAKUP SUMMARY (${bl.length} line${bl.length === 1 ? '' : 's'})`); bHead();
+    bl.forEach((l, i) => {
+      if (y + 15 > bottom) { doc.addPage(); y = M; sectionTitle('LOADS BREAKUP SUMMARY (continued)'); bHead(); }
+      if (i % 2 === 1) doc.rect(M, y, usableW, 15).fill(hex(COLORS.paper));
+      const vals = [String(i + 1), l.date, l.vehicle, l.name, l.material, l.location, String(l.loads), fmtMoney(l.rate), fmtMoney(l.amount)];
+      doc.font('Helvetica').fontSize(FONT).fillColor(hex(COLORS.ink));
+      vals.forEach((v, k) => doc.font(k === 2 ? 'Helvetica-Bold' : 'Helvetica').text(pdfText(v), bx[k] + PAD, y + 4, { width: fixed[k][1] - PAD * 2, align: fixed[k][2], lineBreak: false, ellipsis: true }));
+      doc.moveTo(M, y + 15).lineTo(M + usableW, y + 15).lineWidth(0.4).strokeColor(hex(COLORS.line)).stroke();
+      y += 15;
+    });
+    if (y + 18 > bottom) { doc.addPage(); y = M; sectionTitle('LOADS BREAKUP SUMMARY (continued)'); bHead(); }
+    const bt = breakupTotals(bl);
+    doc.rect(M, y, usableW, 18).fill('#FFF3E6');
+    doc.moveTo(M, y).lineTo(M + usableW, y).lineWidth(1.2).strokeColor(hex(COLORS.orange)).stroke();
+    doc.font('Helvetica-Bold').fontSize(8).fillColor(hex(COLORS.ink));
+    doc.text('Total', bx[5] + PAD, y + 5.5, { width: fixed[5][1] - PAD * 2, align: 'right', lineBreak: false });
+    doc.text(String(bt.loads), bx[6] + PAD, y + 5.5, { width: fixed[6][1] - PAD * 2, align: 'right', lineBreak: false });
+    doc.text(fmtMoney(bt.amount), bx[8] + PAD, y + 5.5, { width: fixed[8][1] - PAD * 2, align: 'right', lineBreak: false });
+    y += 18;
+  }
+  const pgList = extras.progress || [];
+  if (pgList.length) {
+    sectionTitle(`SITE WORKING PROGRESS (${pgList.length} image${pgList.length === 1 ? '' : 's'})`);
+    const cols = 4, gap = 10, cellW = (usableW - gap * (cols - 1)) / cols, imgH = 118, capH = 36, cellH = imgH + capH + 8;
+    let c = 0;
+    pgList.forEach(x => {
+      if (c === 0 && y + cellH > bottom) { doc.addPage(); y = M; sectionTitle('SITE WORKING PROGRESS (continued)'); }
+      const cx = M + c * (cellW + gap);
+      doc.rect(cx, y, cellW, imgH).lineWidth(0.5).strokeColor(hex(COLORS.line)).stroke();
+      const t = thumbs.get(x.key);
+      if (t) {
+        const sc = Math.min((cellW - 2) / t.width, (imgH - 2) / t.height, 1), w = t.width * sc, h = t.height * sc;
+        doc.image(t.buffer, cx + (cellW - w) / 2, y + (imgH - h) / 2, { width: w, height: h });
+      } else {
+        doc.font('Helvetica').fontSize(FONT).fillColor('#B4372A').text('(photo unavailable)', cx, y + imgH / 2 - 4, { width: cellW, align: 'center', lineBreak: false });
+      }
+      doc.font('Helvetica-Bold').fontSize(7).fillColor(hex(COLORS.ink)).text(pdfText(`${x.date}  ·  ${x.site || '(no site)'}`), cx, y + imgH + 3, { width: cellW, height: 9, lineBreak: false, ellipsis: true });
+      doc.font('Helvetica').fontSize(6.8).fillColor(hex(COLORS.steel)).text(pdfText(`${x.vehicle}${x.by ? `  ·  ${x.by}` : ''}`), cx, y + imgH + 12, { width: cellW, height: 9, lineBreak: false, ellipsis: true });
+      if (x.caption) doc.font('Helvetica').fontSize(6.8).fillColor(hex(COLORS.ink)).text(pdfText(x.caption), cx, y + imgH + 21, { width: cellW, height: 16, ellipsis: true });
+      c += 1; if (c === cols) { c = 0; y += cellH; }
+    });
+    if (c !== 0) y += cellH;
+  }
+
   // Footer with page numbers (written last, when the page count is known)
   const range = doc.bufferedPageRange();
   for (let i = 0; i < range.count; i++) {
@@ -445,6 +616,6 @@ async function buildPdf(rows, meta, thumbs) {
 module.exports = {
   lib, COLORS, REPORT_TZ, nowStamp, zoneName,
   MAX_ROWS, MAX_PHOTOS, todayStamp, cleanText, userError,
-  fetchEntriesByIds, toRow, countPhotos, loadThumbnails,
+  fetchEntriesByIds, toRow, countPhotos, loadThumbnails, breakupLines, breakupTotals, fetchProgress,
   buildCsv, buildXlsx, buildPdf, csvEscape, photoSummary,
 };

@@ -1405,3 +1405,71 @@ body:not(.can-permissions-manage) .perm-permissions-manage { display: none !impo
 .records-note[hidden] { display: none; }
 #u-role[aria-invalid="true"], #f-site[aria-invalid="true"] { border-color: var(--danger, #C0392B); box-shadow: 0 0 0 3px rgba(192,57,43,.15); }
 
+/* ── Loads breakup as a table: Sl No · Name · Material · Location · Loads · Rate · Amount ───────── */
+.pg-section { margin-top: 22px; padding: 16px 18px 18px; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; }
+.lp-table { margin: 4px 0 12px; border: 1px solid var(--line); border-radius: 12px; background: #fff; overflow: hidden; }
+.lp-table .lp-thead, .lp-table .lp-row, .lp-table .lp-foot {
+  display: grid; grid-template-columns: 52px minmax(120px, 1.5fr) minmax(100px, 1.1fr) minmax(100px, 1.2fr) 84px 100px 116px 40px; gap: 8px; align-items: center; padding: 8px 12px;
+}
+.lp-thead { background: #F8FAFC; border-bottom: 1px solid var(--line); font-size: 11.5px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; color: var(--steel); }
+.lp-table .lp-rows { display: block; margin: 0; }
+.lp-table .lp-row { border-bottom: 1px solid var(--line); }
+.lp-table .lp-row:last-child { border-bottom: 0; }
+.lp-sl { text-align: center; font-weight: 700; color: var(--steel); }
+.lp-f { display: block; margin: 0; min-width: 0; }
+.lp-fl { display: none; font-size: 11.5px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; color: var(--steel); margin-bottom: 4px; }
+.lp-table .lp-row input { width: 100%; min-width: 0; background: #fff; }
+.lp-amount { display: block; text-align: right; padding-right: 8px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.lp-foot { background: #FFF3E6; border-top: 1.5px solid var(--hazard); font-weight: 800; }
+.lp-foot[hidden] { display: none; }
+.lp-foot-label { grid-column: 1 / 5; text-align: right; padding-right: 6px; }
+.lp-foot-loads { grid-column: 5; padding-left: 12px; }
+.lp-foot-amount { grid-column: 7; text-align: right; padding-right: 8px; font-variant-numeric: tabular-nums; }
+@media (max-width: 960px), (pointer: coarse) {
+  .lp-table .lp-thead { display: none; }
+  .lp-table .lp-row { grid-template-columns: 1fr 1fr; padding: 14px 12px 12px; position: relative; row-gap: 10px; }
+  .lp-sl { grid-column: 1 / -1; text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; padding-right: 48px; }
+  .lp-sl::before { content: 'Line '; }
+  .lp-fl { display: block; }
+  .lp-f-name { grid-column: 1 / -1; }
+  .lp-f-amount { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; background: #F8FAFC; border-radius: 10px; padding: 8px 12px; }
+  .lp-f-amount .lp-fl { margin: 0; }
+  .lp-table .lp-del { position: absolute; top: 4px; right: 4px; width: 44px; height: 44px; }
+  .lp-table .lp-foot { grid-template-columns: 1fr auto; }
+  .lp-foot-label { grid-column: 1; text-align: left; } .lp-foot-loads, .lp-foot-amount { grid-column: 2; padding: 0; text-align: right; }
+  .lp-foot-amount::before { content: '₹ '; }
+  .lp-foot { row-gap: 4px; } .lp-foot-loads::before { content: 'Loads: '; font-weight: 600; color: var(--steel); }
+}
+
+/* ── Site Working Progress Images: adding (Data Entry) ───────────────────────────────────────── */
+.pg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin: 6px 0 12px; }
+.pg-grid:empty { display: none; }
+.pg-item { display: flex; flex-direction: column; gap: 6px; }
+.pg-thumb { position: relative; aspect-ratio: 4 / 3; border-radius: 10px; overflow: hidden; background: #E9EDF3; border: 1px solid var(--line); }
+.pg-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pg-item.is-busy .pg-thumb img { opacity: .55; }
+.pg-x { position: absolute; top: 4px; right: 4px; width: 36px; height: 36px; border: 0; border-radius: 50%; background: rgba(27,36,51,.78); color: #fff; font-size: 15px; cursor: pointer; }
+.pg-x:disabled { opacity: .5; cursor: default; }
+.pg-cap { width: 100%; font-size: 13px; padding: 8px 10px; }
+.pg-st { font-size: 12px; color: var(--steel); }
+.pg-st.is-bad { color: var(--brick); font-weight: 700; }
+
+/* ── Progress tab (Owner + Admin) ──────────────────────────────────────────────────────────────── */
+.pgv-filters { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 6px; }
+.pgv-day { font-size: 16px; margin: 22px 0 10px; }
+.pgv-day span { font-weight: 500; color: var(--steel); }
+.pgv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 14px; }
+.pgv-card { margin: 0; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #fff; }
+.pgv-img { display: block; width: 100%; aspect-ratio: 4 / 3; padding: 0; border: 0; background: #EEF1F6; cursor: zoom-in; }
+.pgv-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pgv-missing { display: grid; place-items: center; height: 100%; color: var(--steel); font-size: 13px; }
+.pgv-card figcaption { padding: 10px 12px; font-size: 13px; line-height: 1.45; flex: 1; overflow-wrap: anywhere; }
+.pgv-del { margin: 0 12px 12px; }
+@media (max-width: 720px) { .pgv-filters { grid-template-columns: 1fr; } .pgv-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } }
+@media (max-width: 960px), (pointer: coarse) { .pgv-del, .pg-cap, #pg-add { min-height: 44px; } .pg-x { width: 44px; height: 44px; } }
+
+/* what a person may not use is hidden */
+body:not(.can-progress-add) .perm-progress-add { display: none !important; }
+body:not(.can-progress-view) .perm-progress-view { display: none !important; }
+body:not(.can-progress-delete) .perm-progress-delete { display: none !important; }
+

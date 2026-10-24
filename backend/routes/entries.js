@@ -8,6 +8,7 @@ const {
 const photos = require('../utils/photos');
 const { serverError } = require('../utils/http');
 const lp = require('../utils/loadPoints');
+const progress = require('../utils/progress');
 const { fetchAll } = require('../utils/db');
 const { summaryFor } = require('../utils/summary');
 
@@ -122,6 +123,12 @@ function sendSaveError(res, err) {
   if (lp.isMissingLoadPoints(err)) {
     return res.status(503).json({ error: lp.LOAD_POINTS_SETUP_MESSAGE, setup_required: true });
   }
+  if (progress.isMissingProgress(err)) {
+    return res.status(503).json({ error: progress.PROGRESS_SETUP_MESSAGE, setup_required: true });
+  }
+  if (err && err.code === 'LP_DETAILS_SETUP') {
+    return res.status(503).json({ error: lp.LOAD_POINT_DETAILS_SETUP_MESSAGE, setup_required: true });
+  }
   return serverError(res, err, 'entry save');
 }
 
@@ -129,6 +136,10 @@ function sendSaveError(res, err) {
 async function withPoints(build) {
   let r = await build('*, load_points(*)');
   if (r.error && lp.isMissingLoadPoints(r.error)) r = await build('*');
+  if (!r.error && r.data) {                       // lines in the order they were typed, each with its Amount (Loads x Rate)
+    const fix = e => (e && Array.isArray(e.load_points) ? { ...e, load_points: lp.withAmounts(e.load_points) } : e);
+    r = { ...r, data: Array.isArray(r.data) ? r.data.map(fix) : fix(r.data) };
+  }
   return r;
 }
 
@@ -264,6 +275,16 @@ router.post('/', requirePerm('entry.add'), async (req, res) => {
       if (missing) return res.status(400).json({ error: missing });
     }
 
+    // Site Working Progress images (optional; only people who may add them).
+    const prog = progress.parseProgress(req.body && req.body.progress_photos);
+    if (prog.error) return res.status(400).json({ error: prog.error });
+    if (prog.items.length) {
+      if (!hasPerm(req, 'progress.add')) return res.status(403).json({ error: 'You do not have permission to add site working progress images.' });
+      if (prog.items.some(x => toPromote.some(t => t.from === x.from))) return res.status(400).json({ error: 'The same photo cannot be used twice.' });
+      const missingProgress = await checkPhotosExist(prog.items.map(x => x.from));
+      if (missingProgress) return res.status(400).json({ error: missingProgress.replace('An attached photo', 'A progress image') });
+    }
+
     const { data: entry, error: entryErr } = await supabase
       .from('entries')
       .insert(parsed.fields)
@@ -275,25 +296,37 @@ router.post('/', requirePerm('entry.add'), async (req, res) => {
 
     // Loads breakup. (If this fails, the entry is removed again below, so nothing is half-saved.)
     if (parsed.points && parsed.points.length) {
-      const { error: ptErr } = await supabase.from('load_points').insert(parsed.points.map(p => ({ entry_id: entry.id, ...p })));
-      if (ptErr) throw ptErr;
+      await lp.savePoints(supabase, entry.id, parsed.points);
+    }
+
+    // Progress images: remember which entry each belongs to (their files are filed below, together with the reading photos).
+    if (prog.items.length) {
+      const { error: pgErr } = await supabase.from('progress_photos').insert(prog.items.map(x => ({
+        entry_id: entry.id, storage_path: x.to, caption: x.caption, uploaded_by_id: req.user.id ? String(req.user.id) : null, uploaded_by_name: req.user.name || null,
+      })));
+      if (pgErr) throw pgErr;
     }
 
     // Last step: file the photos under readings/. If this fails the entry is removed again (below)
     // and the photos are put back, so the person can just press Save again.
-    if (toPromote.length) await photos.promoteAll(toPromote);
+    const moves = [...toPromote, ...prog.items.map(x => ({ from: x.from, to: x.to }))];
+    if (moves.length) await photos.promoteAll(moves);
 
     await logActivity(req, {
       category: 'entry', action: 'entry_created', entityType: 'entry', entityId: entry.id,
       entityLabel: entryLabel(parsed.fields),
-      changes: entrySnapshot(parsed.fields, 'to', parsed.points),
+      changes: entrySnapshot(parsed.fields, 'to', parsed.points, prog.items.length),
     });
 
-    res.status(201).json({ success: true, data: { ...entry, load_points: parsed.points || [] } });
+    res.status(201).json({ success: true, data: { ...entry, load_points: lp.withAmounts(parsed.points || []), progress_count: prog.items.length } });
   } catch (err) {
     console.error('POST /entries:', err.message);
     // Don't leave a half-saved entry (saved, but its photos could not be filed) behind.
-    if (createdId) await supabase.from('entries').delete().eq('id', createdId);
+    if (createdId) {
+      await supabase.from('progress_photos').delete().eq('entry_id', createdId);      // (the database also cascades; this does not depend on it)
+      await supabase.from('load_points').delete().eq('entry_id', createdId);
+      await supabase.from('entries').delete().eq('id', createdId);
+    }
     sendSaveError(res, err);
   }
 });
@@ -378,10 +411,7 @@ router.put('/:id', requirePerm('records.edit'), async (req, res) => {
       const { error: delErr } = await supabase.from('load_points').delete().eq('entry_id', id);
       if (delErr) throw delErr;
       pointsReplaced = true;
-      if (parsed.points.length) {
-        const { error: insErr } = await supabase.from('load_points').insert(parsed.points.map(p => ({ entry_id: id, ...p })));
-        if (insErr) throw insErr;
-      }
+      if (parsed.points.length) await lp.savePoints(supabase, id, parsed.points);
     }
 
     // Last step: file new photos under readings/. If it fails, the catch block below restores the old entry.
@@ -392,7 +422,7 @@ router.put('/:id', requirePerm('records.edit'), async (req, res) => {
       entityLabel: entryLabel(parsed.fields), reason, changes,
     });
 
-    res.json({ success: true, data: { ...entry, load_points: finalPoints } });
+    res.json({ success: true, data: { ...entry, load_points: lp.withAmounts(finalPoints) } });
   } catch (err) {
     console.error('PUT /entries/:id:', err.message);
     // Best-effort rollback so a failed edit (for example photos that could not be filed) leaves the entry as it was.
@@ -404,7 +434,7 @@ router.put('/:id', requirePerm('records.edit'), async (req, res) => {
         }
         if (pointsReplaced) {
           await supabase.from('load_points').delete().eq('entry_id', id);
-          if (oldPoints.length) await supabase.from('load_points').insert(oldPoints.map(p => ({ entry_id: id, point_name: p.point_name, loads: p.loads })));
+          if (oldPoints.length) await lp.savePoints(supabase, id, lp.sortPoints(oldPoints));       // (put back exactly as they were, in the same order)
         }
       } catch (rbErr) {
         console.error('PUT /entries/:id rollback failed:', rbErr.message);

@@ -45,20 +45,22 @@ router.post('/entries', requirePerm('records.export'), async (req, res) => {
     const entries = await reports.fetchEntriesByIds(ids);
     if (!entries.length) return res.status(404).json({ error: 'Those records could not be found. Please reload the page and try again.' });
     const rows = entries.map(reports.toRow);
+    // Under the table: the loads breakup summary, and the site working progress images — the pictures only for people who may see them.
+    const extras = { breakup: reports.breakupLines(entries), progress: hasPerm(req, 'progress.view') ? await reports.fetchProgress(entries) : [] };
 
     let buffer;
     let photoNote = '';
     if (body.format === 'csv') {
-      buffer = reports.buildCsv(rows);
+      buffer = reports.buildCsv(rows, extras);
     } else {
-      const attached = reports.countPhotos(rows);
+      const attached = reports.countPhotos(rows) + extras.progress.length;
       if (attached > reports.MAX_PHOTOS) {
         return res.status(413).json({ error: `This report has ${attached} photos — too many for one file. Narrow the filters (for example to one month) or choose CSV.` });
       }
-      const thumbs = await reports.loadThumbnails(rows);
+      const thumbs = await reports.loadThumbnails(rows, extras.progress.map(x => x.key));
       const meta = { user: reports.cleanText(req.user.name, 60) || 'user', filtersText: reports.cleanText(body.filtersText, 300) };
-      buffer = body.format === 'xlsx' ? await reports.buildXlsx(rows, meta, thumbs) : await reports.buildPdf(rows, meta, thumbs);
-      if (attached) photoNote = reports.photoSummary(rows, thumbs);     // what the report really contains
+      buffer = body.format === 'xlsx' ? await reports.buildXlsx(rows, meta, thumbs, extras) : await reports.buildPdf(rows, meta, thumbs, extras);
+      if (attached) photoNote = reports.photoSummary(rows, thumbs) + (extras.progress.length ? ` + ${extras.progress.length} progress image${extras.progress.length === 1 ? '' : 's'}` : '');     // what the report really contains
     }
 
     // Exporting business data is recorded in the Activity Logs, like any other action.

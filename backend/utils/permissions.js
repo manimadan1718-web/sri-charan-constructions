@@ -13,11 +13,14 @@
 // key, label, group, what it allows, the permission it depends on, and whether only Admins may ever hold it
 const CATALOG = [
   { key: 'entry.add',          group: 'Data Entry',    label: 'Add site entries',                 desc: 'Use the Data Entry tab to record each day’s vehicle and machine activity, with photos.' },
+  { key: 'progress.add',       group: 'Data Entry',    label: 'Add site working progress images', desc: 'Attach pictures of the work in progress to an entry in the Data Entry tab. They cannot see the pictures afterwards.', requires: 'entry.add' },
 
   { key: 'records.view',       group: 'Records',       label: 'See Records',                      desc: 'Open the Records tab: every entry, with filters and photos.' },
   { key: 'records.export',     group: 'Records',       label: 'Export and print Records',         desc: 'Download Records as Excel, PDF or CSV, and print them.', requires: 'records.view' },
   { key: 'records.edit',       group: 'Records',       label: 'Edit entries',                     desc: 'Change an entry (a written reason is always needed).', requires: 'records.view' },
   { key: 'records.delete',     group: 'Records',       label: 'Delete entries',                   desc: 'Delete an entry (a written reason is always needed).', requires: 'records.view' },
+  { key: 'progress.view',      group: 'Site Progress', label: 'See site working progress images',  desc: 'Open the Progress tab to see the pictures, and include them in reports.' },
+  { key: 'progress.delete',    group: 'Site Progress', label: 'Delete site working progress images', desc: 'Remove a progress picture from view (a written reason is always needed).', requires: 'progress.view' },
 
   { key: 'purchases.add',      group: 'Purchases',     label: 'Add purchases',                    desc: 'Record material that arrives at a site, with weights and an attached slip. Sees the purchases they saved themselves.' },
   { key: 'purchases.view',     group: 'Purchases',     label: 'See all purchases',                desc: 'Open the full purchases list, with totals, filters and the attached files.' },
@@ -51,8 +54,8 @@ const GROUPS = [...new Set(CATALOG.map(c => c.group))];
 // What each role can do when nothing has been customised — exactly how the app behaved before permissions existed.
 const ROLE_DEFAULTS = {
   admin: [...KEYS],
-  owner: ['records.view', 'records.export', 'purchases.view', 'summary.view', 'documents.view', 'documents.print', 'documents.upload', 'payments.view', 'logs.view'],
-  supervisor: ['entry.add', 'purchases.add', 'payments.add'],
+  owner: ['records.view', 'records.export', 'progress.view', 'purchases.view', 'summary.view', 'documents.view', 'documents.print', 'documents.upload', 'payments.view', 'logs.view'],
+  supervisor: ['entry.add', 'progress.add', 'purchases.add', 'payments.add'],
 };
 const ROLES = Object.keys(ROLE_DEFAULTS);
 

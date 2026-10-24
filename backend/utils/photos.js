@@ -33,9 +33,12 @@ const PHOTO_COLUMNS = ['start_photo', 'close_photo', 'diesel_photo'];
 const TAIL = '\\/\\d{4}\\/\\d{2}\\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.(?:jpg|png|webp)$';
 const PENDING_RE  = new RegExp('^pending' + TAIL);
 const READINGS_RE = new RegExp('^readings' + TAIL);
+const PROGRESS_RE = new RegExp('^progress' + TAIL);          // Site Working Progress pictures (kept like readings: never deleted by the app)
 
 const isPendingPath = p => typeof p === 'string' && p.length < 120 && PENDING_RE.test(p);
 const isReadingPath = p => typeof p === 'string' && p.length < 120 && READINGS_RE.test(p);
+const isProgressPath = p => typeof p === 'string' && p.length < 120 && PROGRESS_RE.test(p);
+const toProgressPath = p => p.replace(/^pending\//, 'progress/');
 const toFinalPath   = p => p.replace(/^pending\//, 'readings/');
 const toPendingPath = p => p.replace(/^readings\//, 'pending/');
 
@@ -91,7 +94,7 @@ async function uploadPhoto(buffer, kind) {
 }
 
 async function photoExists(path) {
-  if (!isPendingPath(path) && !isReadingPath(path)) return false;
+  if (!isPendingPath(path) && !isReadingPath(path) && !isProgressPath(path)) return false;
   const cut = path.lastIndexOf('/');
   const dir = path.slice(0, cut);
   const name = path.slice(cut + 1);
@@ -146,7 +149,7 @@ const PHOTO_SETUP_MESSAGE =
 
 module.exports = {
   BUCKET, MAX_BYTES, MIME_TYPES, PHOTO_COLUMNS,
-  isPendingPath, isReadingPath, toFinalPath, toPendingPath,
+  isPendingPath, isReadingPath, isProgressPath, toFinalPath, toPendingPath, toProgressPath,
   detectImage, ensureBucket, uploadPhoto, photoExists, signedUrl,
   promoteAll, discardPending, isMissingPhotoColumn, PHOTO_SETUP_MESSAGE,
 };

@@ -245,6 +245,24 @@ const Uploads = {
   discard(path) {
     return apiFetch('/uploads/reading', { method: 'DELETE', body: JSON.stringify({ path }) });
   },
+  // Site Working Progress pictures: the same, for people who may add them.
+  progress(blob) {
+    return apiFetch('/uploads/progress', { method: 'POST', headers: { 'Content-Type': blob.type || 'image/jpeg' }, body: blob });
+  },
+  discardProgress(path) {
+    return apiFetch('/uploads/progress', { method: 'DELETE', body: JSON.stringify({ path }) });
+  },
+};
+
+// ── Site Working Progress pictures (Owner / Admin) ───────────────────────────────
+const Progress = {
+  list(params = {}) {
+    const q = Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
+    return apiFetch('/progress' + (q ? '?' + q : ''));
+  },
+  remove(id, reason) {
+    return apiFetch(`/progress/${encodeURIComponent(id)}`, { method: 'DELETE', body: JSON.stringify({ reason }) });
+  },
 };
 
 // ── Reports (Excel / PDF / CSV) ───────────────────────────────────────────────

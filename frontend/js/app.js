@@ -4,6 +4,7 @@
 const TAB_PERMS = {
   entry:       ['entry.add'],
   records:     ['records.view'],
+  progress:    ['progress.view'],
   purchases:   ['purchases.add', 'purchases.view'],
   summary:     ['summary.view'],
   documents:   ['documents.view'],
@@ -13,14 +14,14 @@ const TAB_PERMS = {
   logs:        ['logs.view'],
   permissions: ['permissions.manage'],
 };
-const TAB_ORDER = ['entry', 'records', 'purchases', 'summary', 'documents', 'payments', 'inventory', 'users', 'logs', 'permissions'];
-const ALL_PERMS = ['entry.add', 'records.view', 'records.export', 'records.edit', 'records.delete', 'purchases.add', 'purchases.view', 'purchases.edit', 'summary.view',
+const TAB_ORDER = ['entry', 'records', 'progress', 'purchases', 'summary', 'documents', 'payments', 'inventory', 'users', 'logs', 'permissions'];
+const ALL_PERMS = ['entry.add', 'progress.add', 'progress.view', 'progress.delete', 'records.view', 'records.export', 'records.edit', 'records.delete', 'purchases.add', 'purchases.view', 'purchases.edit', 'summary.view',
   'documents.view', 'documents.print', 'documents.upload', 'documents.delete', 'payments.add', 'payments.view', 'payments.edit', 'inventory.manage', 'logs.view', 'logs.delete', 'users.manage', 'permissions.manage'];
 // Only used when the server has not sent a list (a session that started before permissions existed): the role's defaults.
 const ROLE_FALLBACK = {
   admin: ALL_PERMS,
-  owner: ['records.view', 'records.export', 'purchases.view', 'summary.view', 'documents.view', 'documents.print', 'documents.upload', 'payments.view', 'logs.view'],
-  supervisor: ['entry.add', 'purchases.add', 'payments.add'],
+  owner: ['records.view', 'records.export', 'progress.view', 'purchases.view', 'summary.view', 'documents.view', 'documents.print', 'documents.upload', 'payments.view', 'logs.view'],
+  supervisor: ['entry.add', 'progress.add', 'purchases.add', 'payments.add'],
 };
 function myPerms() {
   const u = Auth.currentUser();
@@ -72,6 +73,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupAutoCalculate();
   toggleCategoryFields('f');
   initLoadPoints();
+  initProgressAdd();
   loadUnloadPoints();
 
   const firstTab = visibleTabs()[0];
@@ -158,6 +160,7 @@ async function loadDropdownData() {
       }).catch(() => { /* the filter simply lists the inventory vehicles */ });
     }
     populateFilterSelect('filter-site',    sites,    'name',       'All sites');
+    populateFilterSelect('pgv-site',       sites,    'name',       'All sites');
     populateFilterSelect('filter-type',    distinctTypes(vehicles), 'type', 'All types');
   } catch (e) {
     // Without the lists a supervisor cannot pick a vehicle or site — say so instead of leaving empty boxes.
@@ -420,7 +423,7 @@ function showToast(msg, isError = false) {
 }
 
 /* ── Tab ─────────────────────────────────────────────────────────────────────── */
-const TAB_LABELS = { entry: 'Data Entry', records: 'Records', purchases: 'Purchases', summary: 'Summary', documents: 'Documents', payments: 'Payments', inventory: 'Inventory', users: 'Users', logs: 'Activity Logs', permissions: 'Permissions' };
+const TAB_LABELS = { entry: 'Data Entry', records: 'Records', progress: 'Progress', purchases: 'Purchases', summary: 'Summary', documents: 'Documents', payments: 'Payments', inventory: 'Inventory', users: 'Users', logs: 'Activity Logs', permissions: 'Permissions' };
 
 function switchTab(name) {
   // Only open a screen the signed-in role is meant to have (the server enforces this too; this keeps the screen honest).
@@ -444,6 +447,7 @@ function switchTab(name) {
   if (sectionEl) sectionEl.classList.add('active');
 
   if (name === 'records')   loadRecords();
+  if (name === 'progress')  loadProgressTab();
   if (name === 'summary')   loadSummary();
   if (name === 'documents') loadDocuments();
   if (name === 'payments')  initPayments();
@@ -464,6 +468,7 @@ function clearForm() {
   resetCalcHint();
   clearLoadPoints('f');
   releasePhotos('f', true);   // photos that were never saved are thrown away
+  pgReset(false);
 }
 
 async function saveEntry() {
@@ -477,6 +482,7 @@ async function saveEntry() {
     showToast('Select the site.', true); return;
   }
   if (photosBusy('f')) { showToast('Please wait — the photo is still uploading.', true); return; }
+  if (pgBusy()) { showToast('Please wait — a progress photo is still uploading.', true); return; }
   const lpProblem = validateLoadPoints('f');
   if (lpProblem) { showToast(lpProblem, true); return; }
 
@@ -495,6 +501,7 @@ async function saveEntry() {
     operator: getOperatorValue('f'),
     remarks:  document.getElementById('f-remarks').value.trim(),
     load_points: readLoadPoints('f'),
+    progress_photos: pgPayload(),
   };
 
   const sure = await askConfirm({ title: 'Save this entry?', message: `${fmtDate(date)} · ${payload.site} · ${vehicle_no}` });
@@ -504,6 +511,7 @@ async function saveEntry() {
     await Entries.create(payload);
     showToast('✅ Entry saved successfully!');
     releasePhotos('f', false);   // the photos now belong to the entry — keep them
+    pgReset(true);               // …and so do the progress pictures
     clearForm();
     loadUnloadPoints();          // a new point name may have been used
   } catch (e) {
@@ -1702,6 +1710,7 @@ const SPECIAL_ACTIONS = {
   payments_added:      { label: 'Payments added',      cls: 'pill-sky'  },
   document_viewed:     { label: 'Document viewed',     cls: 'pill-sky'  },
   document_printed:    { label: 'Document printed',    cls: 'pill-sky'  },
+  progress_deleted:    { label: 'Progress picture deleted', cls: 'pill-red' },
   permissions_changed: { label: 'Permissions changed', cls: 'pill-orange' },
   purchase_created:    { label: 'Purchase added',      cls: 'pill-green' },
   purchase_updated:    { label: 'Purchase updated',    cls: 'pill-orange' },
@@ -2303,10 +2312,13 @@ const lpTotalLoads = p => parseInt(document.getElementById(`${p}-loads`).value, 
 
 /** "Yard A: 5 · Yard B: 7" — the same text however the lines are ordered (null when there are none). */
 function pointsText(points) {
+  // The same text the server writes (backend/utils/loadPoints.js): name / material @ location: loads x rate — so a change to ANY field is noticed.
   if (!Array.isArray(points) || !points.length) return null;
+  const lc = v => String(v == null ? '' : v);
   return [...points]
-    .sort((a, b) => String(a.point_name).toLowerCase().localeCompare(String(b.point_name).toLowerCase()))
-    .map(x => `${x.point_name}: ${x.loads}`).join(' · ');
+    .sort((x, y) => lc(x.point_name).toLowerCase().localeCompare(lc(y.point_name).toLowerCase()) || lc(x.material).localeCompare(lc(y.material)) || lc(x.location).localeCompare(lc(y.location)))
+    .map(x => `${x.point_name}${x.material ? ` / ${x.material}` : ''}${x.location ? ` @ ${x.location}` : ''}: ${x.loads}${Number(x.rate) > 0 ? ` x ${money2(x.rate)}` : ''}`)
+    .join(' \u00b7 ');
 }
 function pointsMini(e) {
   const t = pointsText(e.load_points);
@@ -2326,67 +2338,97 @@ function initLoadPoints() {
   ['f', 'e'].forEach(p => {
     document.getElementById(`${p}-loads`).addEventListener('input', () => updateLpTotal(p));
     const rows = lpEl(p, 'rows');
-    rows.addEventListener('input', () => updateLpTotal(p));
+    rows.addEventListener('input', ev => { const row = ev.target.closest('.lp-row'); if (row) refreshLpRow(row); updateLpTotal(p); });
     rows.addEventListener('click', ev => {
       const b = ev.target.closest('.lp-del');
-      if (b) { b.closest('.lp-row').remove(); updateLpTotal(p); }
+      if (b) { b.closest('.lp-row').remove(); renumberLp(p); updateLpTotal(p); }
     });
     updateLpTotal(p);
   });
 }
 
+const money2 = n => Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const lpAmount = (loads, rate) => Math.round((Number(loads) || 0) * (Number(rate) || 0) * 100) / 100;
+
 function sumLoadPoints(p) {
   return readLoadPoints(p).reduce((a, r) => a + (Number.isFinite(r.loads) ? r.loads : 0), 0);
 }
 
-function addLoadPoint(p, name = '', count = '', focus = true) {
+/** Amount = Loads x Rate, shown on the line as it is typed. */
+function refreshLpRow(row) {
+  row.querySelector('.lp-amount').textContent = money2(lpAmount(row.querySelector('.lp-count').value, row.querySelector('.lp-rate').value));
+}
+function renumberLp(p) {
+  [...lpEl(p, 'rows').querySelectorAll('.lp-row')].forEach((row, i) => {
+    row.querySelector('.lp-sl').textContent = i + 1;
+    row.setAttribute('aria-label', `Line ${i + 1}`);
+  });
+}
+
+/** v = { point_name, material, location, loads, rate } — all optional. */
+function addLoadPoint(p, v = {}, focus = true) {
   const wrap = lpEl(p, 'rows');
-  if (wrap.children.length >= LP_MAX) { showToast(`At most ${LP_MAX} unloading points per entry.`, true); return; }
+  if (wrap.children.length >= LP_MAX) { showToast(`At most ${LP_MAX} lines per entry.`, true); return; }
+  let loads = v.loads ?? '';
   // A new empty line starts with the loads that are still unallocated — usually exactly what the person wants.
-  if (name === '' && count === '') {
+  if (!v.point_name && loads === '') {
     const left = lpTotalLoads(p) - sumLoadPoints(p);
-    if (left > 0) count = left;
+    if (left > 0) loads = left;
   }
+  const rate = v.rate === undefined || v.rate === null || Number(v.rate) === 0 ? '' : v.rate;
   const row = document.createElement('div');
   row.className = 'lp-row';
+  row.setAttribute('role', 'row');
   row.innerHTML = `
-    <input type="text" class="lp-name" list="unload-points-list" placeholder="Unloading point (e.g. Yard A)" maxlength="80" autocomplete="off" aria-label="Unloading point name" value="${esc(name)}">
-    <input type="number" class="lp-count" min="1" step="1" inputmode="numeric" placeholder="Loads" aria-label="Number of loads" value="${esc(count)}">
+    <span class="lp-sl" data-label="Sl No"></span>
+    <label class="lp-f lp-f-name"><span class="lp-fl">Name</span><input type="text" class="lp-name" list="unload-points-list" placeholder="Name (e.g. Yard A)" maxlength="80" autocomplete="off" value="${esc(v.point_name || '')}"></label>
+    <label class="lp-f lp-f-material"><span class="lp-fl">Material</span><input type="text" class="lp-material" placeholder="Material" maxlength="80" autocomplete="off" value="${esc(v.material || '')}"></label>
+    <label class="lp-f lp-f-location"><span class="lp-fl">Location</span><input type="text" class="lp-location" placeholder="Location" maxlength="120" autocomplete="off" value="${esc(v.location || '')}"></label>
+    <label class="lp-f lp-f-count"><span class="lp-fl">Loads</span><input type="number" class="lp-count" min="1" step="1" inputmode="numeric" placeholder="Loads" value="${esc(loads)}"></label>
+    <label class="lp-f lp-f-rate"><span class="lp-fl">Rate (₹)</span><input type="number" class="lp-rate" min="0" step="0.01" inputmode="decimal" placeholder="Rate" value="${esc(rate)}"></label>
+    <div class="lp-f lp-f-amount"><span class="lp-fl">Amount (₹)</span><output class="lp-amount">0.00</output></div>
     <button type="button" class="lp-del" aria-label="Remove this line">✕</button>`;
   wrap.appendChild(row);
-  updateLpTotal(p);
+  refreshLpRow(row); renumberLp(p); updateLpTotal(p);
   if (focus) row.querySelector('.lp-name').focus();
 }
 
-/** The lines as typed (names tidied; completely empty lines left out). */
+/** The lines as typed (tidied; completely empty lines left out). */
 function readLoadPoints(p) {
+  const tidy = v => v.replace(/\s+/g, ' ').trim();
   return [...lpEl(p, 'rows').querySelectorAll('.lp-row')].map(row => {
-    const raw = row.querySelector('.lp-count').value.trim();
-    return { point_name: row.querySelector('.lp-name').value.replace(/\s+/g, ' ').trim(), loads: raw === '' ? '' : Number(raw) };
-  }).filter(r => r.point_name || r.loads !== '');
+    const rawLoads = row.querySelector('.lp-count').value.trim(), rawRate = row.querySelector('.lp-rate').value.trim();
+    return {
+      point_name: tidy(row.querySelector('.lp-name').value), material: tidy(row.querySelector('.lp-material').value), location: tidy(row.querySelector('.lp-location').value),
+      loads: rawLoads === '' ? '' : Number(rawLoads), rate: rawRate === '' ? '' : Number(rawRate),
+    };
+  }).filter(r => r.point_name || r.material || r.location || r.loads !== '' || (r.rate !== '' && r.rate !== 0));
 }
 
 function setLoadPoints(p, points) {
   lpEl(p, 'rows').innerHTML = '';
-  [...(points || [])]
-    .sort((a, b) => String(a.point_name).toLowerCase().localeCompare(String(b.point_name).toLowerCase()))
-    .forEach(x => addLoadPoint(p, x.point_name, x.loads, false));
+  (points || []).forEach(x => addLoadPoint(p, x, false));        // in the order they were typed
   updateLpTotal(p);
 }
 function clearLoadPoints(p) { lpEl(p, 'rows').innerHTML = ''; updateLpTotal(p); }
 
-/** The little "8 of 12 loads allocated" line — green when it matches, amber while loads are left, red when over. */
+/** The little "8 of 12 loads allocated" line, and the table's own Total (loads and amount). */
 function updateLpTotal(p) {
-  const el = lpEl(p, 'total');
+  const el = lpEl(p, 'total'), foot = lpEl(p, 'foot');
   if (!el) return;
   const rows = readLoadPoints(p);
+  if (foot) {
+    foot.hidden = !rows.length;
+    lpEl(p, 'sum').textContent = String(sumLoadPoints(p));
+    lpEl(p, 'amt').textContent = money2(rows.reduce((a, r) => a + lpAmount(r.loads, r.rate), 0));
+  }
   if (!rows.length) { el.textContent = ''; el.className = 'lp-total'; return; }
   const total = lpTotalLoads(p), sum = sumLoadPoints(p);
   let text, cls;
   if (!total)            { text = 'Enter the total Loads above first'; cls = 'warn'; }
   else if (sum === total) { text = `✓ ${sum} of ${total} loads allocated`; cls = 'ok'; }
-  else if (sum < total)   { text = `${sum} of ${total} loads allocated · ${total - sum} left`; cls = 'warn'; }
-  else                    { text = `${sum} of ${total} loads · ${sum - total} too many`; cls = 'bad'; }
+  else if (sum < total)   { text = `${sum} of ${total} loads allocated — ${total - sum} left`; cls = 'warn'; }
+  else                    { text = `${sum} of ${total} loads — ${sum - total} too many`; cls = 'bad'; }
   el.textContent = text;
   el.className = `lp-total ${cls}`;
 }
@@ -2395,17 +2437,170 @@ function updateLpTotal(p) {
 function validateLoadPoints(p) {
   const rows = readLoadPoints(p);
   if (!rows.length) return null;
-  const seen = new Set();
   for (const r of rows) {
-    if (!r.point_name) return 'Each unloading point needs a name.';
+    if (!r.point_name) return 'Each line needs a name.';
+    if (r.point_name.length > 80) return 'A name is too long (80 characters at most).';
+    if (r.material.length > 80) return `The material for "${r.point_name}" is too long (80 characters at most).`;
+    if (r.location.length > 120) return `The location for "${r.point_name}" is too long (120 characters at most).`;
     if (!Number.isInteger(r.loads) || r.loads < 1) return `Loads for "${r.point_name}" must be a whole number of 1 or more.`;
-    const key = r.point_name.toLowerCase();
-    if (seen.has(key)) return `"${r.point_name}" is listed twice. Combine them into one line.`;
-    seen.add(key);
+    if (r.rate !== '' && (!Number.isFinite(r.rate) || r.rate < 0)) return `The rate for "${r.point_name}" must be a number of 0 or more.`;
   }
   const total = lpTotalLoads(p), sum = sumLoadPoints(p);
-  if (sum !== total) return `The unloading points add up to ${sum} load${sum === 1 ? '' : 's'}, but Loads is ${total}. They must match.`;
+  if (sum !== total) return `The lines add up to ${sum} load${sum === 1 ? '' : 's'}, but Loads is ${total}. They must match.`;
   return null;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Site Working Progress Images — added in Data Entry (people who may add them)
+   ═══════════════════════════════════════════════════════════════════════════════ */
+const PG = { items: [], next: 1 };           // { id, preview, path, caption, busy, error }
+const PG_MAX = 12;
+const pgBusy = () => PG.items.some(i => i.busy);
+const pgPayload = () => PG.items.filter(i => i.path).map(i => ({ path: i.path, caption: i.caption.replace(/\s+/g, ' ').trim() }));
+
+function initProgressAdd() {
+  const add = document.getElementById('pg-add'), file = document.getElementById('pg-file'), grid = document.getElementById('pg-grid');
+  if (!add || !file) return;
+  add.addEventListener('click', () => file.click());
+  file.addEventListener('change', () => { const list = [...(file.files || [])]; file.value = ''; if (list.length) pgAddFiles(list); });
+  grid.addEventListener('click', ev => { const x = ev.target.closest('.pg-x'); if (x) pgRemove(Number(x.dataset.id)); });
+  grid.addEventListener('input', ev => { const c = ev.target.closest('.pg-cap'); if (c) { const it = PG.items.find(i => i.id === Number(c.dataset.id)); if (it) it.caption = c.value; } });
+  pgRender();
+}
+
+function pgRender() {
+  const grid = document.getElementById('pg-grid');
+  if (!grid) return;
+  grid.innerHTML = PG.items.map((it, n) => `
+    <div class="pg-item${it.busy ? ' is-busy' : ''}" data-id="${it.id}">
+      <div class="pg-thumb"><img src="${esc(it.preview)}" alt="Progress photo ${n + 1}"><button type="button" class="pg-x" data-id="${it.id}" aria-label="Remove progress photo ${n + 1}" ${it.busy ? 'disabled' : ''}>✕</button></div>
+      <input type="text" class="pg-cap" data-id="${it.id}" maxlength="200" placeholder="Caption (optional)" aria-label="Caption for progress photo ${n + 1}" value="${esc(it.caption)}">
+      <span class="pg-st${it.error ? ' is-bad' : ''}">${it.busy ? 'Uploading…' : (it.error ? esc(it.error) : 'Attached ✓')}</span>
+    </div>`).join('');
+  const count = document.getElementById('pg-count');
+  if (count) { const n = PG.items.filter(i => i.path).length; count.textContent = n ? `${n} photo${n === 1 ? '' : 's'}` : ''; count.className = 'lp-total' + (n ? ' ok' : ''); }
+  const add = document.getElementById('pg-add'); if (add) add.disabled = PG.items.length >= PG_MAX;
+}
+
+async function pgAddFiles(files) {
+  const err = document.getElementById('pg-err'); err.textContent = '';
+  const room = PG_MAX - PG.items.length;
+  if (files.length > room) { err.textContent = room > 0 ? `Only ${room} more photo${room === 1 ? '' : 's'} can be added (${PG_MAX} at most).` : `At most ${PG_MAX} progress photos per entry.`; files = files.slice(0, Math.max(0, room)); }
+  for (const file of files) {
+    if (file.size > PHOTO_MAX_INPUT) { err.textContent = 'One photo was too large. Please choose a smaller one.'; continue; }
+    const it = { id: PG.next++, preview: '', path: null, caption: '', busy: true, error: '' };
+    PG.items.push(it);
+    // eslint-disable-next-line no-await-in-loop
+    try {
+      const blob = await compressImage(file);
+      it.preview = URL.createObjectURL(blob); pgRender();
+      const res = await Uploads.progress(blob);
+      if (!PG.items.includes(it)) { Uploads.discardProgress(res.path).catch(() => {}); URL.revokeObjectURL(it.preview); continue; }     // removed or cleared meanwhile
+      it.path = res.path;
+    } catch (e) {
+      if (!PG.items.includes(it)) continue;
+      PG.items = PG.items.filter(x => x !== it);
+      if (it.preview) URL.revokeObjectURL(it.preview);
+      err.textContent = photoErrorText(e);
+    } finally { it.busy = false; pgRender(); }
+  }
+}
+
+function pgRemove(id) {
+  const it = PG.items.find(i => i.id === id);
+  if (!it || it.busy) return;
+  if (it.path) Uploads.discardProgress(it.path).catch(() => {});
+  if (it.preview) URL.revokeObjectURL(it.preview);
+  PG.items = PG.items.filter(i => i !== it);
+  document.getElementById('pg-err').textContent = '';
+  pgRender();
+}
+
+/** keep=true: the pictures were saved with the entry, so just forget them. keep=false: throw the unsaved uploads away. */
+function pgReset(keep) {
+  PG.items.forEach(it => { if (!keep && it.path) Uploads.discardProgress(it.path).catch(() => {}); if (it.preview) URL.revokeObjectURL(it.preview); });
+  PG.items = [];
+  const err = document.getElementById('pg-err'); if (err) err.textContent = '';
+  pgRender();
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Progress tab (Owner + Admin) — the pictures, by day and site
+   ═══════════════════════════════════════════════════════════════════════════════ */
+const PGV = { items: [], seq: 0, limit: 120, ready: false, total: 0 };
+
+function daysAgo(n) { const d = new Date(); d.setDate(d.getDate() - n); const pad = x => String(x).padStart(2, '0'); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
+
+function loadProgressTab() {
+  if (!PGV.ready) {
+    PGV.ready = true;
+    document.getElementById('pgv-from').value = daysAgo(30);
+    document.getElementById('pgv-to').value = today();
+    ['pgv-from', 'pgv-to', 'pgv-site'].forEach(id => document.getElementById(id).addEventListener('change', () => { PGV.limit = 120; fetchProgress(); }));
+    document.getElementById('pgv-more').addEventListener('click', () => { PGV.limit += 120; fetchProgress(); });
+    document.getElementById('pgv-body').addEventListener('click', ev => {
+      const img = ev.target.closest('.pgv-img'), del = ev.target.closest('.pgv-del');
+      if (img) openProgressPicture(img.dataset.id);
+      if (del) deleteProgressPicture(del.dataset.id);
+    });
+  }
+  fetchProgress();
+}
+
+async function fetchProgress() {
+  const status = document.getElementById('pgv-status'), body = document.getElementById('pgv-body');
+  const from = document.getElementById('pgv-from').value, to = document.getElementById('pgv-to').value, site = document.getElementById('pgv-site').value;
+  if (from && to && from > to) { status.textContent = 'The "from" date cannot be after the "to" date.'; return; }
+  const seq = ++PGV.seq;
+  status.textContent = 'Loading pictures…';
+  try {
+    const res = await Progress.list({ from, to, site, limit: PGV.limit });
+    if (seq !== PGV.seq) return;
+    PGV.items = res.data || []; PGV.total = res.total || 0;
+    if (res.setup_required) { status.textContent = 'Site working progress images need a one-time database update. Run run-in-supabase-6-breakup-and-progress.sql in Supabase, then reload this page.'; body.innerHTML = ''; document.getElementById('pgv-more').hidden = true; return; }
+    renderProgress();
+  } catch (e) {
+    if (seq !== PGV.seq) return;
+    status.textContent = (e && e.message) || 'The pictures could not be loaded.';
+  }
+}
+
+function renderProgress() {
+  const status = document.getElementById('pgv-status'), body = document.getElementById('pgv-body');
+  if (!PGV.items.length) { status.textContent = 'No progress pictures in this period.'; body.innerHTML = ''; document.getElementById('pgv-more').hidden = true; return; }
+  status.textContent = `${PGV.total} picture${PGV.total === 1 ? '' : 's'}${PGV.items.length < PGV.total ? ` — showing the newest ${PGV.items.length}` : ''}`;
+  const groups = new Map();
+  PGV.items.forEach(it => { const k = `${it.date}|${it.site}`; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(it); });
+  body.innerHTML = [...groups.entries()].map(([k, list]) => `
+    <section class="pgv-group" aria-label="${esc(fmtDate(list[0].date))} ${esc(list[0].site || 'No site')}">
+      <h3 class="pgv-day">${esc(fmtDate(list[0].date))} <span>· ${esc(list[0].site || '(no site)')}</span></h3>
+      <div class="pgv-grid">${list.map(it => `
+        <figure class="pgv-card">
+          <button type="button" class="pgv-img" data-id="${esc(it.id)}" aria-label="Open this picture${it.caption ? ': ' + esc(it.caption) : ''}">${it.url ? `<img src="${esc(it.url)}" alt="${esc(it.caption || 'Progress picture')}" loading="lazy">` : '<span class="pgv-missing">Not available</span>'}</button>
+          <figcaption><strong>${esc(it.vehicle_no)}</strong>${it.uploaded_by_name ? ` · ${esc(it.uploaded_by_name)}` : ''}${it.caption ? `<br>${esc(it.caption)}` : ''}</figcaption>
+          <button type="button" class="btn btn-outline btn-sm pgv-del perm-progress-delete" data-id="${esc(it.id)}">Delete</button>
+        </figure>`).join('')}</div>
+    </section>`).join('');
+  document.getElementById('pgv-more').hidden = PGV.items.length >= PGV.total;
+}
+
+function openProgressPicture(id) {
+  const it = PGV.items.find(x => String(x.id) === String(id));
+  if (!it || !it.url) return;
+  photoViewerSeq++;
+  openPhotoViewer(`${fmtDate(it.date)} · ${it.site || '(no site)'} · ${it.vehicle_no}${it.caption ? ' — ' + it.caption : ''}`);
+  setPhotoViewerImage(it.url, true);
+}
+
+async function deleteProgressPicture(id) {
+  const it = PGV.items.find(x => String(x.id) === String(id));
+  if (!it) return;
+  const reason = await askReason({ title: 'Delete this picture?', intro: `${esc(fmtDate(it.date))} · ${esc(it.site || '(no site)')} · ${esc(it.vehicle_no)}. It is taken out of view and the reason is recorded in the Activity Log.`, confirmLabel: 'Delete picture', danger: true });
+  if (!reason) return;
+  try { await Progress.remove(id, reason); showToast('Picture deleted.'); fetchProgress(); }
+  catch (e) { showToast('❌ ' + ((e && e.message) || 'Could not delete the picture.'), true); }
 }
 
 

@@ -177,6 +177,24 @@ CREATE TABLE IF NOT EXISTS load_points (
   created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_load_points_entry ON load_points(entry_id);
+-- Loads breakup details (run-in-supabase-6-breakup-and-progress.sql adds the same to an existing database)
+ALTER TABLE load_points ADD COLUMN IF NOT EXISTS material TEXT          NOT NULL DEFAULT '';
+ALTER TABLE load_points ADD COLUMN IF NOT EXISTS location TEXT          NOT NULL DEFAULT '';
+ALTER TABLE load_points ADD COLUMN IF NOT EXISTS rate     NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (rate >= 0);
+ALTER TABLE load_points ADD COLUMN IF NOT EXISTS position INTEGER       NOT NULL DEFAULT 0;
+-- Site Working Progress images (the pictures themselves live in the private photo storage, folder "progress/")
+CREATE TABLE IF NOT EXISTS progress_photos (
+  id               UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  entry_id         UUID NOT NULL REFERENCES entries(id) ON DELETE CASCADE,
+  storage_path     TEXT NOT NULL,
+  caption          TEXT NOT NULL DEFAULT '',
+  uploaded_by_id   TEXT,
+  uploaded_by_name TEXT,
+  created_at       TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS progress_photos_path_unique ON progress_photos(storage_path);
+CREATE INDEX IF NOT EXISTS idx_progress_photos_entry ON progress_photos(entry_id);
+ALTER TABLE progress_photos ENABLE ROW LEVEL SECURITY;
 
 -- Documents: work orders, tax invoices, … (the files themselves live in a PRIVATE storage bucket "documents").
 CREATE TABLE IF NOT EXISTS documents (

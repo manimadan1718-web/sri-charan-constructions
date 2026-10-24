@@ -122,7 +122,7 @@ function entryDiff(before, afterFields, afterPoints) {
 }
 
 /** Every filled-in field of an entry — used for "created" and "deleted" logs. */
-function entrySnapshot(fields, side, points) {
+function entrySnapshot(fields, side, points, progressCount = 0) {
   const out = [];
   for (const [col, label, kind] of ENTRY_FIELDS) {
     const v = fmtValue(kind, fields[col]);
@@ -131,6 +131,7 @@ function entrySnapshot(fields, side, points) {
   }
   const pt = pointsText(points);
   if (pt) out.push(side === 'from' ? { field: 'Unload points', from: pt, to: null } : { field: 'Unload points', from: null, to: pt });
+  if (progressCount && side === 'to') out.push({ field: 'Progress images', from: null, to: `${progressCount} added` });
   return out;
 }
 

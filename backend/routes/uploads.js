@@ -36,6 +36,34 @@ router.post('/reading', requirePerm('entry.add'), uploadLimiter, rawImage, async
   }
 });
 
+// ── POST /api/uploads/progress  (people who may add site working progress images) ─────────────
+// Same checks as a reading photo. The picture waits in pending/ until its entry is saved, then moves to progress/.
+router.post('/progress', requirePerm('progress.add'), uploadLimiter, rawImage, async (req, res) => {
+  try {
+    const buf = req.body;
+    const kind = photos.detectImage(buf);
+    if (!kind) return res.status(415).json({ error: 'Please attach a JPG, PNG or WebP photo.' });
+    const path = await photos.uploadPhoto(buf, kind);
+    res.status(201).json({ success: true, path, size: buf.length });
+  } catch (err) {
+    console.error('POST /uploads/progress:', err.message);
+    res.status(500).json({ error: 'The photo could not be saved. Please try again.' });
+  }
+});
+
+// Throws away a progress picture that was never saved with an entry (pending/ only — saved ones are never deleted here).
+router.delete('/progress', requirePerm('progress.add'), async (req, res) => {
+  try {
+    const path = req.body && req.body.path;
+    if (!photos.isPendingPath(path)) return res.status(400).json({ error: 'That is not a photo that can be discarded.' });
+    await photos.discardPending(path);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('DELETE /uploads/progress:', err.message);
+    res.json({ success: true });
+  }
+});
+
 // ── GET /api/uploads/reading/url?path=…  (Owner + Admin — people who can open Records) ──
 // Returns a link that stops working after 10 minutes. Only photos attached to an entry can be opened.
 router.get('/reading/url', requirePerm('records.view'), async (req, res) => {

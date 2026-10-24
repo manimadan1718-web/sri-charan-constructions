@@ -1526,7 +1526,7 @@ async function runTableReport(kind, format, itemEl) {
   if (group === 'inventory')  { call = () => Reports.inventory({ type, format }); name = type; }
   else if (group === 'users') { call = () => Reports.users({ format }); name = 'users'; }
   else if (group === 'logs')  { call = () => Reports.logs(logsReportBody(format)); name = 'activity-logs'; }
-  else if (group === 'payments') { call = () => Reports.payments({ format, kind: type }); name = type === 'all' ? 'payments-cumulative' : `payments-${type}`; }
+  else if (group === 'payments') { call = () => Reports.payments({ format, kind: type, ...plFilters(type) }); name = type === 'all' ? 'payments-cumulative' : `payments-${type}`; }
   else if (group === 'summary') {
     const per = summaryPeriod();
     if (per.from && per.to && per.from > per.to) { showToast('The "from" date cannot be after the "to" date.', true); return; }
@@ -2868,10 +2868,11 @@ async function deleteDocument(id) {
 /* ═══════════════════════════════════════════════════════════════════════════════
    Payments — who we are paying, and reconciling it
      Company Payments  ·  Outside Rental Payments  ·  Cumulative Report (both together)
-   Every line:  Sl No · Name · Item · Description · Payable · Paid · Balance     (Balance = Payable − Paid, always worked out)
+   Every line:  Sl No · Date · Name · Item · Description · Payable · Paid · Balance · Paid By     (Balance = Payable − Paid, always worked out)
    ═══════════════════════════════════════════════════════════════════════════════ */
 const PL_LABEL = { company: 'Company Payments', outside: 'Outside Rental Payments' };
-const PL = { built: false, tab: 'company', rows: { company: null, outside: null }, filter: { company: { q: '', st: '' }, outside: { q: '', st: '' } }, mine: { company: [], outside: [] }, editing: null, setup: false };
+const plBlankFilter = () => ({ q: '', from: '', to: '', name: '', paid_by: '', status: '' });
+const PL = { built: false, tab: 'company', rows: { company: null, outside: null }, total: { company: 0, outside: 0 }, filter: { company: plBlankFilter(), outside: plBlankFilter(), all: plBlankFilter() }, editing: null, timer: null };
 const PL_STATUS = { due: 'Balance due', settled: 'Settled', over: 'Advance paid' };
 const PL_MAX = 60;
 
@@ -2882,6 +2883,7 @@ const num2 = n => Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits
 const inrS = n => `${Number(n) < -0.004 ? '−' : ''}₹${num2(Math.abs(Number(n) || 0))}`;
 const plTotals = rows => { const payable = r2(rows.reduce((a, x) => a + (Number(x.payable) || 0), 0)), paid = r2(rows.reduce((a, x) => a + (Number(x.paid) || 0), 0)); return { count: rows.length, payable, paid, balance: r2(payable - paid) }; };
 const plKinds = () => [...(can('payments.add') || can('payments.view') ? ['company', 'outside'] : []), ...(can('payments.view') ? ['all'] : [])];
+const plFilters = k => Object.fromEntries(Object.entries(PL.filter[k] || {}).filter(([, v]) => v));       // only the filters that are set — sent to the server and to the exports
 
 const PL_ICON = {
   plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
@@ -2892,24 +2894,51 @@ const plExportMenu = kind => `
   <div class="export-menu rm">
     <button type="button" class="btn btn-outline btn-sm rm-btn" aria-haspopup="menu" aria-expanded="false"><span class="rm-label">⬇ Export</span><span class="caret" aria-hidden="true">▾</span></button>
     <div class="export-pop" role="menu" aria-label="Choose a report format" hidden>
-      <button type="button" role="menuitem" data-rm-kind="payments:${kind}" data-rm-format="xlsx"><span class="fmt fmt-xlsx">XLS</span><span class="fmt-text"><strong>Excel</strong><small>.xlsx · ${kind === 'all' ? 'complete report' : 'this ledger'}</small></span></button>
-      <button type="button" role="menuitem" data-rm-kind="payments:${kind}" data-rm-format="pdf"><span class="fmt fmt-pdf">PDF</span><span class="fmt-text"><strong>PDF</strong><small>.pdf · print-ready</small></span></button>
+      <button type="button" role="menuitem" data-rm-kind="payments:${kind}" data-rm-format="xlsx"><span class="fmt fmt-xlsx">XLS</span><span class="fmt-text"><strong>Excel</strong><small>.xlsx · ${kind === 'all' ? 'complete report' : 'this ledger'} · with the filters set</small></span></button>
+      <button type="button" role="menuitem" data-rm-kind="payments:${kind}" data-rm-format="pdf"><span class="fmt fmt-pdf">PDF</span><span class="fmt-text"><strong>PDF</strong><small>.pdf · print-ready · with the filters set</small></span></button>
     </div>
   </div>`;
+
+/** The search filters: they narrow the screen AND the exported report. */
+const plFilterBar = k => `
+  <div class="pl-filters" data-pl-filters="${k}" role="search" aria-label="Search and filter">
+    <label class="pl-flt pl-flt-search"><span>Search</span><input type="search" data-plf="q" placeholder="Name, item, description or paid by…" autocomplete="off"></label>
+    <label class="pl-flt"><span>From date</span><input type="date" data-plf="from"></label>
+    <label class="pl-flt"><span>To date</span><input type="date" data-plf="to"></label>
+    <label class="pl-flt"><span>Name</span><select data-plf="name"><option value="">All names</option></select></label>
+    <label class="pl-flt"><span>Paid by</span><select data-plf="paid_by"><option value="">Anyone</option></select></label>
+    <label class="pl-flt"><span>Status</span><select data-plf="status"><option value="">All lines</option><option value="due">Balance due</option><option value="settled">Settled</option><option value="over">Advance paid</option></select></label>
+    <button type="button" class="btn btn-outline btn-sm pl-flt-clear" data-plf-clear="${k}">✕ Clear filters</button>
+  </div>`;
+
+function plFillOptions(k, options) {
+  const bar = document.querySelector(`[data-pl-filters="${k}"]`); if (!bar || !options) return;
+  const fill = (key, first, list, extra) => {
+    const sel = bar.querySelector(`[data-plf="${key}"]`), cur = PL.filter[k][key];
+    sel.innerHTML = `<option value="">${first}</option>` + list.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('') + (extra || '');
+    if (cur && ![...sel.options].some(o => o.value === cur)) sel.insertAdjacentHTML('beforeend', `<option value="${esc(cur)}">${esc(cur === '__none__' ? '(not entered)' : cur)}</option>`);
+    sel.value = cur || '';
+  };
+  fill('name', 'All names', options.names || []);
+  fill('paid_by', 'Anyone', options.paid_by || [], options.has_blank_paid_by ? '<option value="__none__">(not entered)</option>' : '');
+}
+const plScheduleReload = k => { clearTimeout(PL.timer); PL.timer = setTimeout(() => (k === 'all' ? loadPlCumulative() : loadPlLedger(k)), 280); };
 
 function initPayments() {
   if (!PL.built) {
     PL.built = true;
     ['company', 'outside'].forEach(buildPlPanel);
     buildPlCumulative();
-    document.getElementById('section-payments').addEventListener('input', ev => {
+    const root = document.getElementById('section-payments');
+    root.addEventListener('input', ev => {
       const t = ev.target;
       if (t.closest('.pl-rows')) { const row = t.closest('.pl-row'); plRefreshRow(row); plRefreshTotals(row.dataset.kind); }
-      if (t.matches('[data-pl-q]')) { PL.filter[t.dataset.plQ].q = t.value; renderPlTable(t.dataset.plQ); }
+      if (t.matches('[data-plf]')) { const bar = t.closest('[data-pl-filters]'), k = bar.dataset.plFilters; PL.filter[k][t.dataset.plf] = t.value; plScheduleReload(k); }
     });
-    document.getElementById('section-payments').addEventListener('change', ev => { const t = ev.target; if (t.matches('[data-pl-st]')) { PL.filter[t.dataset.plSt].st = t.value; renderPlTable(t.dataset.plSt); } });
-    document.getElementById('section-payments').addEventListener('click', ev => {
+    root.addEventListener('change', ev => { const t = ev.target; if (t.matches('select[data-plf]')) { const k = t.closest('[data-pl-filters]').dataset.plFilters; PL.filter[k][t.dataset.plf] = t.value; plScheduleReload(k); } });
+    root.addEventListener('click', ev => {
       const del = ev.target.closest('.pl-rm'); if (del) { const row = del.closest('.pl-row'), k = row.dataset.kind; row.remove(); plRenumber(k); plRefreshTotals(k); return; }
+      const clr = ev.target.closest('[data-plf-clear]'); if (clr) { const k = clr.dataset.plfClear; PL.filter[k] = plBlankFilter(); clr.closest('[data-pl-filters]').querySelectorAll('[data-plf]').forEach(e => { e.value = ''; }); plScheduleReload(k); return; }
       const ed = ev.target.closest('[data-pl-edit]'); if (ed) { openPayEdit(ed.dataset.plKind, ed.dataset.plEdit); return; }
       const rm = ev.target.closest('[data-pl-del]'); if (rm) deletePayment(rm.dataset.plKind, rm.dataset.plDel);
     });
@@ -2940,14 +2969,14 @@ function buildPlPanel(k) {
 
     <div class="card pl-card perm-payments-add">
       <div class="pl-card-head">
-        <div class="pl-card-title"><span class="pl-ic">${PL_ICON.plus}</span><div><h3>Add ${label.toLowerCase()}</h3><p>Each line: who we are paying, for what, how much is payable and how much has been paid. Balance is worked out for you.</p></div></div>
+        <div class="pl-card-title"><span class="pl-ic">${PL_ICON.plus}</span><div><h3>Add ${label.toLowerCase()}</h3><p>Each line: the date, who we are paying, for what, how much is payable and how much has been paid. Balance is worked out for you.</p></div></div>
       </div>
       <div class="pl-grid" role="table" aria-label="New ${label.toLowerCase()} lines">
-        <div class="pl-thead" role="row"><span>Sl No</span><span>Name</span><span>Item</span><span>Description</span><span class="r">Payable (₹)</span><span class="r">Paid (₹)</span><span class="r">Balance (₹)</span><span aria-hidden="true"></span></div>
+        <div class="pl-thead" role="row"><span>Sl No</span><span>Date</span><span>Name</span><span>Item</span><span>Description</span><span class="r">Payable (₹)</span><span class="r">Paid (₹)</span><span class="r">Balance (₹)</span><span>Paid By</span><span aria-hidden="true"></span></div>
         <div class="pl-rows" id="pl-rows-${k}"></div>
-        <div class="pl-foot" id="pl-foot-${k}"><span class="pl-foot-label">Total</span><span class="r" data-l="Payable ₹: " id="pl-t-payable-${k}">0.00</span><span class="r" data-l="Paid ₹: " id="pl-t-paid-${k}">0.00</span><span class="r" data-l="Balance ₹: " id="pl-t-balance-${k}">0.00</span></div>
+        <div class="pl-foot" id="pl-foot-${k}"><span class="pl-foot-label">Total</span><span class="r" data-l="Payable ₹: " id="pl-t-payable-${k}">0.00</span><span class="r" data-l="Paid ₹: " id="pl-t-paid-${k}">0.00</span><span class="r" data-l="Balance ₹: " id="pl-t-balance-${k}">0.00</span><span aria-hidden="true"></span><span aria-hidden="true"></span></div>
       </div>
-      <datalist id="pl-names-${k}"></datalist>
+      <datalist id="pl-names-${k}"></datalist><datalist id="pl-paidby-${k}"></datalist>
       <div class="form-error" id="pl-err-${k}" role="alert"></div>
       <div class="pl-actions">
         <button type="button" class="btn btn-outline" onclick="plAddLine('${k}')">+ Add line</button>
@@ -2961,13 +2990,10 @@ function buildPlPanel(k) {
         <div class="pl-card-title"><span class="pl-ic">${PL_ICON.list}</span><div><h3>${label} — ledger</h3><p id="pl-count-${k}"></p></div></div>
         ${plExportMenu(k)}
       </div>
-      <div class="pl-toolbar">
-        <input type="search" data-pl-q="${k}" placeholder="Search name, item or description…" aria-label="Search ${label}" autocomplete="off">
-        <select data-pl-st="${k}" aria-label="Show"><option value="">All lines</option><option value="due">Balance due</option><option value="settled">Settled</option><option value="over">Advance paid</option></select>
-      </div>
+      ${plFilterBar(k)}
       <div class="table-wrap pl-wrap">
         <table class="pl-table">
-          <thead><tr><th>Sl No</th><th>Name</th><th>Item</th><th>Description</th><th class="r">Payable</th><th class="r">Paid</th><th class="r">Balance</th><th class="pl-act perm-payments-edit">Actions</th></tr></thead>
+          <thead><tr><th>Sl No</th><th>Date</th><th>Name</th><th>Item</th><th>Description</th><th class="r">Payable</th><th class="r">Paid</th><th class="r">Balance</th><th>Paid By</th><th class="pl-act perm-payments-edit">Actions</th></tr></thead>
           <tbody id="pl-body-${k}"></tbody>
           <tfoot id="pl-tfoot-${k}"></tfoot>
         </table>
@@ -2976,23 +3002,26 @@ function buildPlPanel(k) {
 
     <div class="card pl-card" id="pl-mine-${k}" hidden>
       <div class="pl-card-head"><div class="pl-card-title"><span class="pl-ic">${PL_ICON.list}</span><div><h3>Saved by you</h3><p>Your latest lines. The owner and admin see the full ledger.</p></div></div></div>
-      <div class="table-wrap pl-wrap"><table class="pl-table"><thead><tr><th>Name</th><th>Item</th><th class="r">Payable</th><th class="r">Paid</th><th class="r">Balance</th></tr></thead><tbody id="pl-mine-body-${k}"></tbody></table></div>
+      <div class="table-wrap pl-wrap"><table class="pl-table"><thead><tr><th>Date</th><th>Name</th><th>Item</th><th class="r">Payable</th><th class="r">Paid</th><th class="r">Balance</th><th>Paid By</th></tr></thead><tbody id="pl-mine-body-${k}"></tbody></table></div>
     </div>`;
 }
 
 function plAddLine(k, v = {}, focus = true) {
   const wrap = document.getElementById(`pl-rows-${k}`);
   if (wrap.children.length >= PL_MAX) { showToast(`At most ${PL_MAX} lines at a time.`, true); return; }
+  const prev = wrap.lastElementChild ? wrap.lastElementChild.querySelector('.pl-date').value : '';       // a new line starts on the date of the one above
   const row = document.createElement('div');
   row.className = 'pl-row'; row.dataset.kind = k; row.setAttribute('role', 'row');
   row.innerHTML = `
     <span class="pl-sl" data-label="Sl No"></span>
+    <label class="pl-f pl-f-date"><span class="pl-fl">Date</span><input type="date" class="pl-date" value="${esc(v.pay_date || prev || today())}"></label>
     <label class="pl-f pl-f-name"><span class="pl-fl">Name</span><input type="text" class="pl-name" list="pl-names-${k}" placeholder="Who we are paying" maxlength="120" autocomplete="off" value="${esc(v.party_name || '')}"></label>
     <label class="pl-f pl-f-item"><span class="pl-fl">Item</span><input type="text" class="pl-item" placeholder="What for" maxlength="120" autocomplete="off" value="${esc(v.item || '')}"></label>
     <label class="pl-f pl-f-desc"><span class="pl-fl">Description</span><input type="text" class="pl-desc" placeholder="Details (optional)" maxlength="300" autocomplete="off" value="${esc(v.description || '')}"></label>
     <label class="pl-f pl-f-num"><span class="pl-fl">Payable (₹)</span><input type="number" class="pl-payable" min="0" step="0.01" inputmode="decimal" placeholder="0.00" value="${esc(v.payable || '')}"></label>
     <label class="pl-f pl-f-num"><span class="pl-fl">Paid (₹)</span><input type="number" class="pl-paid" min="0" step="0.01" inputmode="decimal" placeholder="0.00" value="${esc(v.paid || '')}"></label>
     <div class="pl-f pl-f-bal"><span class="pl-fl">Balance (₹)</span><output class="pl-balance">0.00</output></div>
+    <label class="pl-f pl-f-by"><span class="pl-fl">Paid By</span><input type="text" class="pl-by" list="pl-paidby-${k}" placeholder="Who paid" maxlength="120" autocomplete="off" value="${esc(v.paid_by || '')}"></label>
     <button type="button" class="pl-rm" aria-label="Remove this line">✕</button>`;
   wrap.appendChild(row);
   plRefreshRow(row); plRenumber(k); plRefreshTotals(k);
@@ -3005,9 +3034,10 @@ function plRefreshRow(row) {
 }
 function plReadLines(k) {
   return [...document.querySelectorAll(`#pl-rows-${k} .pl-row`)].map(row => ({
-    party_name: row.querySelector('.pl-name').value.replace(/\s+/g, ' ').trim(), item: row.querySelector('.pl-item').value.replace(/\s+/g, ' ').trim(),
+    pay_date: row.querySelector('.pl-date').value, party_name: row.querySelector('.pl-name').value.replace(/\s+/g, ' ').trim(), item: row.querySelector('.pl-item').value.replace(/\s+/g, ' ').trim(),
     description: row.querySelector('.pl-desc').value.replace(/\s+/g, ' ').trim(), payable: row.querySelector('.pl-payable').value.trim(), paid: row.querySelector('.pl-paid').value.trim(),
-  })).filter(r => r.party_name || r.item || r.description || r.payable !== '' || r.paid !== '');
+    paid_by: row.querySelector('.pl-by').value.replace(/\s+/g, ' ').trim(),
+  })).filter(r => r.party_name || r.item || r.description || r.payable !== '' || r.paid !== '' || r.paid_by);       // (the date alone does not make a line)
 }
 function plRefreshTotals(k) {
   const t = plTotals(plReadLines(k).map(r => ({ payable: r.payable, paid: r.paid })));
@@ -3023,6 +3053,7 @@ function plValidate(lines) {
     const r = lines[i], at = `Line ${i + 1}`;
     if (!r.party_name) return `${at} needs a name.`;
     if (!r.item) return `${at} (${r.party_name}) needs an item.`;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(r.pay_date || '') || Number.isNaN(Date.parse(r.pay_date))) return `${at} (${r.party_name}) needs a valid date.`;
     for (const [k, lab] of [['payable', 'Payable'], ['paid', 'Paid']]) { const v = r[k] === '' ? 0 : Number(r[k]); if (!Number.isFinite(v) || v < 0) return `${lab} for ${r.party_name} must be an amount of 0 or more.`; }
     if ((Number(r.payable) || 0) === 0 && (Number(r.paid) || 0) === 0) return `${at} (${r.party_name}) needs a Payable or a Paid amount.`;
   }
@@ -3045,56 +3076,60 @@ async function savePayments(k) {
 async function loadPlLedger(k) {
   const canView = can('payments.view'), canAdd = can('payments.add');
   if (canAdd) {
-    Payments.names(k).then(r => { document.getElementById(`pl-names-${k}`).innerHTML = (r.data || []).map(n => `<option value="${esc(n)}"></option>`).join(''); }).catch(() => {});
+    Payments.names(k).then(r => {
+      document.getElementById(`pl-names-${k}`).innerHTML = (r.data || []).map(n => `<option value="${esc(n)}"></option>`).join('');
+      document.getElementById(`pl-paidby-${k}`).innerHTML = (r.paid_by || []).map(n => `<option value="${esc(n)}"></option>`).join('');
+    }).catch(() => {});
     if (!canView) loadPlMine(k);
   }
   if (!canView) return;
   try {
-    const res = await Payments.list(k);
-    PL.rows[k] = res.data || []; PL.setup = !!res.setup_required;
-    renderPlCards(k); renderPlTable(k);
-    if (res.setup_required) document.getElementById(`pl-count-${k}`).textContent = 'Payments need a one-time database update — run run-in-supabase-7-payment-ledger.sql in Supabase, then reload this page.';
+    const res = await Payments.list(k, plFilters(k));
+    PL.rows[k] = res.data || []; PL.total[k] = res.all_count || 0;
+    plFillOptions(k, res.options); renderPlCards(k, res.totals); renderPlTable(k);
+    if (res.setup_required) document.getElementById(`pl-count-${k}`).textContent = 'Payments need a one-time database update — run run-in-supabase-7-payment-ledger.sql (and then …-8-payment-date-paidby.sql) in Supabase, then reload this page.';
   } catch (e) {
-    document.getElementById(`pl-body-${k}`).innerHTML = `<tr class="empty-row"><td colspan="8">${esc(e.message || 'The payments could not be loaded.')}</td></tr>`;
+    PL.rows[k] = []; document.getElementById(`pl-count-${k}`).textContent = '';
+    document.getElementById(`pl-body-${k}`).innerHTML = `<tr class="empty-row"><td colspan="10">${esc(e.message || 'The payments could not be loaded.')}</td></tr>`; document.getElementById(`pl-tfoot-${k}`).innerHTML = '';
   }
 }
 async function loadPlMine(k) {
   try {
     const res = await Payments.mine(); const mine = (res.data || []).filter(x => x.kind === k);
     document.getElementById(`pl-mine-${k}`).hidden = false;
-    document.getElementById(`pl-mine-body-${k}`).innerHTML = mine.length ? mine.map(x => `<tr><td data-label="Name"><strong>${esc(x.party_name)}</strong></td><td data-label="Item">${esc(x.item)}</td><td class="r" data-label="Payable">${inrS(x.payable)}</td><td class="r" data-label="Paid">${inrS(x.paid)}</td><td class="r" data-label="Balance"><span class="pl-bal-${x.status}">${inrS(x.balance)}</span></td></tr>`).join('') : '<tr class="empty-row"><td colspan="5">Nothing saved yet.</td></tr>';
+    document.getElementById(`pl-mine-body-${k}`).innerHTML = mine.length ? mine.map(x => `<tr><td data-label="Date">${esc(fmtDate(x.pay_date))}</td><td data-label="Name"><strong>${esc(x.party_name)}</strong></td><td data-label="Item">${esc(x.item)}</td><td class="r" data-label="Payable">${inrS(x.payable)}</td><td class="r" data-label="Paid">${inrS(x.paid)}</td><td class="r" data-label="Balance"><span class="pl-bal-${x.status}">${inrS(x.balance)}</span></td><td data-label="Paid By">${esc(x.paid_by) || '<span class="pl-none">—</span>'}</td></tr>`).join('') : '<tr class="empty-row"><td colspan="7">Nothing saved yet.</td></tr>';
   } catch { /* the list is a convenience */ }
 }
 
-function renderPlCards(k) {
-  const t = plTotals(PL.rows[k] || []), st = plSt(t.balance);
+function renderPlCards(k, totals) {
+  const t = totals || plTotals(PL.rows[k] || []), st = plSt(t.balance), filtered = Object.keys(plFilters(k)).length > 0;
   const note = st === 'due' ? 'Still to be paid' : st === 'over' ? 'Paid more than payable (advance)' : 'Fully settled';
   document.getElementById(`pl-cards-${k}`).innerHTML = `
-    <div class="pl-stat pl-s-payable"><span class="pl-lbl">Total Payable</span><span class="pl-val">${inrS(t.payable)}</span><span class="pl-note">${t.count} line${t.count === 1 ? '' : 's'}</span></div>
-    <div class="pl-stat pl-s-paid"><span class="pl-lbl">Total Paid</span><span class="pl-val">${inrS(t.paid)}</span><span class="pl-note">Payments made so far</span></div>
+    <div class="pl-stat pl-s-payable"><span class="pl-lbl">Total Payable</span><span class="pl-val">${inrS(t.payable)}</span><span class="pl-note">${t.count}${filtered ? ` of ${PL.total[k]}` : ''} line${t.count === 1 ? '' : 's'}${filtered ? ' · filtered' : ''}</span></div>
+    <div class="pl-stat pl-s-paid"><span class="pl-lbl">Total Paid</span><span class="pl-val">${inrS(t.paid)}</span><span class="pl-note">Payments made${filtered ? ' (filtered)' : ' so far'}</span></div>
     <div class="pl-stat pl-s-bal pl-s-${st}"><span class="pl-lbl">Balance</span><span class="pl-val">${inrS(t.balance)}</span><span class="pl-note">${note} · Payable − Paid</span></div>`;
 }
 
 function renderPlTable(k) {
-  const all = PL.rows[k] || [], f = PL.filter[k], q = f.q.trim().toLowerCase();
-  const shown = all.map((r, i) => ({ ...r, sl: i + 1 })).filter(r => (!f.st || r.status === f.st) && (!q || `${r.party_name} ${r.item} ${r.description}`.toLowerCase().includes(q)));
-  const body = document.getElementById(`pl-body-${k}`), foot = document.getElementById(`pl-tfoot-${k}`);
-  const canEdit = can('payments.edit');
-  document.getElementById(`pl-count-${k}`).textContent = all.length ? `${all.length} line${all.length === 1 ? '' : 's'}${shown.length !== all.length ? ` · showing ${shown.length}` : ''}` : 'No lines yet.';
-  if (!shown.length) { body.innerHTML = `<tr class="empty-row"><td colspan="${canEdit ? 8 : 7}">${all.length ? 'No lines match your search.' : 'No payments saved yet.'}</td></tr>`; foot.innerHTML = ''; return; }
-  body.innerHTML = shown.map(r => `
+  const rows = (PL.rows[k] || []).map((r, i) => ({ ...r, sl: i + 1 })), total = PL.total[k] || 0, filtered = Object.keys(plFilters(k)).length > 0;
+  const body = document.getElementById(`pl-body-${k}`), foot = document.getElementById(`pl-tfoot-${k}`), canEdit = can('payments.edit');
+  document.getElementById(`pl-count-${k}`).textContent = total ? (filtered ? `Showing ${rows.length} of ${total} line${total === 1 ? '' : 's'}` : `${total} line${total === 1 ? '' : 's'}`) : 'No lines yet.';
+  if (!rows.length) { body.innerHTML = `<tr class="empty-row"><td colspan="${canEdit ? 10 : 9}">${total ? 'No lines match these filters.' : 'No payments saved yet.'}</td></tr>`; foot.innerHTML = ''; return; }
+  body.innerHTML = rows.map(r => `
     <tr>
       <td data-label="Sl No">${r.sl}</td>
+      <td data-label="Date" class="pl-date-cell">${esc(fmtDate(r.pay_date))}</td>
       <td data-label="Name"><strong>${esc(r.party_name)}</strong></td>
       <td data-label="Item">${esc(r.item)}</td>
       <td data-label="Description" class="pl-desc-cell">${esc(r.description) || '<span class="pl-none">—</span>'}</td>
       <td class="r" data-label="Payable">${inrS(r.payable)}</td>
       <td class="r" data-label="Paid">${inrS(r.paid)}</td>
       <td class="r" data-label="Balance"><span class="pl-bal-${r.status}">${inrS(r.balance)}</span><span class="pl-chip pl-chip-${r.status}">${PL_STATUS[r.status]}</span></td>
+      <td data-label="Paid By">${esc(r.paid_by) || '<span class="pl-none">—</span>'}</td>
       ${canEdit ? `<td class="pl-act" data-label="Actions"><button type="button" class="btn btn-outline btn-sm" data-pl-edit="${esc(r.id)}" data-pl-kind="${k}" aria-label="Edit line ${r.sl}">Edit</button> <button type="button" class="btn btn-outline btn-sm pl-danger" data-pl-del="${esc(r.id)}" data-pl-kind="${k}" aria-label="Delete line ${r.sl}">Delete</button></td>` : ''}
     </tr>`).join('');
-  const t = plTotals(shown), st = plSt(t.balance);
-  foot.innerHTML = `<tr class="pl-total"><td colspan="4" data-label="">${shown.length === all.length ? 'Total' : `Total of ${shown.length} shown`}</td><td class="r" data-label="Payable">${inrS(t.payable)}</td><td class="r" data-label="Paid">${inrS(t.paid)}</td><td class="r" data-label="Balance"><span class="pl-bal-${st}">${inrS(t.balance)}</span></td>${canEdit ? '<td></td>' : ''}</tr>`;
+  const t = plTotals(rows), st = plSt(t.balance);
+  foot.innerHTML = `<tr class="pl-total"><td colspan="5" data-label="">${filtered ? `Total of the ${rows.length} shown` : 'Total'}</td><td class="r" data-label="Payable">${inrS(t.payable)}</td><td class="r" data-label="Paid">${inrS(t.paid)}</td><td class="r" data-label="Balance"><span class="pl-bal-${st}">${inrS(t.balance)}</span></td><td></td>${canEdit ? '<td></td>' : ''}</tr>`;
 }
 
 /* ── the cumulative report: both kinds together ───────────────────────────────────────── */
@@ -3106,22 +3141,26 @@ function buildPlCumulative() {
         <div class="pl-card-title"><span class="pl-ic">${PL_ICON.sum}</span><div><h3>Cumulative report</h3><p id="pl-cum-note">Company and outside rental payments together.</p></div></div>
         ${plExportMenu('all')}
       </div>
+      ${plFilterBar('all')}
       <h4 class="pl-h4">Party-wise — what each name has been paid and what is left</h4>
       <div class="table-wrap pl-wrap"><table class="pl-table"><thead><tr><th>Sl No</th><th>Name</th><th>Lines</th><th class="r">Payable</th><th class="r">Paid</th><th class="r">Balance</th></tr></thead><tbody id="pl-cum-party"></tbody></table></div>
     </div>
     <div class="card pl-card">
-      <div class="pl-card-head"><div class="pl-card-title"><span class="pl-ic">${PL_ICON.list}</span><div><h3>Complete statement</h3><p>Every line of both ledgers.</p></div></div></div>
-      <div class="table-wrap pl-wrap"><table class="pl-table"><thead><tr><th>Sl No</th><th>Name</th><th>Item</th><th>Description</th><th class="r">Payable</th><th class="r">Paid</th><th class="r">Balance</th></tr></thead><tbody id="pl-cum-all"></tbody></table></div>
+      <div class="pl-card-head"><div class="pl-card-title"><span class="pl-ic">${PL_ICON.list}</span><div><h3>Complete statement</h3><p>Every line of both ledgers, oldest date first.</p></div></div></div>
+      <div class="table-wrap pl-wrap"><table class="pl-table"><thead><tr><th>Sl No</th><th>Date</th><th>Name</th><th>Item</th><th>Description</th><th class="r">Payable</th><th class="r">Paid</th><th class="r">Balance</th><th>Paid By</th></tr></thead><tbody id="pl-cum-all"></tbody></table></div>
     </div>`;
 }
 
 async function loadPlCumulative() {
   try {
-    const [sum, c, o] = await Promise.all([Payments.summary(), Payments.list('company'), Payments.list('outside')]);
+    const f = plFilters('all');
+    const [sum, c, o] = await Promise.all([Payments.summary(f), Payments.list('company', f), Payments.list('outside', f)]);
     PL.rows.company = c.data || []; PL.rows.outside = o.data || [];
-    renderPlCumulative(sum.data);
-    if (sum.setup_required) document.getElementById('pl-cum-note').textContent = 'Payments need a one-time database update — run run-in-supabase-7-payment-ledger.sql in Supabase, then reload this page.';
-  } catch (e) { document.getElementById('pl-cum-party').innerHTML = `<tr class="empty-row"><td colspan="6">${esc(e.message || 'The report could not be loaded.')}</td></tr>`; }
+    plFillOptions('all', sum.options); renderPlCumulative(sum.data);
+    const filtered = Object.keys(f).length > 0;
+    document.getElementById('pl-cum-note').textContent = sum.setup_required ? 'Payments need a one-time database update — run run-in-supabase-7-payment-ledger.sql (and then …-8-payment-date-paidby.sql) in Supabase, then reload this page.'
+      : (filtered ? `Showing ${sum.data.overall.count} of ${sum.all_count} line${sum.all_count === 1 ? '' : 's'} — the filters set here are used by the export too.` : 'Company and outside rental payments together.');
+  } catch (e) { document.getElementById('pl-cum-party').innerHTML = `<tr class="empty-row"><td colspan="6">${esc(e.message || 'The report could not be loaded.')}</td></tr>`; document.getElementById('pl-cum-all').innerHTML = ''; document.getElementById('pl-kinds').innerHTML = ''; }
 }
 
 function renderPlCumulative(sm) {
@@ -3138,7 +3177,7 @@ function renderPlCumulative(sm) {
   ['company', 'outside'].forEach(k => {
     const kd = sm.kinds[k];
     party += `<tr class="pl-sec"><th colspan="6">${esc(PL_LABEL[k])} — party-wise</th></tr>`;
-    party += kd.parties.length ? kd.parties.map((p, i) => tr(`<td data-label="Sl No">${i + 1}</td><td data-label="Name"><strong>${esc(p.party_name)}</strong></td><td data-label="Lines">${p.count}</td>${nums(p)}`)).join('') : '<tr class="empty-row"><td colspan="6">Nothing saved yet.</td></tr>';
+    party += kd.parties.length ? kd.parties.map((p, i) => tr(`<td data-label="Sl No">${i + 1}</td><td data-label="Name"><strong>${esc(p.party_name)}</strong></td><td data-label="Lines">${p.count}</td>${nums(p)}`)).join('') : '<tr class="empty-row"><td colspan="6">Nothing here.</td></tr>';
     party += tr(`<td colspan="3" data-label="">Total — ${esc(PL_LABEL[k])}</td>${nums(kd.totals)}`, 'pl-subtotal');
   });
   party += tr(`<td colspan="3" data-label="">Grand total</td>${nums(sm.overall)}`, 'pl-total');
@@ -3146,11 +3185,11 @@ function renderPlCumulative(sm) {
   let all = '';
   ['company', 'outside'].forEach(k => {
     const rows = PL.rows[k] || [];
-    all += `<tr class="pl-sec"><th colspan="7">${esc(PL_LABEL[k])}</th></tr>`;
-    all += rows.length ? rows.map((r, i) => tr(`<td data-label="Sl No">${i + 1}</td><td data-label="Name"><strong>${esc(r.party_name)}</strong></td><td data-label="Item">${esc(r.item)}</td><td data-label="Description" class="pl-desc-cell">${esc(r.description) || '<span class="pl-none">—</span>'}</td>${nums(r)}`)).join('') : '<tr class="empty-row"><td colspan="7">Nothing saved yet.</td></tr>';
-    all += tr(`<td colspan="4" data-label="">Total — ${esc(PL_LABEL[k])}</td>${nums(sm.kinds[k].totals)}`, 'pl-subtotal');
+    all += `<tr class="pl-sec"><th colspan="9">${esc(PL_LABEL[k])}</th></tr>`;
+    all += rows.length ? rows.map((r, i) => tr(`<td data-label="Sl No">${i + 1}</td><td data-label="Date" class="pl-date-cell">${esc(fmtDate(r.pay_date))}</td><td data-label="Name"><strong>${esc(r.party_name)}</strong></td><td data-label="Item">${esc(r.item)}</td><td data-label="Description" class="pl-desc-cell">${esc(r.description) || '<span class="pl-none">—</span>'}</td>${nums(r)}<td data-label="Paid By">${esc(r.paid_by) || '<span class="pl-none">—</span>'}</td>`)).join('') : '<tr class="empty-row"><td colspan="9">Nothing here.</td></tr>';
+    all += tr(`<td colspan="5" data-label="">Total — ${esc(PL_LABEL[k])}</td>${nums(sm.kinds[k].totals)}<td></td>`, 'pl-subtotal');
   });
-  all += tr(`<td colspan="4" data-label="">Grand total — Company + Outside Rental</td>${nums(sm.overall)}`, 'pl-total');
+  all += tr(`<td colspan="5" data-label="">Grand total — Company + Outside Rental</td>${nums(sm.overall)}<td></td>`, 'pl-total');
   document.getElementById('pl-cum-all').innerHTML = all;
 }
 
@@ -3158,11 +3197,15 @@ function renderPlCumulative(sm) {
 function openPayEdit(k, id) {
   const row = (PL.rows[k] || []).find(r => String(r.id) === String(id)); if (!row) return;
   PL.editing = { id: row.id, row };
-  document.getElementById('pe-kind').value = row.kind;
+  document.getElementById('pe-kind').value = row.kind; document.getElementById('pe-date').value = row.pay_date || today();
   document.getElementById('pe-name').value = row.party_name; document.getElementById('pe-item').value = row.item;
   document.getElementById('pe-desc').value = row.description || ''; document.getElementById('pe-payable').value = row.payable; document.getElementById('pe-paid').value = row.paid;
+  document.getElementById('pe-paidby').value = row.paid_by || '';
   document.getElementById('pe-error').textContent = ''; plEditBalance();
-  Payments.names().then(r => { document.getElementById('pl-names-edit').innerHTML = (r.data || []).map(n => `<option value="${esc(n)}"></option>`).join(''); }).catch(() => {});
+  Payments.names().then(r => {
+    document.getElementById('pl-names-edit').innerHTML = (r.data || []).map(n => `<option value="${esc(n)}"></option>`).join('');
+    document.getElementById('pl-paidby-edit').innerHTML = (r.paid_by || []).map(n => `<option value="${esc(n)}"></option>`).join('');
+  }).catch(() => {});
   document.getElementById('pay-edit-overlay').classList.add('open');
   setTimeout(() => document.getElementById('pe-name').focus(), 60);
 }
@@ -3176,14 +3219,15 @@ async function savePayEdit() {
   const err = document.getElementById('pe-error'); err.textContent = '';
   const before = PL.editing.row;
   const body = {
-    kind: document.getElementById('pe-kind').value, party_name: document.getElementById('pe-name').value.replace(/\s+/g, ' ').trim(), item: document.getElementById('pe-item').value.replace(/\s+/g, ' ').trim(),
+    kind: document.getElementById('pe-kind').value, pay_date: document.getElementById('pe-date').value, party_name: document.getElementById('pe-name').value.replace(/\s+/g, ' ').trim(), item: document.getElementById('pe-item').value.replace(/\s+/g, ' ').trim(),
     description: document.getElementById('pe-desc').value.replace(/\s+/g, ' ').trim(), payable: document.getElementById('pe-payable').value.trim(), paid: document.getElementById('pe-paid').value.trim(),
+    paid_by: document.getElementById('pe-paidby').value.replace(/\s+/g, ' ').trim(),
   };
   const problem = plValidate([body]); if (problem) { err.textContent = problem.replace(/^Line 1 /, 'This line '); return; }
   const changes = [];
   const push = (field, a, b) => { if (String(a ?? '') !== String(b ?? '')) changes.push({ field, from: a || null, to: b || null }); };
-  push('Paying', PL_LABEL[before.kind], PL_LABEL[body.kind]); push('Name', before.party_name, body.party_name); push('Item', before.item, body.item); push('Description', before.description, body.description);
-  push('Payable', inrS(before.payable), inrS(Number(body.payable) || 0)); push('Paid', inrS(before.paid), inrS(Number(body.paid) || 0));
+  push('Paying', PL_LABEL[before.kind], PL_LABEL[body.kind]); push('Date', fmtDate(before.pay_date), fmtDate(body.pay_date)); push('Name', before.party_name, body.party_name); push('Item', before.item, body.item); push('Description', before.description, body.description);
+  push('Payable', inrS(before.payable), inrS(Number(body.payable) || 0)); push('Paid', inrS(before.paid), inrS(Number(body.paid) || 0)); push('Paid by', before.paid_by, body.paid_by);
   if (!changes.length) { showToast('No changes were made.'); closePayEdit(); return; }
   const reason = await askReason({ title: 'Reason for change', intro: 'Please explain why this payment line is being changed. It is saved in the Activity Log.', confirmLabel: 'Confirm & Save', changes });
   if (!reason) return;
@@ -3195,7 +3239,7 @@ async function savePayEdit() {
 }
 async function deletePayment(k, id) {
   const row = (PL.rows[k] || []).find(r => String(r.id) === String(id)); if (!row) return;
-  const reason = await askReason({ title: 'Delete this payment line?', intro: `<strong>${esc(row.party_name)}</strong> — ${esc(row.item)} — payable ${esc(inrS(row.payable))}, paid ${esc(inrS(row.paid))}. The reason is saved in the Activity Log.`, confirmLabel: 'Delete line', danger: true });
+  const reason = await askReason({ title: 'Delete this payment line?', intro: `<strong>${esc(row.party_name)}</strong> — ${esc(row.item)} — ${esc(fmtDate(row.pay_date))} — payable ${esc(inrS(row.payable))}, paid ${esc(inrS(row.paid))}. The reason is saved in the Activity Log.`, confirmLabel: 'Delete line', danger: true });
   if (!reason) return;
   try { await Payments.remove(row.id, reason); showToast('Payment line deleted.'); loadPlLedger(k); }
   catch (e) { showToast('❌ ' + (e.message || 'Delete failed.'), true); }

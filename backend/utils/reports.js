@@ -193,9 +193,9 @@ function buildCsv(rows, extras = {}) {
   const bl = extras.breakup || [];
   if (bl.length) {
     const t = breakupTotals(bl);
-    more.push([], ['Loads breakup summary'], ['Sl No', 'Date', 'Vehicle No.', 'Name', 'Material', 'Location', 'Loads', 'Rate', 'Amount']);
-    bl.forEach((l, i) => more.push([i + 1, l.date, l.vehicle, l.name, l.material, l.location, l.loads, l.rate, l.amount]));
-    more.push(['', '', '', '', '', 'Total', t.loads, '', t.amount]);
+    more.push([], ['Loads breakup summary'], ['Sl No', 'Date', 'Name', 'Material', 'Location', 'Loads', 'Rate', 'Amount']);
+    bl.forEach((l, i) => more.push([i + 1, l.date, l.name, l.material, l.location, l.loads, l.rate, l.amount]));
+    more.push(['', '', '', '', 'Total', t.loads, '', t.amount]);
   }
   const pg = extras.progress || [];
   if (pg.length) {                                   // (a CSV cannot hold pictures — they are in the Excel and PDF reports)
@@ -371,15 +371,15 @@ async function buildXlsx(rows, meta, thumbs, extras = {}) {
   const bl = extras.breakup || [];
   if (bl.length) {
     title(r0, 'LOADS BREAKUP SUMMARY'); r0 += 1;
-    const spans = [[1, 1, 'Sl No'], [2, 2, 'Date'], [3, 3, 'Vehicle No.'], [4, 5, 'Name'], [6, 7, 'Material'], [8, 9, 'Location'], [10, 10, 'Loads'], [11, 11, 'Rate (₹)'], [12, 12, 'Amount (₹)']];
+    const spans = [[1, 1, 'Sl No'], [2, 2, 'Date'], [3, 5, 'Name'], [6, 7, 'Material'], [8, 9, 'Location'], [10, 10, 'Loads'], [11, 11, 'Rate (₹)'], [12, 12, 'Amount (₹)']];
     spans.forEach(([a, b, t]) => merged(r0, a, b, t, { bold: true, color: 'FFFFFF', fill: headFill, right: ['Loads', 'Rate (₹)', 'Amount (₹)', 'Sl No'].includes(t) }));
     ws.getRow(r0).height = 22; r0 += 1;
     bl.forEach((l, i) => {
       const f = i % 2 === 1 ? { type: 'pattern', pattern: 'solid', fgColor: argb(COLORS.paper) } : undefined;
-      merged(r0, 1, 1, i + 1, { right: true, fill: f }); merged(r0, 2, 2, l.date, { fill: f }); merged(r0, 3, 3, l.vehicle, { bold: true, fill: f });
-      merged(r0, 4, 5, l.name, { fill: f, wrap: true }); merged(r0, 6, 7, l.material, { fill: f, wrap: true }); merged(r0, 8, 9, l.location, { fill: f, wrap: true });
+      merged(r0, 1, 1, i + 1, { right: true, fill: f }); merged(r0, 2, 2, l.date, { fill: f });
+      merged(r0, 3, 5, l.name, { fill: f, wrap: true, bold: true }); merged(r0, 6, 7, l.material, { fill: f, wrap: true }); merged(r0, 8, 9, l.location, { fill: f, wrap: true });
       merged(r0, 10, 10, l.loads, { right: true, fill: f }); merged(r0, 11, 11, l.rate, { right: true, fill: f, numFmt: '#,##0.00' }); merged(r0, 12, 12, l.amount, { right: true, fill: f, numFmt: '#,##0.00' });
-      ws.getRow(r0).height = Math.max(20, wrappedLines(l.name, 27) * 14 + 6, wrappedLines(l.material, 35) * 14 + 6, wrappedLines(l.location, 35) * 14 + 6);
+      ws.getRow(r0).height = Math.max(20, wrappedLines(l.name, 45) * 14 + 6, wrappedLines(l.material, 35) * 14 + 6, wrappedLines(l.location, 35) * 14 + 6);
       r0 += 1;
     });
     const t = breakupTotals(bl), tf = { type: 'pattern', pattern: 'solid', fgColor: argb('FFF3E6') };
@@ -533,6 +533,7 @@ async function buildPdf(rows, meta, thumbs, extras = {}) {
     if (rows.some(r => r.hoursMin !== null)) doc.text(String(hoursFromMinutes(rows.reduce((a, r) => a + (r.hoursMin || 0), 0))), x0[ci('hours')] + PAD, y + 5.5, { width: PDF_COLS[ci('hours')].w - PAD * 2, align: 'left', lineBreak: false });
     doc.text(rows.reduce((a, r) => a + r.diesel, 0).toFixed(2), x0[ci('diesel')] + PAD, y + 5.5, { width: PDF_COLS[ci('diesel')].w - PAD * 2, align: 'right', lineBreak: false });
     doc.text(String(rows.reduce((a, r) => a + r.loads, 0)), x0[ci('loads')] + PAD, y + 5.5, { width: PDF_COLS[ci('loads')].w - PAD * 2, align: 'right', lineBreak: false });
+    y += 18;
   }
 
   // ── Under the table: Loads breakup summary, then Site Working Progress ──
@@ -546,8 +547,8 @@ async function buildPdf(rows, meta, thumbs, extras = {}) {
   };
   const bl = extras.breakup || [];
   if (bl.length) {
-    const fixed = [['Sl No', 28, 'left'], ['Date', 56, 'left'], ['Vehicle No.', 84, 'left'], ['Name', 150, 'left'], ['Material', 110, 'left'], ['Location', 0, 'left'], ['Loads', 46, 'right'], ['Rate (Rs)', 62, 'right'], ['Amount (Rs)', 78, 'right']];
-    fixed[5][1] = usableW - fixed.reduce((a, c) => a + c[1], 0);
+    const fixed = [['Sl No', 28, 'left'], ['Date', 56, 'left'], ['Name', 190, 'left'], ['Material', 140, 'left'], ['Location', 0, 'left'], ['Loads', 46, 'right'], ['Rate (Rs)', 62, 'right'], ['Amount (Rs)', 78, 'right']];
+    fixed[4][1] = usableW - fixed.reduce((a, c) => a + c[1], 0);
     const bx = fixed.reduce((acc, c, i) => { acc.push(i ? acc[i - 1] + fixed[i - 1][1] : M); return acc; }, []);
     const bHead = () => {
       doc.rect(M, y, usableW, 16).fill(hex(COLORS.ink));
@@ -559,7 +560,7 @@ async function buildPdf(rows, meta, thumbs, extras = {}) {
     bl.forEach((l, i) => {
       if (y + 15 > bottom) { doc.addPage(); y = M; sectionTitle('LOADS BREAKUP SUMMARY (continued)'); bHead(); }
       if (i % 2 === 1) doc.rect(M, y, usableW, 15).fill(hex(COLORS.paper));
-      const vals = [String(i + 1), l.date, l.vehicle, l.name, l.material, l.location, String(l.loads), fmtMoney(l.rate), fmtMoney(l.amount)];
+      const vals = [String(i + 1), l.date, l.name, l.material, l.location, String(l.loads), fmtMoney(l.rate), fmtMoney(l.amount)];
       doc.font('Helvetica').fontSize(FONT).fillColor(hex(COLORS.ink));
       vals.forEach((v, k) => doc.font(k === 2 ? 'Helvetica-Bold' : 'Helvetica').text(pdfText(v), bx[k] + PAD, y + 4, { width: fixed[k][1] - PAD * 2, align: fixed[k][2], lineBreak: false, ellipsis: true }));
       doc.moveTo(M, y + 15).lineTo(M + usableW, y + 15).lineWidth(0.4).strokeColor(hex(COLORS.line)).stroke();
@@ -570,9 +571,9 @@ async function buildPdf(rows, meta, thumbs, extras = {}) {
     doc.rect(M, y, usableW, 18).fill('#FFF3E6');
     doc.moveTo(M, y).lineTo(M + usableW, y).lineWidth(1.2).strokeColor(hex(COLORS.orange)).stroke();
     doc.font('Helvetica-Bold').fontSize(8).fillColor(hex(COLORS.ink));
-    doc.text('Total', bx[5] + PAD, y + 5.5, { width: fixed[5][1] - PAD * 2, align: 'right', lineBreak: false });
-    doc.text(String(bt.loads), bx[6] + PAD, y + 5.5, { width: fixed[6][1] - PAD * 2, align: 'right', lineBreak: false });
-    doc.text(fmtMoney(bt.amount), bx[8] + PAD, y + 5.5, { width: fixed[8][1] - PAD * 2, align: 'right', lineBreak: false });
+    doc.text('Total', bx[4] + PAD, y + 5.5, { width: fixed[4][1] - PAD * 2, align: 'right', lineBreak: false });
+    doc.text(String(bt.loads), bx[5] + PAD, y + 5.5, { width: fixed[5][1] - PAD * 2, align: 'right', lineBreak: false });
+    doc.text(fmtMoney(bt.amount), bx[7] + PAD, y + 5.5, { width: fixed[7][1] - PAD * 2, align: 'right', lineBreak: false });
     y += 18;
   }
   const pgList = extras.progress || [];

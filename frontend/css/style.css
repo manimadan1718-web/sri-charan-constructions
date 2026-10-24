@@ -1620,3 +1620,51 @@ body:not(.can-payments-edit) .perm-payments-edit { display: none !important; }
   .pl-table tfoot td[data-label=""]:empty, .pl-table tr td:empty { display: none !important; }
 }
 
+/* ── Payments: Date and Paid By columns, and the search filters ─────────────────────────────────── */
+.pl-grid .pl-thead, .pl-grid .pl-row, .pl-grid .pl-foot {
+  grid-template-columns: 46px 134px minmax(118px, 1.2fr) minmax(96px, 1fr) minmax(118px, 1.2fr) 104px 104px 108px minmax(100px, .9fr) 36px;
+}
+.pl-foot-label { grid-column: 1 / 6; }
+.pl-grid .pl-row input[type="date"] { padding-left: 8px; padding-right: 6px; }
+.pl-date-cell { white-space: nowrap; }
+.pl-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px 14px; align-items: end; margin-bottom: 16px; padding: 14px; background: #F8FAFC; border: 1px solid var(--line); border-radius: 12px; }
+.pl-flt-search { grid-column: span 2; }
+.pl-flt span { display: block; margin-bottom: 5px; font-size: 11.5px; font-weight: 800; letter-spacing: .5px; text-transform: uppercase; color: var(--steel); }
+.pl-flt input, .pl-flt select { width: 100%; min-height: 44px; padding: 10px 12px; font-size: 14px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.pl-flt input:focus, .pl-flt select:focus { outline: none; border-color: var(--hazard); box-shadow: 0 0 0 3px rgba(226,116,10,.18); }
+.pl-flt-clear { min-height: 44px; }
+@media (max-width: 720px) { .pl-flt-search { grid-column: 1 / -1; } .pl-filters { grid-template-columns: 1fr 1fr; } .pl-flt-clear { grid-column: 1 / -1; } }
+
+/* the entry grid has nine fields now, so it becomes one card per line on anything narrower than a wide desktop */
+@media (max-width: 1180px), (pointer: coarse) {
+  .pl-grid .pl-thead { display: none; }
+  .pl-grid .pl-row { grid-template-columns: 1fr 1fr; padding: 14px 12px 12px; position: relative; row-gap: 10px; }
+  .pl-sl { grid-column: 1 / -1; text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; padding-right: 48px; } .pl-sl::before { content: 'Line '; }
+  .pl-fl { display: block; }
+  .pl-f-item, .pl-f-desc, .pl-f-bal, .pl-f-by { grid-column: 1 / -1; }
+  .pl-f-bal { display: flex; align-items: center; justify-content: space-between; background: #F8FAFC; border-radius: 10px; padding: 8px 12px; } .pl-f-bal .pl-fl { margin: 0; }
+  .pl-grid .pl-rm { position: absolute; top: 4px; right: 4px; width: 44px; height: 44px; }
+  .pl-grid .pl-foot { grid-template-columns: 1fr auto; row-gap: 4px; }
+  .pl-foot-label { grid-column: 1 / -1; text-align: left; } .pl-foot .r { grid-column: 2; } .pl-foot .r::before { content: attr(data-l); }
+  .pl-foot > span[aria-hidden] { display: none; }
+  .pl-grid .pl-row input, .pl-grid .pl-row input[type="date"] { min-height: 44px; }
+}
+
+/* Payments ledger: ten columns have to fit, so the table is a little tighter and the status chip sits under the balance */
+.pl-wrap { overflow-x: auto; }
+.pl-table { font-size: 13.5px; }
+.pl-table th { padding: 10px 10px; }
+.pl-table td { padding: 11px 10px; }
+.pl-desc-cell { max-width: 210px; }
+.pl-table td.r .pl-chip { display: table; margin: 5px 0 0 auto; }
+.pl-act .btn { padding-left: 11px; padding-right: 11px; }
+.pl-filters { grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); }
+@media (max-width: 720px) {
+  .pl-table td.r .pl-chip { display: inline-block; margin: 0; }
+  .pl-filters { grid-template-columns: 1fr 1fr; }
+}
+.pl-flt { min-width: 0; }
+.pl-flt input, .pl-flt select { min-width: 0; max-width: 100%; box-sizing: border-box; }
+@media (max-width: 480px) { .pl-filters { grid-template-columns: 1fr; } }
+@media (max-width: 1180px), (pointer: coarse) { .pl-f-date { grid-column: 1 / -1; } }
+

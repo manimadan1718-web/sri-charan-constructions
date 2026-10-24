@@ -347,15 +347,17 @@ const Documents = {
 
 // ── Payments (Supervisor adds · Owner + Admin see · Admin edits) ───────────────
 const Payments = {
-  list(kind) { return apiFetch(`/payments${kind ? '?kind=' + encodeURIComponent(kind) : ''}`); },                  // every saved line of a kind (Owner / Admin)
-  summary() { return apiFetch('/payments/summary'); },                                                              // the cumulative picture (Owner / Admin)
-  mine() { return apiFetch('/payments/mine'); },                                                                    // what THIS person saved recently
-  names(kind) { return apiFetch(`/payments/names${kind ? '?kind=' + encodeURIComponent(kind) : ''}`); },            // names used before (type-ahead)
-  // { kind: 'company' | 'outside', items: [{ party_name, item, description, payable, paid }] } — all lines saved together, or none
+  // params = { from, to, name, paid_by, status, q } — all optional (empty ones are left out)
+  list(kind, params = {}) { return apiFetch('/payments' + payQuery({ ...(kind ? { kind } : {}), ...params })); },       // saved lines of a kind (Owner / Admin)
+  summary(params = {}) { return apiFetch('/payments/summary' + payQuery(params)); },                                    // the cumulative picture (Owner / Admin)
+  mine() { return apiFetch('/payments/mine'); },                                                                        // what THIS person saved recently
+  names(kind) { return apiFetch(`/payments/names${kind ? '?kind=' + encodeURIComponent(kind) : ''}`); },                // names and "paid by" used before (type-ahead)
+  // { kind: 'company' | 'outside', items: [{ pay_date, party_name, item, description, payable, paid, paid_by }] } — all lines saved together, or none
   create(payload) { return apiFetch('/payments', { method: 'POST', body: JSON.stringify(payload) }); },
   update(id, payload) { return apiFetch(`/payments/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(payload) }); },
   remove(id, reason) { return apiFetch(`/payments/${encodeURIComponent(id)}`, { method: 'DELETE', body: JSON.stringify({ reason }) }); },
 };
+const payQuery = o => { const q = Object.entries(o).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&'); return q ? '?' + q : ''; };
 
 // ── Purchases (Supervisor adds · Owner + Admin see · Admin edits) ──────────────
 const Purchases = {

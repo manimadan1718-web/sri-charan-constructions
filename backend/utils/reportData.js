@@ -283,25 +283,31 @@ async function summaryReport(range) {
 /* ── Payments: one kind (Company / Outside Rental), or the complete cumulative report of both ───────────── */
 const PAY_COLUMNS = [
   { key: 'n', header: 'Sl No', width: 7, weight: 5, align: 'right' },
-  { key: 'name', header: 'Name', width: 28, weight: 20, bold: true, wrap: true },
-  { key: 'item', header: 'Item', width: 24, weight: 16, wrap: true },
-  { key: 'description', header: 'Description', width: 36, weight: 26, wrap: true },
-  { key: 'payable', header: 'Payable', width: 16, weight: 12, align: 'right', numFmt: '#,##0.00', fmt: pay.money },
-  { key: 'paid', header: 'Paid', width: 16, weight: 12, align: 'right', numFmt: '#,##0.00', fmt: pay.money },
-  { key: 'balance', header: 'Balance', width: 16, weight: 12, align: 'right', numFmt: '#,##0.00', fmt: pay.money },
+  { key: 'date', header: 'Date', width: 12, weight: 9 },
+  { key: 'name', header: 'Name', width: 26, weight: 18, bold: true, wrap: true },
+  { key: 'item', header: 'Item', width: 22, weight: 14, wrap: true },
+  { key: 'description', header: 'Description', width: 32, weight: 20, wrap: true },
+  { key: 'payable', header: 'Payable', width: 15, weight: 11, align: 'right', numFmt: '#,##0.00', fmt: pay.money },
+  { key: 'paid', header: 'Paid', width: 15, weight: 11, align: 'right', numFmt: '#,##0.00', fmt: pay.money },
+  { key: 'balance', header: 'Balance', width: 15, weight: 11, align: 'right', numFmt: '#,##0.00', fmt: pay.money },
+  { key: 'paid_by', header: 'Paid By', width: 18, weight: 12, wrap: true },
 ];
 const numbers = t => ({ payable: t.payable, paid: t.paid, balance: t.balance });
 
-async function paymentsReport(kind) {
+async function paymentsReport(kind, filters = {}) {
   const { data, error } = await fetchAll(() => supabase.from('payment_lines').select('*').order('created_at', { ascending: true }).order('id', { ascending: true }), 20000)
     .then(r => (r.error ? r : r)).catch(e => ({ data: null, error: e }));
   if (error) {
     if (pay.isMissingPayments(error)) throw Object.assign(new Error('payment_lines missing'), { status: 503, userMessage: pay.PAYMENTS_SETUP_MESSAGE });
     throw error;
   }
-  const lines = data.map(p => ({ ...p, payable: Number(p.payable) || 0, paid: Number(p.paid) || 0, balance: pay.balanceOf(p.payable, p.paid), party_key: pay.keyOf(p.party_name) }));
-  const lineRow = (p, i) => ({ n: i + 1, name: p.party_name, item: p.item || '', description: p.description || '', ...numbers(p) });
-  const note = 'Balance = Payable − Paid  ·  amounts in rupees  ·  a negative balance means more was paid than was payable';
+  const everything = pay.sortRows(data.map(p => {
+    const balance = pay.balanceOf(p.payable, p.paid);
+    return { ...p, pay_date: p.pay_date ? String(p.pay_date).slice(0, 10) : String(p.created_at || '').slice(0, 10), payable: Number(p.payable) || 0, paid: Number(p.paid) || 0, balance, status: pay.statusOf(balance), paid_by: p.paid_by || '', party_key: pay.keyOf(p.party_name) };
+  }));
+  const lines = pay.applyFilters(everything, filters), ftxt = pay.filtersText(filters);
+  const lineRow = (p, i) => ({ n: i + 1, date: pay.dmy(p.pay_date), name: p.party_name, item: p.item || '', description: p.description || '', ...numbers(p), paid_by: p.paid_by || '' });
+  const note = `Balance = Payable − Paid  ·  amounts in rupees  ·  a negative balance means more was paid than was payable${ftxt ? `  ·  Filters: ${ftxt}` : ''}`;
 
   if (kind === 'company' || kind === 'outside') {
     const mine = lines.filter(l => l.kind === kind), t = pay.totalsOf(mine);

@@ -7,6 +7,7 @@
  * Both have the same lines:  Sl No · Name · Item · Description · Payable · Paid · Balance   with   Balance = Payable − Paid.
  * Sl No is just the position in the list; Balance is always worked out (never typed or stored), so it can never go out of step.
  * A negative balance means we have paid MORE than was payable (an advance) — it is allowed, and shown as such.
+ * Every line also has a DATE (chosen on a calendar) and "Paid By" (typed by hand).
  */
 const KINDS = ['company', 'outside'];
 const KIND_LABEL = { company: 'Company Payments', outside: 'Outside Rental Payments' };
@@ -26,6 +27,18 @@ function parseAmount(raw, label, who) {
   return { value: round2(n) };
 }
 
+const todayIST = () => new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
+const validDay = s => /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s + 'T00:00:00Z')) && new Date(s + 'T00:00:00Z').toISOString().slice(0, 10) === s;
+const dmy = d => (d ? `${String(d).slice(8, 10)}/${String(d).slice(5, 7)}/${String(d).slice(0, 4)}` : '');
+/** blank → today; otherwise a real date from 2000 up to a year ahead. */
+function parseDate(raw, at) {
+  if (raw === undefined || raw === null || String(raw).trim() === '') return { value: todayIST() };
+  const d = String(raw).trim();
+  const ahead = new Date(Date.now() + (5.5 * 3600 + 366 * 86400) * 1000).toISOString().slice(0, 10);
+  if (!validDay(d) || d < '2000-01-01' || d > ahead) return { error: `${at} needs a valid date.` };
+  return { value: d };
+}
+
 /** One line → { line } or { error }. */
 function parseLine(r, n = null) {
   const at = n ? `Line ${n}` : 'This line';
@@ -34,16 +47,18 @@ function parseLine(r, n = null) {
   const item = clean(r && r.item, 120), description = clean(r && r.description, 300);
   if (!item) return { error: `${at} (${party_name}) needs an item.` };
   if (String(r.party_name || '').trim().length > 120) return { error: `The name on ${at.toLowerCase()} is too long (120 characters at most).` };
+  const dt = parseDate(r.pay_date, `${at} (${party_name})`); if (dt.error) return { error: dt.error };
+  const paid_by = clean(r.paid_by, 120);
   const p = parseAmount(r.payable, 'Payable', party_name); if (p.error) return { error: p.error };
   const d = parseAmount(r.paid, 'Paid', party_name); if (d.error) return { error: d.error };
   if (p.value === 0 && d.value === 0) return { error: `${at} (${party_name}) needs a Payable or a Paid amount.` };
-  return { line: { party_name, party_key: keyOf(party_name), item, description, payable: p.value, paid: d.value } };
+  return { line: { party_name, party_key: keyOf(party_name), pay_date: dt.value, item, description, payable: p.value, paid: d.value, paid_by } };
 }
 
 /** The lines of a save → { items } or { error }. A completely empty row is ignored. */
 function parseItems(raw) {
   if (!Array.isArray(raw)) return { error: 'There are no payment lines to save.' };
-  const rows = raw.filter(r => r && ['party_name', 'item', 'description', 'payable', 'paid'].some(k => String(r[k] == null ? '' : r[k]).trim() !== ''));
+  const rows = raw.filter(r => r && ['party_name', 'item', 'description', 'payable', 'paid', 'paid_by'].some(k => String(r[k] == null ? '' : r[k]).trim() !== ''));
   if (!rows.length) return { error: 'Add at least one line.' };
   if (rows.length > MAX_LINES) return { error: `At most ${MAX_LINES} lines can be saved at once.` };
   const items = [];
@@ -71,6 +86,47 @@ function partyWise(rows) {
   return [...by.values()].map(g => ({ party_name: g.party_name, ...totalsOf(g.rows) })).sort((a, b) => a.party_name.localeCompare(b.party_name, 'en', { sensitivity: 'base' }));
 }
 
+/* ── search filters (the same ones narrow the screen AND the exported report) ─────────────────────────── */
+const STATUSES = ['due', 'settled', 'over'];
+const NO_PAID_BY = '__none__';
+const STATUS_LABEL = { due: 'Balance due', settled: 'Settled', over: 'Advance paid' };
+/** From a query string or a request body → { filters } or { error }. Everything is optional. */
+function parseFilters(src) {
+  const q = src || {}, f = {}, str = (v, max) => (typeof v === 'string' ? clean(v, max) : '');
+  for (const k of ['from', 'to']) { const v = str(q[k], 10); if (v) { if (!validDay(v)) return { error: `${k === 'from' ? 'The "from" date' : 'The "to" date'} must be a valid date.` }; f[k] = v; } }
+  if (f.from && f.to && f.from > f.to) return { error: 'The "from" date cannot be after the "to" date.' };
+  const name = str(q.name, 120), paid_by = str(q.paid_by, 120), status = str(q.status, 12), text = str(q.q, 120);
+  if (name) f.name = name;
+  if (paid_by) f.paid_by = paid_by;
+  if (status) { if (!STATUSES.includes(status)) return { error: 'The status filter is not valid.' }; f.status = status; }
+  if (text) f.q = text;
+  return { filters: f };
+}
+/** rows need: party_name, item, description, paid_by, pay_date, status. */
+function applyFilters(rows, f = {}) {
+  const q = (f.q || '').toLowerCase(), name = f.name ? keyOf(f.name) : '', pb = f.paid_by ? (f.paid_by === NO_PAID_BY ? NO_PAID_BY : keyOf(f.paid_by)) : '';
+  return rows.filter(r => {
+    if (f.from && String(r.pay_date) < f.from) return false;
+    if (f.to && String(r.pay_date) > f.to) return false;
+    if (name && keyOf(r.party_name) !== name) return false;
+    if (pb) { const mine = keyOf(r.paid_by || ''); if (pb === NO_PAID_BY ? mine !== '' : mine !== pb) return false; }
+    if (f.status && r.status !== f.status) return false;
+    if (q && !`${r.party_name} ${r.item} ${r.description} ${r.paid_by}`.toLowerCase().includes(q)) return false;
+    return true;
+  });
+}
+/** "From 01/10/2026 · To 31/10/2026 · Name: Sri Cements · Paid by: Cash · Balance due · Search: sand" (or '' when none). */
+function filtersText(f = {}) {
+  return [f.from && `From ${dmy(f.from)}`, f.to && `To ${dmy(f.to)}`, f.name && `Name: ${f.name}`, f.paid_by && `Paid by: ${f.paid_by === NO_PAID_BY ? '(not entered)' : f.paid_by}`, f.status && STATUS_LABEL[f.status], f.q && `Search: ${f.q}`].filter(Boolean).join('  ·  ');
+}
+/** Oldest date first (it reads as a ledger), then the order lines were saved. */
+const sortRows = rows => [...rows].sort((a, b) => String(a.pay_date).localeCompare(String(b.pay_date)) || String(a.created_at || '').localeCompare(String(b.created_at || '')) || String(a.id).localeCompare(String(b.id)));
+/** What the filter drop-downs offer: every name and every "paid by" used so far (the whole ledger, not just what is shown). */
+function optionsOf(rows) {
+  const uniq = pick => { const seen = new Set(), out = []; for (const r of rows) { const v = pick(r); if (!v) continue; const k = keyOf(v); if (!seen.has(k)) { seen.add(k); out.push(v); } } return out.sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' })); };
+  return { names: uniq(r => r.party_name), paid_by: uniq(r => r.paid_by), has_blank_paid_by: rows.some(r => !String(r.paid_by || '').trim()) };
+}
+
 /** The whole picture: both kinds, their totals, party-wise lists, and the overall total. */
 function cumulative(rows) {
   const out = { kinds: {} };
@@ -84,8 +140,12 @@ const isMissingPayments = err =>
   !!err && /payment_lines/i.test(String(err.message || '')) &&
   (/(relationship|schema cache|does not exist|relation)/i.test(String(err.message || '')) || ['PGRST200', 'PGRST205', '42P01'].includes(err.code));
 const PAYMENTS_SETUP_MESSAGE = 'Payments need a one-time database update. Run run-in-supabase-7-payment-ledger.sql in Supabase > SQL Editor, then try again.';
+/** True when only the Date / Paid By columns are missing (the table exists, but run-in-supabase-8 has not been run). */
+const isMissingPaymentColumns = err => !!err && /(pay_date|paid_by)/i.test(String(err.message || '')) && /(column|schema cache)/i.test(String(err.message || ''));
+const PAYMENTS_COLUMNS_MESSAGE = 'Payments now have a Date and a "Paid By" — they need a one-time database update. Run run-in-supabase-8-payment-date-paidby.sql in Supabase > SQL Editor, then try again.';
 
 module.exports = {
   KINDS, KIND_LABEL, MAX_LINES, MAX_AMOUNT, round2, clean, keyOf, money, parseAmount, parseLine, parseItems, balanceOf, statusOf, totalsOf, partyWise, cumulative,
-  isMissingPayments, PAYMENTS_SETUP_MESSAGE,
+  todayIST, validDay, dmy, parseDate, STATUSES, NO_PAID_BY, STATUS_LABEL, parseFilters, applyFilters, filtersText, sortRows, optionsOf,
+  isMissingPayments, PAYMENTS_SETUP_MESSAGE, isMissingPaymentColumns, PAYMENTS_COLUMNS_MESSAGE,
 };

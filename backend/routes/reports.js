@@ -125,7 +125,9 @@ router.post('/payments', requirePerm('payments.view'), (req, res) => {
   const body = req.body || {};
   const kind = body.kind === undefined ? 'all' : body.kind;
   if (!['company', 'outside', 'all'].includes(kind)) return res.status(400).json({ error: 'Choose Company Payments, Outside Rental Payments or the cumulative report.' });
-  return serveTableReport(req, res, { format: body.format, filePrefix: kind === 'all' ? 'payments-cumulative' : `payments-${kind}`, category: 'payment', load: () => reportData.paymentsReport(kind) });
+  const pf = require('../utils/payments').parseFilters(body);          // the same search filters that are on screen
+  if (pf.error) return res.status(400).json({ error: pf.error });
+  return serveTableReport(req, res, { format: body.format, filePrefix: kind === 'all' ? 'payments-cumulative' : `payments-${kind}`, category: 'payment', load: () => reportData.paymentsReport(kind, pf.filters) });
 });
 
 // ── POST /api/reports/inventory  (Admin) — { type: 'vehicles' | 'sites' | 'operators', format } ──

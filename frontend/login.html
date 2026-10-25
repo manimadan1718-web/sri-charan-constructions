@@ -33,6 +33,7 @@
       <div class="login-glare"></div>
 
       <div class="login-card-body">
+        <div class="lang-switch login-lang" data-lang-switch></div>
         <div class="login-logo">
           <a class="login-logo-link" href="/" aria-label="Sri Charan Constructions — home"><div class="login-coin"><img src="/img/logo.png" alt="Sri Charan Constructions logo" width="192" height="192"></div></a>
         </div>
@@ -75,6 +76,8 @@
 </footer>
 </div>
 
+<script src="/js/i18n-data.js"></script>
+<script src="/js/i18n.js"></script>
 <script src="/js/api.js"></script>
 <script>
 (function () {   // a one-time message from the page we came from ("You have been signed out." etc.)
@@ -124,6 +127,9 @@
   pinEl.addEventListener('input', () => { pinEl.classList.remove('is-error'); });
   card.addEventListener('animationend', e => { if (e.animationName === 'shake') card.classList.remove('shake'); });
 
+  let langChosen = false;
+  document.addEventListener('i18n:change', e => { if (e.detail && e.detail.user) langChosen = true; });
+
   async function doLogin() {
     if (busy) return;
     const pin = pinEl.value.trim();
@@ -133,6 +139,14 @@
     setBusy(true);
     try {
       await Auth.login(pin);
+      // Language: a choice made on this page is saved to the account; otherwise the account's own language is used.
+      try {
+        const me = Auth.currentUser() || {};
+        if (window.I18N) {
+          if (langChosen) I18N.saveToAccount(I18N.lang());
+          else if (me.language && I18N.known(me.language)) I18N.set(me.language, { silent: true });
+        }
+      } catch (e) { /* the app still opens */ }
       // Success: play the exit animation, then go to the app.
       stage.classList.add('leaving');
       wrap.classList.add('leaving');

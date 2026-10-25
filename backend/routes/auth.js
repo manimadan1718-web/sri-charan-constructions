@@ -26,6 +26,10 @@ const loginLimiter = rateLimit({
 });
 
 // ── POST /api/auth/login ─────────────────────────────────────────────────────
+const LANGUAGES = ['en', 'hi', 'te', 'kn', 'ta'];
+const isMissingLanguageColumn = err => !!err && /language/i.test(String(err.message || '')) &&
+  (/(column|schema cache|does not exist)/i.test(String(err.message || '')) || ['PGRST204', '42703'].includes(err.code));
+
 router.post('/login', loginLimiter, async (req, res) => {
   try {
     const { pin } = req.body || {};
@@ -82,7 +86,7 @@ router.post('/login', loginLimiter, async (req, res) => {
     res.json({
       success: true,
       token,
-      user: { id: user.id, name: user.name, role: user.role, permissions: effectivePermissions(user.role, user.permissions) },
+      user: { id: user.id, name: user.name, role: user.role, language: LANGUAGES.includes(user.language) ? user.language : null, permissions: effectivePermissions(user.role, user.permissions) },
     });
   } catch (err) {
     console.error('POST /auth/login:', err.message);
@@ -95,6 +99,28 @@ router.post('/login', loginLimiter, async (req, res) => {
 router.post('/logout', requireAuth, async (req, res) => {
   await logActivity(req, { category: 'auth', action: 'logout', entityLabel: 'Signed out' });
   res.json({ success: true });
+});
+
+// ── PUT /api/auth/language ───────────────────────────────────────────────────
+// Every person chooses their own language (English, Hindi, Telugu, Kannada, Tamil) — no permission, no limit.
+// It is kept on the account so it follows them to a new phone. Until run-in-supabase-11-language.sql has been run,
+// the phone still remembers the choice and this answers saved:false (nothing breaks).
+router.put('/language', requireAuth, async (req, res) => {
+  try {
+    const language = req.body && req.body.language;
+    if (!LANGUAGES.includes(language)) {
+      return res.status(400).json({ error: 'Choose English, Hindi, Telugu, Kannada or Tamil.' });
+    }
+    const { error } = await supabase.from('users').update({ language }).eq('id', req.user.id);
+    if (error) {
+      if (isMissingLanguageColumn(error)) return res.json({ success: true, saved: false, setupRequired: true });
+      throw error;
+    }
+    res.json({ success: true, saved: true, language });
+  } catch (err) {
+    console.error('PUT /auth/language:', err.message);
+    res.status(500).json({ error: 'Could not save the language. Please try again.' });
+  }
 });
 
 // ── GET /api/auth/verify ─────────────────────────────────────────────────────

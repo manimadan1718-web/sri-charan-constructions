@@ -69,10 +69,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   initReportMenus();
   initLogSelection();
 
-  document.getElementById('header-user').textContent = `${user.name} / ${capitalize(user.role)}`;
+  document.getElementById('header-user').textContent = `${user.name} / ${window.I18N ? I18N.t(capitalize(user.role)) : capitalize(user.role)}`;
   fillSideUser(user);
   document.getElementById('f-date').value = today();
-  document.getElementById('header-date').textContent = new Date().toLocaleDateString('en-IN', {
+  document.getElementById('header-date').textContent = new Date().toLocaleDateString(window.I18N ? I18N.locale() : 'en-IN', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
   });
 
@@ -3706,7 +3706,7 @@ function fillSideUser(user) {
    Home — what matters today, for the modules this person may open
    ═══════════════════════════════════════════════════════════════════════════════ */
 const HM = { built: false };
-const hmGreeting = () => { const h = new Date().getHours(); return h < 12 ? 'Good Morning' : h < 17 ? 'Good Afternoon' : 'Good Evening'; };
+const hmGreeting = () => { const h = new Date().getHours(); const g = h < 12 ? 'Good Morning' : h < 17 ? 'Good Afternoon' : 'Good Evening'; return window.I18N ? I18N.t(g) : g; };
 const hmMonthStart = () => today().slice(0, 8) + '01';
 const HM_ICON = {
   rec: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
@@ -3722,10 +3722,22 @@ function hmCard(icon, title, chips, tab) {
   </button>`;
 }
 
+/** When the language changes, the few texts the app composes itself are rebuilt (everything else is swapped by i18n.js). */
+if (window.I18N) I18N.onChange(() => {
+  try {
+    const user = Auth.currentUser(); if (!user) return;
+    const loc = I18N.locale();
+    const hu = document.getElementById('header-user'); if (hu) hu.textContent = `${user.name} / ${I18N.t(capitalize(user.role))}`;
+    const hd = document.getElementById('header-date'); if (hd && hd.textContent) hd.textContent = new Date().toLocaleDateString(loc, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    const hs = document.getElementById('hm-sub'); if (hs && hs.textContent) hs.textContent = new Date().toLocaleDateString(loc, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    const g = document.getElementById('hm-greet'); if (g && g.textContent) g.textContent = `${hmGreeting()}, ${user.name || ''}`;
+  } catch (e) { /* a missing element must never break switching */ }
+});
+
 function initHome() {
   const user = Auth.currentUser(), name = (user && user.name) || '';
   document.getElementById('hm-greet').textContent = `${hmGreeting()}, ${name}`;
-  document.getElementById('hm-sub').textContent = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  document.getElementById('hm-sub').textContent = new Date().toLocaleDateString(window.I18N ? I18N.locale() : 'en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   if (!HM.built) {
     HM.built = true;
     const from = document.getElementById('hm-from'), to = document.getElementById('hm-to');

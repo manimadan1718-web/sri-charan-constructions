@@ -2169,3 +2169,55 @@ tbody tr:hover { background: #FFF8EF; }
 .hm-backup-note { margin: 12px 2px 0; }
 @media (max-width: 720px) { .hm-actions .hm-backup { margin-left: 0; } }
 
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Language choice (English · हिन्दी · తెలుగు · ಕನ್ನಡ · தமிழ்) — see js/i18n.js
+   ═══════════════════════════════════════════════════════════════════════════════ */
+.lang-switch { display: flex; flex-wrap: wrap; gap: 6px; }
+.lang-btn {
+  flex: 0 1 auto; min-height: 44px; padding: 8px 14px; border-radius: 5px;
+  font: 600 15px/1.35 var(--font-body); color: var(--ink); background: var(--panel);
+  border: 1px solid var(--line); cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.lang-btn:hover { border-color: var(--hazard-mid); }
+.lang-btn:focus-visible { outline: 3px solid var(--hazard-mid); outline-offset: 1px; }
+.lang-btn.active { background: var(--hazard-tint); border-color: var(--hazard); color: var(--hazard-deep); }
+
+.login-lang { justify-content: center; margin: 0 0 14px; }
+.login-lang .lang-btn { min-height: 40px; padding: 6px 11px; font-size: 14px; }
+
+.mm-lang { margin: 0 0 12px; }
+.mm-lang .lang-btn { flex: 1 1 28%; }
+
+.side-lang { margin: 0 0 10px; }
+.side-lang select, .hdr-lang select {
+  width: 100%; min-height: 36px; padding: 4px 8px; border-radius: 5px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--ink); font: 600 13.5px/1.4 var(--font-body);
+}
+.hdr-lang { display: none; }
+@media (min-width: 961px) and (max-width: 1199px) { .hdr-lang { display: inline-flex; margin-right: 8px; } }
+
+/* Indian scripts: their own fonts (every phone has them built in), taller lines, no letter-spacing, buttons may wrap. */
+html[data-lang="hi"] { --font-body: 'IBM Plex Sans', 'Noto Sans Devanagari', 'Noto Sans Devanagari UI', 'Nirmala UI', 'Mangal', sans-serif; --font-display: var(--font-body); }
+html[data-lang="te"] { --font-body: 'IBM Plex Sans', 'Noto Sans Telugu', 'Noto Sans Telugu UI', 'Nirmala UI', 'Gautami', sans-serif;       --font-display: var(--font-body); }
+html[data-lang="kn"] { --font-body: 'IBM Plex Sans', 'Noto Sans Kannada', 'Noto Sans Kannada UI', 'Nirmala UI', 'Tunga', sans-serif;       --font-display: var(--font-body); }
+html[data-lang="ta"] { --font-body: 'IBM Plex Sans', 'Noto Sans Tamil', 'Noto Sans Tamil UI', 'Nirmala UI', 'Latha', sans-serif;           --font-display: var(--font-body); }
+html[data-lang]:not([data-lang="en"]) body { line-height: 1.7; }
+html[data-lang]:not([data-lang="en"]) *:not(.lang-btn) { letter-spacing: normal !important; text-transform: none !important; }
+html[data-lang]:not([data-lang="en"]) .btn, html[data-lang]:not([data-lang="en"]) button,
+html[data-lang]:not([data-lang="en"]) label, html[data-lang]:not([data-lang="en"]) th,
+html[data-lang]:not([data-lang="en"]) td, html[data-lang]:not([data-lang="en"]) select,
+html[data-lang]:not([data-lang="en"]) input { line-height: 1.55; }
+html[data-lang]:not([data-lang="en"]) .btn { white-space: normal; text-align: center; }
+
+/* Sign-in language buttons: a tidy 3 + 2 on phones (centred), one row on wider screens */
+.login-lang { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.login-lang .lang-btn { grid-column: span 2; min-width: 0; padding: 6px 4px; }
+.login-lang .lang-btn:nth-child(4) { grid-column: 2 / span 2; }
+.login-lang .lang-btn:nth-child(5) { grid-column: 4 / span 2; }
+@media (min-width: 481px) {
+  .login-lang { display: flex; justify-content: center; }
+  .login-lang .lang-btn { padding: 6px 11px; }
+}
+/* Records: the "Order" choice drops under the title on a phone instead of being squeezed */
+@media (max-width: 720px) { .rec-filters-title { flex-wrap: wrap; row-gap: 8px; } }
+

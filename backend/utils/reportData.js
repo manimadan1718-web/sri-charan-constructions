@@ -284,6 +284,7 @@ async function summaryReport(range) {
 const PAY_COLUMNS = [
   { key: 'n', header: 'Sl No', width: 7, weight: 5, align: 'right' },
   { key: 'date', header: 'Date', width: 12, weight: 9 },
+  { key: 'site', header: 'Site', width: 18, weight: 12, wrap: true },
   { key: 'name', header: 'Name', width: 26, weight: 18, bold: true, wrap: true },
   { key: 'item', header: 'Item', width: 22, weight: 14, wrap: true },
   { key: 'description', header: 'Description', width: 32, weight: 20, wrap: true },
@@ -306,7 +307,7 @@ async function paymentsReport(kind, filters = {}) {
     return { ...p, pay_date: p.pay_date ? String(p.pay_date).slice(0, 10) : String(p.created_at || '').slice(0, 10), payable: Number(p.payable) || 0, paid: Number(p.paid) || 0, balance, status: pay.statusOf(balance), paid_by: p.paid_by || '', party_key: pay.keyOf(p.party_name) };
   }));
   const lines = pay.applyFilters(everything, filters), ftxt = pay.filtersText(filters);
-  const lineRow = (p, i) => ({ n: i + 1, date: pay.dmy(p.pay_date), name: p.party_name, item: p.item || '', description: p.description || '', ...numbers(p), paid_by: p.paid_by || '' });
+  const lineRow = (p, i) => ({ n: i + 1, date: pay.dmy(p.pay_date), site: p.site || '', name: p.party_name, item: p.item || '', description: p.description || '', ...numbers(p), paid_by: p.paid_by || '' });
   const note = `Balance = Payable − Paid  ·  amounts in rupees  ·  a negative balance means more was paid than was payable${ftxt ? `  ·  Filters: ${ftxt}` : ''}`;
 
   if (kind === 'company' || kind === 'outside') {

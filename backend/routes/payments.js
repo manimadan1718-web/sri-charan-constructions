@@ -29,12 +29,28 @@ const publicRow = p => {
   return {
     id: p.id, kind: p.kind, party_name: p.party_name, item: p.item || '', description: p.description || '',
     pay_date: p.pay_date ? String(p.pay_date).slice(0, 10) : String(p.created_at || '').slice(0, 10),     // (lines saved before dates existed show the day they were saved)
-    payable, paid, balance, status: pay.statusOf(balance), paid_by: p.paid_by || '',
+    payable, paid, balance, status: pay.statusOf(balance), paid_by: p.paid_by || '', site: p.site || '',
     created_by_name: p.created_by_name, created_at: p.created_at, updated_at: p.updated_at, updated_by_name: p.updated_by_name,
   };
 };
 
+/** A Site must be one of the sites in Inventory (any capitals). Names are put in the exact form Inventory uses. Returns a message, or null when all is well. */
+async function resolveSites(items) {
+  if (!items.some(i => i.site)) return null;
+  const { data, error } = await supabase.from('sites').select('name');
+  if (error) throw error;
+  const byKey = new Map((data || []).map(s => [pay.keyOf(s.name), s.name]));
+  for (let i = 0; i < items.length; i++) {
+    const s = items[i].site; if (!s) continue;
+    const real = byKey.get(pay.keyOf(s));
+    if (!real) return `${items.length > 1 ? `Line ${i + 1}` : 'This line'}: the site "${s}" is not in Inventory. Pick one from the list, or add it under Inventory first.`;
+    items[i].site = real;
+  }
+  return null;
+}
+
 function sendError(res, err, where) {
+  if (pay.isMissingSiteColumn(err)) return res.status(503).json({ error: pay.PAYMENTS_SITE_MESSAGE, setup_required: true });
   if (pay.isMissingPaymentColumns(err)) return res.status(503).json({ error: pay.PAYMENTS_COLUMNS_MESSAGE, setup_required: true });
   if (pay.isMissingPayments(err)) return res.status(503).json({ error: pay.PAYMENTS_SETUP_MESSAGE, setup_required: true });
   return serverError(res, err, where);
@@ -118,7 +134,11 @@ router.post('/', requirePerm('payments.add'), async (req, res) => {
     const parsed = pay.parseItems(b.items);
     if (parsed.error) return res.status(400).json({ error: parsed.error });
 
-    const rows = parsed.items.map(i => ({ kind: b.kind, ...i, created_by_id: String(req.user.id), created_by_name: req.user.name }));
+    const siteErr = await resolveSites(parsed.items);
+    if (siteErr) return res.status(400).json({ error: siteErr });
+
+    // a blank Site is simply left out, so saving still works before run-in-supabase-12 has been run
+    const rows = parsed.items.map(i => { const row = { kind: b.kind, ...i, created_by_id: String(req.user.id), created_by_name: req.user.name }; if (!row.site) delete row.site; return row; });
     const { error } = await supabase.from('payment_lines').insert(rows);
     if (error) throw error;
 
@@ -126,7 +146,7 @@ router.post('/', requirePerm('payments.add'), async (req, res) => {
     await logActivity(req, {
       category: 'payment', action: 'payments_added', entityType: 'payment',
       entityLabel: `${pay.KIND_LABEL[b.kind]} — ${rows.length} line${rows.length === 1 ? '' : 's'} — payable ${pay.money(t.payable)}, paid ${pay.money(t.paid)}`,
-      changes: rows.map(r => ({ field: r.party_name, from: null, to: `${pay.dmy(r.pay_date)} — ${r.item} — payable ${pay.money(r.payable)}, paid ${pay.money(r.paid)}${r.paid_by ? ` — paid by ${r.paid_by}` : ''}` })),
+      changes: rows.map(r => ({ field: r.party_name, from: null, to: `${pay.dmy(r.pay_date)} — ${r.item} — payable ${pay.money(r.payable)}, paid ${pay.money(r.paid)}${r.site ? ` — site ${r.site}` : ''}${r.paid_by ? ` — paid by ${r.paid_by}` : ''}` })),
     });
     res.status(201).json({ success: true, count: rows.length, totals: t });
   } catch (err) {
@@ -146,6 +166,11 @@ router.put('/:id', requirePerm('payments.edit'), async (req, res) => {
     const one = pay.parseLine(req.body || {});
     if (one.error) return res.status(400).json({ error: one.error });
     const n = one.line;
+    if (n.site && pay.keyOf(n.site) === pay.keyOf(before.site || '')) n.site = before.site;        // same site, different capitals = no change
+    if (n.site && n.site !== (before.site || '')) {
+      const siteErr = await resolveSites([n]);
+      if (siteErr) return res.status(400).json({ error: siteErr });
+    }
 
     const changes = [];
     if (kind !== before.kind) changes.push({ field: 'Paying', from: pay.KIND_LABEL[before.kind], to: pay.KIND_LABEL[kind] });
@@ -157,14 +182,17 @@ router.put('/:id', requirePerm('payments.edit'), async (req, res) => {
     if (n.payable !== Number(before.payable)) changes.push({ field: 'Payable', from: pay.money(before.payable), to: pay.money(n.payable) });
     if (n.paid !== Number(before.paid)) changes.push({ field: 'Paid', from: pay.money(before.paid), to: pay.money(n.paid) });
     if (n.paid_by !== (before.paid_by || '')) changes.push({ field: 'Paid by', from: before.paid_by || null, to: n.paid_by || null });
+    if (n.site !== (before.site || '')) changes.push({ field: 'Site', from: before.site || null, to: n.site || null });
     if (!changes.length) return res.json({ success: true, unchanged: true, data: publicRow(before) });
 
     const rErr = reasonError(req.body.reason, 'change a payment');
     if (rErr) return res.status(400).json({ error: rErr });
     const reason = cleanReason(req.body.reason);
 
+    const upd = { kind, ...n, ...(req.body.pay_date === undefined ? { pay_date: beforeDate } : {}), updated_at: new Date().toISOString(), updated_by_name: req.user.name };
+    if (!upd.site && !('site' in before)) delete upd.site;                  // (the Site column does not exist yet and no site is being set)
     const { data, error } = await supabase.from('payment_lines')
-      .update({ kind, ...n, ...(req.body.pay_date === undefined ? { pay_date: beforeDate } : {}), updated_at: new Date().toISOString(), updated_by_name: req.user.name })
+      .update(upd)
       .eq('id', req.params.id).select('*').maybeSingle();
     if (error) throw error;
     if (!data) return res.status(404).json({ error: 'Payment not found.' });
@@ -190,7 +218,7 @@ router.delete('/:id', requirePerm('payments.edit'), async (req, res) => {
     if (getErr) throw getErr;
     if (!p) return res.status(404).json({ error: 'Payment not found.' });
 
-    await archive.keep(req, { type: 'payment', id: p.id, label: `${p.party_name} — ${pay.KIND_LABEL[p.kind]} — ${p.item || ''}`, detail: `Payable ${pay.money(p.payable)} · Paid ${pay.money(p.paid)}`, row: p, reason });
+    await archive.keep(req, { type: 'payment', id: p.id, label: `${p.party_name} — ${pay.KIND_LABEL[p.kind]} — ${p.item || ''}`, detail: `Payable ${pay.money(p.payable)} · Paid ${pay.money(p.paid)}${p.site ? ` · Site ${p.site}` : ''}`, row: p, reason });
     const { error } = await supabase.from('payment_lines').delete().eq('id', req.params.id);
     if (error) throw error;
     await logActivity(req, {

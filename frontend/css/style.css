@@ -1522,7 +1522,7 @@ body:not(.can-payments-edit) .perm-payments-edit { display: none !important; }
 .pl-thead { background: #F8FAFC; border-bottom: 1px solid var(--line); font-size: 11.5px; font-weight: 800; letter-spacing: .5px; text-transform: uppercase; color: var(--steel); }
 .pl-thead .r, .pl-foot .r { text-align: right; }
 .pl-grid .pl-row { border-bottom: 1px solid var(--line); }
-.pl-grid .pl-row input { width: 100%; min-width: 0; background: #fff; }
+.pl-grid .pl-row input, .pl-grid .pl-row select { width: 100%; min-width: 0; background: #fff; }
 .pl-f { display: block; margin: 0; min-width: 0; }
 .pl-fl { display: none; font-size: 11.5px; font-weight: 800; letter-spacing: .4px; text-transform: uppercase; color: var(--steel); margin-bottom: 4px; }
 .pl-sl { text-align: center; font-weight: 700; color: var(--steel); }
@@ -1623,9 +1623,9 @@ body:not(.can-payments-edit) .perm-payments-edit { display: none !important; }
 
 /* ── Payments: Date and Paid By columns, and the search filters ─────────────────────────────────── */
 .pl-grid .pl-thead, .pl-grid .pl-row, .pl-grid .pl-foot {
-  grid-template-columns: 46px 134px minmax(118px, 1.2fr) minmax(96px, 1fr) minmax(118px, 1.2fr) 104px 104px 108px minmax(100px, .9fr) 36px;
+  grid-template-columns: 46px 128px minmax(104px, .95fr) minmax(104px, 1.1fr) minmax(84px, .9fr) minmax(104px, 1.1fr) 96px 96px 100px minmax(90px, .85fr) 32px;
 }
-.pl-foot-label { grid-column: 1 / 6; }
+.pl-foot-label { grid-column: 1 / 7; }
 .pl-grid .pl-row input[type="date"] { padding-left: 8px; padding-right: 6px; }
 .pl-date-cell { white-space: nowrap; }
 .pl-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px 14px; align-items: end; margin-bottom: 16px; padding: 14px; background: #F8FAFC; border: 1px solid var(--line); border-radius: 6px; }
@@ -1642,13 +1642,13 @@ body:not(.can-payments-edit) .perm-payments-edit { display: none !important; }
   .pl-grid .pl-row { grid-template-columns: 1fr 1fr; padding: 14px 12px 12px; position: relative; row-gap: 10px; }
   .pl-sl { grid-column: 1 / -1; text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; padding-right: 48px; } .pl-sl::before { content: 'Line '; }
   .pl-fl { display: block; }
-  .pl-f-item, .pl-f-desc, .pl-f-bal, .pl-f-by { grid-column: 1 / -1; }
+  .pl-f-site, .pl-f-item, .pl-f-desc, .pl-f-bal, .pl-f-by { grid-column: 1 / -1; }
   .pl-f-bal { display: flex; align-items: center; justify-content: space-between; background: #F8FAFC; border-radius: 6px; padding: 8px 12px; } .pl-f-bal .pl-fl { margin: 0; }
   .pl-grid .pl-rm { position: absolute; top: 4px; right: 4px; width: 44px; height: 44px; }
   .pl-grid .pl-foot { grid-template-columns: 1fr auto; row-gap: 4px; }
   .pl-foot-label { grid-column: 1 / -1; text-align: left; } .pl-foot .r { grid-column: 2; } .pl-foot .r::before { content: attr(data-l); }
   .pl-foot > span[aria-hidden] { display: none; }
-  .pl-grid .pl-row input, .pl-grid .pl-row input[type="date"] { min-height: 44px; }
+  .pl-grid .pl-row input, .pl-grid .pl-row input[type="date"], .pl-grid .pl-row select { min-height: 44px; }
 }
 
 /* Payments ledger: ten columns have to fit, so the table is a little tighter and the status chip sits under the balance */
@@ -2216,4 +2216,36 @@ html[data-lang]:not([data-lang="en"]) .btn { white-space: normal; text-align: ce
 .lang-opt.active .lang-tick { visibility: visible; }
 @media (max-width: 380px) { .lang-trigger { padding: 0 10px; gap: 6px; font-size: 14px; } }
 @media print { .lang-menu { display: none !important; } }
+
+/* Payments: with a Site column the one-row entry table needs about 1480 px. On laptops in between, each line becomes a tidy
+   two-row form (row 1: Date · Site · Name · Item, row 2: Description · Payable · Paid · Balance · Paid By) instead of overflowing. */
+@media (min-width: 1181px) and (max-width: 1480px) and (pointer: fine) {
+  .pl-grid .pl-thead { display: none; }
+  .pl-grid .pl-row { grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 10px; padding: 12px 12px 10px; align-items: end; }
+  .pl-fl { display: block; }
+  .pl-sl { grid-column: 1; grid-row: 1; align-self: center; text-align: center; font-weight: 700; color: var(--steel); }
+  .pl-f-date { grid-column: 2 / span 2; grid-row: 1; }
+  .pl-f-site { grid-column: 4 / span 2; grid-row: 1; }
+  .pl-f-name { grid-column: 6 / span 3; grid-row: 1; }
+  .pl-f-item { grid-column: 9 / span 3; grid-row: 1; }
+  .pl-grid .pl-rm { grid-column: 12; grid-row: 1; justify-self: end; align-self: center; }
+  .pl-f-desc { grid-column: 1 / span 4; grid-row: 2; }
+  .pl-f-num, .pl-f-bal, .pl-f-by { grid-row: 2; grid-column: span 2; }
+  .pl-grid .pl-foot { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 6px 28px; }
+  .pl-foot > span[aria-hidden] { display: none; }
+  .pl-foot-label { grid-column: auto; margin-right: auto; text-align: left; }
+  .pl-foot .r::before { content: attr(data-l); }
+}
+
+/* Payments ledger on laptops: one more column now, so the cells are a little tighter and Edit / Delete stack, so nothing is cut off */
+@media (min-width: 961px) and (max-width: 1536px) and (pointer: fine) {
+  .pl-table { font-size: 13px; }
+  .pl-table th, .pl-table td { padding-left: 7px; padding-right: 7px; }
+  .pl-table td.pl-act { width: 1%; }
+  .pl-table td.pl-act .btn { display: flex; width: 74px; margin: 0 0 4px; }
+  .pl-table td.pl-act .btn:last-child { margin-bottom: 0; }
+  /* on the narrowest laptops the table scrolls sideways a little: the Edit / Delete column stays pinned to the right edge */
+  .pl-table th.pl-act { position: sticky; right: 0; background: #F3F4F6; }
+  .pl-table td.pl-act { position: sticky; right: 0; background: #fff; box-shadow: -6px 0 6px -6px rgba(10, 16, 28, .18); }
+}
 

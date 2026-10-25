@@ -48,11 +48,11 @@ function parseLine(r, n = null) {
   if (!item) return { error: `${at} (${party_name}) needs an item.` };
   if (String(r.party_name || '').trim().length > 120) return { error: `The name on ${at.toLowerCase()} is too long (120 characters at most).` };
   const dt = parseDate(r.pay_date, `${at} (${party_name})`); if (dt.error) return { error: dt.error };
-  const paid_by = clean(r.paid_by, 120);
+  const paid_by = clean(r.paid_by, 120), site = clean(r.site, 120);
   const p = parseAmount(r.payable, 'Payable', party_name); if (p.error) return { error: p.error };
   const d = parseAmount(r.paid, 'Paid', party_name); if (d.error) return { error: d.error };
   if (p.value === 0 && d.value === 0) return { error: `${at} (${party_name}) needs a Payable or a Paid amount.` };
-  return { line: { party_name, party_key: keyOf(party_name), pay_date: dt.value, item, description, payable: p.value, paid: d.value, paid_by } };
+  return { line: { party_name, party_key: keyOf(party_name), pay_date: dt.value, item, description, payable: p.value, paid: d.value, paid_by, site } };
 }
 
 /** The lines of a save → { items } or { error }. A completely empty row is ignored. */
@@ -95,8 +95,9 @@ function parseFilters(src) {
   const q = src || {}, f = {}, str = (v, max) => (typeof v === 'string' ? clean(v, max) : '');
   for (const k of ['from', 'to']) { const v = str(q[k], 10); if (v) { if (!validDay(v)) return { error: `${k === 'from' ? 'The "from" date' : 'The "to" date'} must be a valid date.` }; f[k] = v; } }
   if (f.from && f.to && f.from > f.to) return { error: 'The "from" date cannot be after the "to" date.' };
-  const name = str(q.name, 120), paid_by = str(q.paid_by, 120), status = str(q.status, 12), text = str(q.q, 120);
+  const name = str(q.name, 120), site = str(q.site, 120), paid_by = str(q.paid_by, 120), status = str(q.status, 12), text = str(q.q, 120);
   if (name) f.name = name;
+  if (site) f.site = site;
   if (paid_by) f.paid_by = paid_by;
   if (status) { if (!STATUSES.includes(status)) return { error: 'The status filter is not valid.' }; f.status = status; }
   if (text) f.q = text;
@@ -105,26 +106,28 @@ function parseFilters(src) {
 /** rows need: party_name, item, description, paid_by, pay_date, status. */
 function applyFilters(rows, f = {}) {
   const q = (f.q || '').toLowerCase(), name = f.name ? keyOf(f.name) : '', pb = f.paid_by ? (f.paid_by === NO_PAID_BY ? NO_PAID_BY : keyOf(f.paid_by)) : '';
+  const sk = f.site ? (f.site === NO_PAID_BY ? NO_PAID_BY : keyOf(f.site)) : '';
   return rows.filter(r => {
     if (f.from && String(r.pay_date) < f.from) return false;
     if (f.to && String(r.pay_date) > f.to) return false;
     if (name && keyOf(r.party_name) !== name) return false;
+    if (sk) { const mine = keyOf(r.site || ''); if (sk === NO_PAID_BY ? mine !== '' : mine !== sk) return false; }
     if (pb) { const mine = keyOf(r.paid_by || ''); if (pb === NO_PAID_BY ? mine !== '' : mine !== pb) return false; }
     if (f.status && r.status !== f.status) return false;
-    if (q && !`${r.party_name} ${r.item} ${r.description} ${r.paid_by}`.toLowerCase().includes(q)) return false;
+    if (q && !`${r.party_name} ${r.item} ${r.description} ${r.paid_by} ${r.site || ''}`.toLowerCase().includes(q)) return false;
     return true;
   });
 }
 /** "From 01/10/2026 · To 31/10/2026 · Name: Sri Cements · Paid by: Cash · Balance due · Search: sand" (or '' when none). */
 function filtersText(f = {}) {
-  return [f.from && `From ${dmy(f.from)}`, f.to && `To ${dmy(f.to)}`, f.name && `Name: ${f.name}`, f.paid_by && `Paid by: ${f.paid_by === NO_PAID_BY ? '(not entered)' : f.paid_by}`, f.status && STATUS_LABEL[f.status], f.q && `Search: ${f.q}`].filter(Boolean).join('  ·  ');
+  return [f.from && `From ${dmy(f.from)}`, f.to && `To ${dmy(f.to)}`, f.site && `Site: ${f.site === NO_PAID_BY ? '(not entered)' : f.site}`, f.name && `Name: ${f.name}`, f.paid_by && `Paid by: ${f.paid_by === NO_PAID_BY ? '(not entered)' : f.paid_by}`, f.status && STATUS_LABEL[f.status], f.q && `Search: ${f.q}`].filter(Boolean).join('  ·  ');
 }
 /** Oldest date first (it reads as a ledger), then the order lines were saved. */
 const sortRows = rows => [...rows].sort((a, b) => String(a.pay_date).localeCompare(String(b.pay_date)) || String(a.created_at || '').localeCompare(String(b.created_at || '')) || String(a.id).localeCompare(String(b.id)));
 /** What the filter drop-downs offer: every name and every "paid by" used so far (the whole ledger, not just what is shown). */
 function optionsOf(rows) {
   const uniq = pick => { const seen = new Set(), out = []; for (const r of rows) { const v = pick(r); if (!v) continue; const k = keyOf(v); if (!seen.has(k)) { seen.add(k); out.push(v); } } return out.sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' })); };
-  return { names: uniq(r => r.party_name), paid_by: uniq(r => r.paid_by), has_blank_paid_by: rows.some(r => !String(r.paid_by || '').trim()) };
+  return { names: uniq(r => r.party_name), paid_by: uniq(r => r.paid_by), has_blank_paid_by: rows.some(r => !String(r.paid_by || '').trim()), sites: uniq(r => r.site), has_blank_site: rows.some(r => !String(r.site || '').trim()) };
 }
 
 /** The whole picture: both kinds, their totals, party-wise lists, and the overall total. */
@@ -144,8 +147,12 @@ const PAYMENTS_SETUP_MESSAGE = 'Payments need a one-time database update. Run ru
 const isMissingPaymentColumns = err => !!err && /(pay_date|paid_by)/i.test(String(err.message || '')) && /(column|schema cache)/i.test(String(err.message || ''));
 const PAYMENTS_COLUMNS_MESSAGE = 'Payments now have a Date and a "Paid By" — they need a one-time database update. Run run-in-supabase-8-payment-date-paidby.sql in Supabase > SQL Editor, then try again.';
 
+/** True when only the Site column is missing (the table exists, but run-in-supabase-12 has not been run). */
+const isMissingSiteColumn = err => !!err && /(payment_lines\.site|'site' column|column "?site"?)/i.test(String(err.message || '')) && /(column|schema cache)/i.test(String(err.message || ''));
+const PAYMENTS_SITE_MESSAGE = 'Payments now have a Site \u2014 choosing one needs a one-time database update. Run run-in-supabase-12-payment-site.sql in Supabase > SQL Editor, then try again.';
+
 module.exports = {
   KINDS, KIND_LABEL, MAX_LINES, MAX_AMOUNT, round2, clean, keyOf, money, parseAmount, parseLine, parseItems, balanceOf, statusOf, totalsOf, partyWise, cumulative,
   todayIST, validDay, dmy, parseDate, STATUSES, NO_PAID_BY, STATUS_LABEL, parseFilters, applyFilters, filtersText, sortRows, optionsOf,
-  isMissingPayments, PAYMENTS_SETUP_MESSAGE, isMissingPaymentColumns, PAYMENTS_COLUMNS_MESSAGE,
+  isMissingPayments, PAYMENTS_SETUP_MESSAGE, isMissingPaymentColumns, PAYMENTS_COLUMNS_MESSAGE, isMissingSiteColumn, PAYMENTS_SITE_MESSAGE,
 };

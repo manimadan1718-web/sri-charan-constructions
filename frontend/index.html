@@ -36,7 +36,6 @@
   <div class="header-right">
     <span class="header-date" id="header-date"></span>
     <span class="header-user" id="header-user"></span>
-    <div class="lang-switch hdr-lang" data-lang-switch="select"></div>
     <button class="btn btn-outline btn-sm logout-btn" onclick="confirmLogout()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>Logout</button>
   </div>
 <div class="bell-wrap" id="bell-wrap" hidden>
@@ -79,7 +78,6 @@
   <div class="tab" id="tab-archive" data-perms="archive.manage" onclick="switchTab('archive')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg><span>Archived</span></div>
   <div class="tab" id="tab-logs" data-perms="logs.view" onclick="switchTab('logs')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span>Activity Logs</span></div>
   <div class="side-foot" id="side-foot">
-    <div class="lang-switch side-lang" data-lang-switch="select"></div>
     <div class="side-user"><span class="avatar" id="side-avatar" aria-hidden="true"></span><span class="side-who"><strong id="side-name"></strong><small id="side-role"></small></span></div>
     <button type="button" class="side-logout" onclick="confirmLogout()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg><span>Logout</span></button>
   </div>
@@ -1317,7 +1315,6 @@
   </div>
   <nav class="mm-nav" id="mm-nav" aria-label="Sections"></nav>
   <div class="mm-foot">
-    <div class="lang-switch mm-lang" data-lang-switch></div>
     <button type="button" class="btn btn-outline" onclick="confirmLogout()">Log out</button>
     <footer class="site-footer">
       <span>&copy; <span data-year>2026</span> Sri Charan Constructions</span>

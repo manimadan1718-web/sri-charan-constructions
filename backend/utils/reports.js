@@ -14,7 +14,8 @@
 const path = require('path');
 const supabase = require('../config/supabase');
 const { parseWorkingMinutes, hoursFromMinutes } = require('./workHours');
-const { mileageOf, fmtMileage, fmtEntryMileage } = require('./mileage');
+const { mileageOf, fmtMileage, fmtEntryMileage, readingOf } = require('./mileage');
+const { withVehicleTypes } = require('./vehicleTypes');
 const photos = require('./photos');
 const { fmtDateDMY } = require('./activity');
 const lp = require('./loadPoints');
@@ -63,7 +64,9 @@ async function fetchEntriesByIds(ids) {
     if (r.error) throw r.error;
     (r.data || []).forEach(row => byId.set(String(row.id), row));
   }
-  return ids.map(id => byId.get(String(id))).filter(Boolean);
+  const found = ids.map(id => byId.get(String(id))).filter(Boolean);
+  await withVehicleTypes(found);                                           // (Inventory's vehicle type tells kilometres from hours)
+  return found;
 }
 
 /** One flat, display-ready row per entry. */
@@ -79,7 +82,8 @@ function toRow(e, i) {
     close: e.close_reading || '',
     closePhoto: photos.isReadingPath(e.close_photo) ? e.close_photo : null,
     hours: e.working_hours || '',
-    hoursMin: parseWorkingMinutes(e.working_hours),
+    hoursMin: (r => (r && r.kind === 'hours' ? r.min : null))(readingOf(e)),      // only real hours are added up (not km)
+    vehicleType: e.vehicle_type || '',
     diesel: Number(e.diesel) || 0,
     dieselPhoto: photos.isReadingPath(e.diesel_photo) ? e.diesel_photo : null,
     mileage: fmtEntryMileage(e),                       // this entry's own diesel per hour (or km per litre); '' when it cannot be worked out
@@ -93,7 +97,7 @@ function toRow(e, i) {
 }
 
 /** The overall mileage of the rows in a report (used for the closing Total line). */
-const totalMileageText = rows => fmtMileage(mileageOf(rows.map(r => ({ vehicle_no: r.vehicle, diesel: r.diesel, working_hours: r.hours }))));
+const totalMileageText = rows => fmtMileage(mileageOf(rows.map(r => ({ vehicle_no: r.vehicle, vehicle_type: r.vehicleType, diesel: r.diesel, working_hours: r.hours }))));
 
 /* ── Under the table: Loads breakup summary, then Site Working Progress ──────────────────────────────── */
 const round2 = n => Math.round(n * 100) / 100;
@@ -104,6 +108,23 @@ function breakupLines(entries) {
   return (entries || []).flatMap(e => lp.withAmounts(e.load_points || []).map(p => ({
     date: fmtDateDMY(e.date), vehicle: e.vehicle_no || '', name: p.point_name, material: p.material, location: p.location, loads: p.loads, rate: p.rate, amount: p.amount,
   })));
+}
+const { siteKey, dayLinesFor } = require('./dayBreakup');
+/** The loads breakup lines for a report: for a date and site that has a DAILY breakup, its lines (once); otherwise the entries' own older lines. Keeps the report's order. */
+async function breakupLinesFor(entries) {
+  const byDay = await dayLinesFor(entries), done = new Set(), out = [];
+  for (const e of entries || []) {
+    const key = `${e.date}|${siteKey(e.site)}`;
+    if (byDay.has(key)) {
+      if (done.has(key)) continue;
+      done.add(key);
+      lp.withAmounts(byDay.get(key).map(r => ({ point_name: r.point_name, material: r.material, location: r.location, loads: r.loads, rate: r.rate, position: r.position })))
+        .forEach(p => out.push({ date: fmtDateDMY(e.date), vehicle: '', name: p.point_name, material: p.material, location: p.location, loads: p.loads, rate: p.rate, amount: p.amount }));
+    } else {
+      out.push(...breakupLines([e]));
+    }
+  }
+  return out;
 }
 const breakupTotals = lines => ({ loads: lines.reduce((a, l) => a + l.loads, 0), amount: round2(lines.reduce((a, l) => a + l.amount, 0)) });
 
@@ -617,6 +638,6 @@ async function buildPdf(rows, meta, thumbs, extras = {}) {
 module.exports = {
   lib, COLORS, REPORT_TZ, nowStamp, zoneName,
   MAX_ROWS, MAX_PHOTOS, todayStamp, cleanText, userError,
-  fetchEntriesByIds, toRow, countPhotos, loadThumbnails, breakupLines, breakupTotals, fetchProgress,
+  fetchEntriesByIds, toRow, countPhotos, loadThumbnails, breakupLines, breakupLinesFor, breakupTotals, fetchProgress,
   buildCsv, buildXlsx, buildPdf, csvEscape, photoSummary,
 };

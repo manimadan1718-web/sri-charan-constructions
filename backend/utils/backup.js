@@ -14,6 +14,7 @@ const MAX_ROWS = 100000, MAX_LOG_ROWS = 20000, CELL_MAX = 32000;
 const SHEETS = [
   { name: 'Records',             table: 'entries' },
   { name: 'Unloading lines',     table: 'load_points' },
+  { name: 'Daily breakup lines', table: 'day_load_points' },
   { name: 'Progress pictures',   table: 'progress_photos' },
   { name: 'Purchases',           table: 'purchases' },
   { name: 'Payments',            table: 'payment_lines' },

@@ -46,7 +46,7 @@ router.post('/entries', requirePerm('records.export'), async (req, res) => {
     if (!entries.length) return res.status(404).json({ error: 'Those records could not be found. Please reload the page and try again.' });
     const rows = entries.map(reports.toRow);
     // Under the table: the loads breakup summary, and the site working progress images — the pictures only for people who may see them.
-    const extras = { breakup: reports.breakupLines(entries), progress: hasPerm(req, 'progress.view') ? await reports.fetchProgress(entries) : [] };
+    const extras = { breakup: await reports.breakupLinesFor(entries), progress: hasPerm(req, 'progress.view') ? await reports.fetchProgress(entries) : [] };
 
     let buffer;
     let photoNote = '';

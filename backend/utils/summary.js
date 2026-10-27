@@ -10,18 +10,21 @@
  */
 const supabase = require('../config/supabase');
 const { fetchAll } = require('./db');
-const { parseWorkingMinutes, hoursFromMinutes } = require('./workHours');
-const { mileageOf } = require('./mileage');
+const { hoursFromMinutes } = require('./workHours');
+const { mileageOf, readingOf } = require('./mileage');
+const { withVehicleTypes } = require('./vehicleTypes');
 
 const NO_SITE = '(no site)';
 const NO_SITE_PARAM = '__none__';
 const siteOf = e => String(e.site == null ? '' : e.site).trim();
 
-const blank = () => ({ entries: 0, diesel: 0, loads: 0, minutes: 0, hoursEntries: 0 });
+const blank = () => ({ entries: 0, diesel: 0, loads: 0, minutes: 0, hoursEntries: 0, km: 0 });
+const round1 = n => Math.round(n * 10) / 10;
 function add(t, e) {
-  const d = parseFloat(e.diesel) || 0, l = parseInt(e.loads, 10) || 0, m = parseWorkingMinutes(e.working_hours);
+  const d = parseFloat(e.diesel) || 0, l = parseInt(e.loads, 10) || 0, r = readingOf(e);
   t.entries += 1; t.diesel += d; t.loads += l;
-  if (m !== null) { t.minutes += m; t.hoursEntries += 1; }
+  if (r && r.kind === 'hours') { t.minutes += r.min; t.hoursEntries += 1; }
+  if (r && r.kind === 'km') t.km += r.km;                                  // tippers and other road vehicles: kilometres, not hours
 }
 
 async function summaryFor({ from, to, site }) {
@@ -33,6 +36,7 @@ async function summaryFor({ from, to, site }) {
     return q;
   });
   if (error) throw error;
+  await withVehicleTypes(data);                                                // (Inventory's vehicle type tells kilometres from hours)
 
   // Per site, over the whole period
   const bySite = new Map(), siteRows = new Map();
@@ -44,7 +48,7 @@ async function summaryFor({ from, to, site }) {
   }
   const sites = [...bySite.entries()]
     .sort((a, b) => (a[0] === '' ? 1 : b[0] === '' ? -1 : a[0].localeCompare(b[0])))
-    .map(([key, t]) => ({ site: key || NO_SITE, value: key || NO_SITE_PARAM, entries: t.entries, diesel: t.diesel.toFixed(2), loads: t.loads, hours: hoursFromMinutes(t.minutes), mileage: mileageOf(siteRows.get(key)) }));
+    .map(([key, t]) => ({ site: key || NO_SITE, value: key || NO_SITE_PARAM, entries: t.entries, diesel: t.diesel.toFixed(2), loads: t.loads, hours: hoursFromMinutes(t.minutes), km: round1(t.km), mileage: mileageOf(siteRows.get(key)) }));
 
   // The chosen site (if any) narrows everything else
   const chosen = typeof site === 'string' && site.trim() ? (site.trim() === NO_SITE_PARAM ? '' : site.trim()) : null;
@@ -59,15 +63,16 @@ async function summaryFor({ from, to, site }) {
     vehicleRows.get(key).push(e);
   }
   const vehicles = [...byVehicle.entries()]
-    .filter(([, v]) => v.loads > 0 || v.minutes > 0)                       // vehicles that did work: loads or hours
+    .filter(([, v]) => v.loads > 0 || v.minutes > 0 || v.km > 0)           // vehicles that did work: loads, hours or km
     .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([vehicle_no, v]) => ({ vehicle_no, entries: v.entries, diesel: v.diesel.toFixed(2), loads: v.loads, hours: hoursFromMinutes(v.minutes), mileage: mileageOf(vehicleRows.get(vehicle_no)) }));
+    .map(([vehicle_no, v]) => ({ vehicle_no, entries: v.entries, diesel: v.diesel.toFixed(2), loads: v.loads, hours: hoursFromMinutes(v.minutes), km: round1(v.km), mileage: mileageOf(vehicleRows.get(vehicle_no)) }));
 
   return {
     total_entries: rows.length,
     total_diesel: total.diesel.toFixed(2),
     total_loads: total.loads,
     total_hours: hoursFromMinutes(total.minutes),
+    total_km: round1(total.km),
     mileage: mileageOf(rows),                                                // { lph, kpl } for everything shown
     hours_entries: total.hoursEntries,                                       // how many entries had hours that could be added up
     unique_vehicles: byVehicle.size,

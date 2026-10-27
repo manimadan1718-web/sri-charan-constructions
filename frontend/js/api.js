@@ -380,6 +380,11 @@ const Documents = {
 };
 
 // ── Payments (Supervisor adds · Owner + Admin see · Admin edits) ───────────────
+const Breakups = {
+  get(date, site) { return apiFetch('/breakups?' + new URLSearchParams({ date, site })); },                  // one day's loads, its vehicles and its saved lines
+  save(body) { return apiFetch('/breakups', { method: 'PUT', body: JSON.stringify(body) }); },               // { date, site, points, reason }
+};
+
 const Payments = {
   // params = { from, to, name, paid_by, status, q } — all optional (empty ones are left out)
   list(kind, params = {}) { return apiFetch('/payments' + payQuery({ ...(kind ? { kind } : {}), ...params })); },       // saved lines of a kind (Owner / Admin)

@@ -9,6 +9,7 @@ const photos = require('../utils/photos');
 const { serverError } = require('../utils/http');
 const archive = require('../utils/archive');
 const lp = require('../utils/loadPoints');
+const { withVehicleTypes } = require('../utils/vehicleTypes');
 const progress = require('../utils/progress');
 const { fetchAll } = require('../utils/db');
 const { summaryFor } = require('../utils/summary');
@@ -191,6 +192,7 @@ router.get('/', requirePerm('records.view'), async (req, res) => {
     // Every page is read, so the list never silently stops at 1,000 records.
     const { data, error } = await withPoints(cols => fetchAll(() => build(cols)));
     if (error) throw error;
+    await withVehicleTypes(data);                                       // each row carries its vehicle's Inventory type (needed to tell km from hours)
 
     res.json({ success: true, data });
   } catch (err) {

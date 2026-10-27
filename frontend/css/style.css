@@ -2249,3 +2249,26 @@ html[data-lang]:not([data-lang="en"]) .btn { white-space: normal; text-align: ce
   .pl-table td.pl-act { position: sticky; right: 0; background: #fff; box-shadow: -6px 0 6px -6px rgba(10, 16, 28, .18); }
 }
 
+/* ── Loads breakup for the day (Data Entry) ── */
+.lp-section[hidden] { display: none; }
+.day-pick { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; max-width: 520px; margin: 6px 0 10px; }
+.day-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 4px 0 8px; min-height: 28px; }
+.day-big { font-size: 20px; font-weight: 700; color: var(--ink); }
+.day-on { color: var(--steel); font-size: 14px; }
+.day-note { color: var(--steel); font-size: 14px; line-height: 1.5; }
+.day-chip { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 13px; font-weight: 700; }
+.day-chip.ok   { background: var(--moss-tint);  color: var(--moss); }
+.day-chip.warn { background: var(--hazard-tint); color: var(--hazard-deep); }
+.day-chip.bad  { background: var(--brick-tint); color: var(--brick); }
+.day-vehicles { margin: 4px 0 10px; font-size: 14px; }
+.day-vehicles summary { cursor: pointer; color: var(--steel); font-weight: 600; min-height: 32px; display: flex; align-items: center; }
+.day-vehicles > div { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 0 2px; }
+.day-veh { background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; }
+.day-banner { background: var(--hazard-tint); border: 1px solid var(--hazard-mid); color: var(--hazard-deep); border-radius: 6px; padding: 10px 12px; font-size: 14px; line-height: 1.5; margin: 6px 0; }
+#day-breakup-card { margin-top: 18px; }
+@media (max-width: 640px) { .day-pick { grid-template-columns: 1fr; } .day-big { font-size: 18px; } }
+.day-vehicles summary { list-style: none; }
+.day-vehicles summary::-webkit-details-marker { display: none; }
+.day-vehicles summary::before { content: "\25B8"; display: inline-block; width: 16px; color: var(--hazard-deep); }
+.day-vehicles[open] summary::before { content: "\25BE"; }
+

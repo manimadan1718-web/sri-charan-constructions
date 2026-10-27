@@ -72,6 +72,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('header-user').textContent = `${user.name} / ${window.I18N ? I18N.t(capitalize(user.role)) : capitalize(user.role)}`;
   fillSideUser(user);
   document.getElementById('f-date').value = today();
+  document.getElementById('d-date').value = today();
   document.getElementById('header-date').textContent = new Date().toLocaleDateString(window.I18N ? I18N.locale() : 'en-IN', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
   });
@@ -80,6 +81,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupAutoCalculate();
   toggleCategoryFields('f');
   initLoadPoints();
+  initDayBreakup();
   initProgressAdd();
   initBell();
   loadUnloadPoints();
@@ -137,18 +139,21 @@ function setSelectValue(id, value) {
 // Keep the last loaded records in memory so the Edit modal can look them up
 // without an extra round-trip to the server.
 let currentRecords = [];
+let VEHICLE_TYPES = new Map();                 // vehicle number (lower case) -> its Inventory type: tells the form whether readings are km or hours
 
 /* ── Vehicle / Operator dropdowns (sourced from Inventory) ───────────────────── */
 async function loadDropdownData() {
   try {
     const [vRes, oRes, sRes] = await Promise.all([Inventory.getVehicles(), Inventory.getOperators(), Inventory.getSites()]);
     const vehicles  = (vRes && vRes.data) || [];
+    VEHICLE_TYPES = new Map(vehicles.map(v => [String(v.vehicle_no || '').trim().toLowerCase(), v.type || '']));
     const operators = (oRes && oRes.data) || [];
     const sites     = (sRes && sRes.data) || [];
     populateSelect('f-vehicle',  vehicles,  'vehicle_no', 'Select vehicle…');
     addOtherOption('f-vehicle');
     populateSelect('f-operator', operators, 'name',       'Select operator…');
     populateSelect('f-site',     sites,     'name',       'Select site…');
+    populateSelect('d-site',     sites,     'name',       'Select site…');
     populateSelect('e-vehicle',  vehicles,  'vehicle_no', 'Select vehicle…');
     addOtherOption('e-vehicle');
     populateSelect('pu-site',    sites,     'name',       'Select site…');
@@ -383,7 +388,9 @@ function setupAutoCalculate() {
       const cNum = cRead.num;
       const diff = cNum - sNum;
       if (diff >= 0) {
-        const unit = sRead.unit ? ' ' + sRead.unit : '';
+        // A road vehicle's odometer (or any plain difference over 24, which cannot be hours) is written as km, so it is never mistaken for hours.
+        const kind = vehicleKind(VEHICLE_TYPES.get(String(getVehicleValue('f') || '').trim().toLowerCase()));
+        const unit = sRead.unit ? ' ' + sRead.unit : (kind === 'road' || (kind === null && diff > 24) ? ' km' : '');
         // round to 2 dp to avoid floating-point noise like 130.10000000000002
         hoursEl.value = (Math.round(diff * 100) / 100).toString() + unit;
         if (hintEl) hintEl.textContent = `Auto-calculated: ${cNum} − ${sNum} = ${hoursEl.value}`;
@@ -402,6 +409,9 @@ function setupAutoCalculate() {
 
   startEl.addEventListener('input', calculate);
   closeEl.addEventListener('input', calculate);
+  const vehEl = document.getElementById('f-vehicle'), vehTxt = document.getElementById('f-vehicle-text');
+  if (vehEl) vehEl.addEventListener('change', calculate);                    // choosing the vehicle afterwards re-writes the unit
+  if (vehTxt) vehTxt.addEventListener('input', calculate);
 
   hoursEl.addEventListener('focus', () => {
     hoursEl.style.borderColor = '';
@@ -455,6 +465,7 @@ function switchTab(name) {
   if (sectionEl) sectionEl.classList.add('active');
 
   if (name === 'records')   loadRecords();
+  if (name === 'entry')     loadDayBreakup();
   if (name === 'progress')  loadProgressTab();
   if (name === 'renewals')  initRenewals();
   if (name === 'home')      initHome();
@@ -479,7 +490,6 @@ function clearForm() {
   document.getElementById('f-category').value = 'own';
   toggleCategoryFields('f');
   resetCalcHint();
-  clearLoadPoints('f');
   releasePhotos('f', true);   // photos that were never saved are thrown away
   pgReset(false);
 }
@@ -496,9 +506,6 @@ async function saveEntry() {
   }
   if (photosBusy('f')) { showToast('Please wait — the photo is still uploading.', true); return; }
   if (pgBusy()) { showToast('Please wait — a progress photo is still uploading.', true); return; }
-  const lpProblem = validateLoadPoints('f');
-  if (lpProblem) { showToast(lpProblem, true); return; }
-
   const payload = {
     date, vehicle_no,
     start_photo: photoPath('f-start'),
@@ -513,7 +520,6 @@ async function saveEntry() {
     loads:   parseInt(document.getElementById('f-loads').value)    || 0,
     operator: getOperatorValue('f'),
     remarks:  document.getElementById('f-remarks').value.trim(),
-    load_points: readLoadPoints('f'),
     progress_photos: pgPayload(),
   };
 
@@ -523,6 +529,7 @@ async function saveEntry() {
   try {
     await Entries.create(payload);
     showToast('Entry saved successfully!');
+    pickDayBreakup(payload.date, payload.site);     // the daily breakup card jumps to this entry's day and site
     releasePhotos('f', false);   // the photos now belong to the entry — keep them
     pgReset(true);               // …and so do the progress pictures
     clearForm();
@@ -647,13 +654,30 @@ function parseKm(text) {
   return Number.isFinite(v) && v <= 3000 ? v : null;
 }
 const round1 = n => Math.round(n * 10) / 10;
+const BARE_NUMBER_RE = /^\d+(?:\.\d+)?$/;
+const ROAD_TYPE_RE = /\b(tipper|truck|lorry|trailer|tanker|car|jeep|pickup|van|bus|mixer)\b/i;
+const MACHINE_TYPE_RE = /(excavator|jcb|breaker|roller|loader|crane|dozer|grader|compactor|poclain|backhoe|bucket|drill|compressor|generator|pump|bobcat|crusher|paver|batching)/i;
+const vehicleKind = type => { const t = String(type == null ? '' : type); return MACHINE_TYPE_RE.test(t) ? 'machine' : ROAD_TYPE_RE.test(t) ? 'road' : null; };
+/** What one entry measured: { kind: 'km', km } | { kind: 'hours', min } | null (e.vehicle_type comes with the entry from the server). */
+function readingOf(e) {
+  const text = String(e && e.working_hours != null ? e.working_hours : '').trim();
+  if (!text) return null;
+  const km = parseKm(text);
+  if (km !== null) return { kind: 'km', km };
+  if (BARE_NUMBER_RE.test(text)) {
+    const n = parseFloat(text), kind = vehicleKind(e.vehicle_type);
+    if (kind === 'road' && n > 0 && n <= 3000) return { kind: 'km', km: n };
+    if (kind === null && n > 24 && n <= 3000) return { kind: 'km', km: n };
+  }
+  const min = parseWorkingMinutes(text);
+  return min !== null ? { kind: 'hours', min } : null;
+}
 function entryMileage(e) {
   const d = Number(e && e.diesel) || 0;
   if (d <= 0) return null;
-  const km = parseKm(e.working_hours);
-  if (km !== null && km > 0) return { value: round1(km / d), unit: 'km/L' };
-  const min = parseWorkingMinutes(e.working_hours);
-  if (min !== null && min > 0) return { value: round1(d / (min / 60)), unit: 'L/hr' };
+  const r = readingOf(e);
+  if (r && r.kind === 'km' && r.km > 0) return { value: round1(r.km / d), unit: 'km/L' };
+  if (r && r.kind === 'hours' && r.min > 0) return { value: round1(d / (r.min / 60)), unit: 'L/hr' };
   return null;
 }
 function mileageOf(entries) {
@@ -662,8 +686,9 @@ function mileageOf(entries) {
     const key = e.vehicle_no || 'Unknown';
     const v = byVehicle.get(key) || { litres: 0, minutes: 0, km: 0 };
     v.litres += parseFloat(e.diesel) || 0;
-    const m = parseWorkingMinutes(e.working_hours); if (m !== null) v.minutes += m;
-    const k = parseKm(e.working_hours);            if (k !== null) v.km += k;
+    const r = readingOf(e);
+    if (r && r.kind === 'hours') v.minutes += r.min;
+    if (r && r.kind === 'km') v.km += r.km;
     byVehicle.set(key, v);
   }
   let hL = 0, hMin = 0, kL = 0, kKm = 0;
@@ -673,6 +698,7 @@ function mileageOf(entries) {
   }
   return { lph: hMin > 0 && hL > 0 ? round1(hL / (hMin / 60)) : null, kpl: kKm > 0 && kL > 0 ? round1(kKm / kL) : null };
 }
+const fmtKm = n => (Number(n) > 0 ? Number(n).toLocaleString('en-IN', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : '');
 const fmtMileageText = m => !m ? '' : [m.lph != null ? `${Number(m.lph).toFixed(1)} L/hr` : '', m.kpl != null ? `${Number(m.kpl).toFixed(1)} km/L` : ''].filter(Boolean).join(' · ');
 const fmtEntryMileage = e => { const m = entryMileage(e); return m ? `${m.value.toFixed(1)} ${m.unit}` : ''; };
 /** For a big card: the number, and what it is measured in. */
@@ -694,9 +720,11 @@ function renderRecordsTotals(entries, from, to) {
   document.getElementById('rt-diesel').textContent = diesel.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   document.getElementById('rt-loads').textContent = loads.toLocaleString('en-IN');
   // working hours: only entries whose hours really are a length of time are added up (not "130 km", not "No work")
-  const mins = entries.map(e => parseWorkingMinutes(e.working_hours)).filter(m => m !== null);
+  const readings = entries.map(readingOf);
+  const mins = readings.filter(r => r && r.kind === 'hours').map(r => r.min);
+  const kmList = readings.filter(r => r && r.kind === 'km').map(r => r.km), kmTotal = kmList.reduce((a, k) => a + k, 0);
   document.getElementById('rt-hours').textContent = mins.length ? fmtHours(Math.round(mins.reduce((a, m) => a + m, 0) / 60 * 100) / 100) : '0.0';
-  document.getElementById('rt-hours-note').textContent = mins.length === entries.length ? 'Hours' : `Hours · from ${mins.length} of ${entries.length} entries`;
+  document.getElementById('rt-hours-note').textContent = (mins.length === entries.length ? 'Hours' : `Hours · from ${mins.length} of ${entries.length} entries`) + (kmList.length ? ` · plus ${fmtKm(kmTotal)} km on ${kmList.length} road-vehicle entr${kmList.length === 1 ? 'y' : 'ies'}` : '');
   const mc = mileageCard(mileageOf(entries));
   document.getElementById('rt-mileage').textContent = mc.value;
   document.getElementById('rt-mileage-note').textContent = mc.unit;
@@ -859,6 +887,7 @@ function openEditModal(id) {
   document.getElementById('e-loads').value    = entry.loads ?? '';
   document.getElementById('e-remarks').value  = entry.remarks || '';
   setLoadPoints('e', entry.load_points || []);
+  document.getElementById('e-lp-section').hidden = !(entry.load_points && entry.load_points.length);       // (new breakups are made per day, in Data Entry; older per-vehicle lines can still be corrected here)
   releasePhotos('e', true);
   setExistingPhoto('e-start', entry.start_photo || null);
   setExistingPhoto('e-close', entry.close_photo || null);
@@ -985,6 +1014,7 @@ async function loadSummary() {
     document.getElementById('s-diesel').textContent   = s.total_diesel   ?? '–';
     document.getElementById('s-loads').textContent    = s.total_loads    ?? '–';
     document.getElementById('s-hours').textContent    = s.total_hours === undefined ? '–' : fmtHours(s.total_hours);
+    document.getElementById('s-km').textContent = s.total_km === undefined ? '—' : (Number(s.total_km) > 0 ? fmtKm(s.total_km) : '0.0');
     document.getElementById('s-hours-note').textContent = s.hours_entries === undefined || s.hours_entries === s.total_entries ? 'hours' : `hours · from ${s.hours_entries} of ${s.total_entries} entries`;
     const mc = mileageCard(s.mileage);
     document.getElementById('s-mileage').textContent = mc.value;
@@ -994,7 +1024,7 @@ async function loadSummary() {
     renderSiteBreakdown(s.sites || [], !site);
   } catch (e) {
     if (seq !== summarySeq) return;
-    document.getElementById('vehicle-summary-body').innerHTML = `<tr class="empty-row"><td colspan="6">${esc(e.message || 'Could not load the summary.')}</td></tr>`;
+    document.getElementById('vehicle-summary-body').innerHTML = `<tr class="empty-row"><td colspan="7">${esc(e.message || 'Could not load the summary.')}</td></tr>`;
   }
 }
 
@@ -1019,7 +1049,7 @@ function renderSiteBreakdown(sites, show) {
   card.hidden = !show;
   tbody.innerHTML = '';
   if (!show) return;
-  if (!sites.length) { tbody.innerHTML = '<tr class="empty-row"><td colspan="6">No entries in this period.</td></tr>'; return; }
+  if (!sites.length) { tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No entries in this period.</td></tr>'; return; }
   sites.forEach(x => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
@@ -1028,6 +1058,7 @@ function renderSiteBreakdown(sites, show) {
       <td>${esc(x.diesel)}</td>
       <td>${esc(x.loads)}</td>
       <td>${esc(fmtHours(x.hours))}</td>
+      <td>${esc(fmtKm(x.km) || '–')}</td>
       <td class="mileage-cell">${esc(fmtMileageText(x.mileage) || '–')}</td>`;
     tbody.appendChild(tr);
   });
@@ -1037,7 +1068,7 @@ function renderVehicleBreakdown(list) {
   const tbody = document.getElementById('vehicle-summary-body');
   tbody.innerHTML = '';
   if (!list.length) {
-    tbody.innerHTML = '<tr class="empty-row"><td colspan="6">No vehicles with loads or working hours in this period.</td></tr>';
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No vehicles with loads, working hours or km in this period.</td></tr>';
     return;
   }
   list.forEach(v => {
@@ -1048,6 +1079,7 @@ function renderVehicleBreakdown(list) {
       <td>${esc(v.diesel)}</td>
       <td>${esc(v.loads)}</td>
       <td>${esc(fmtHours(v.hours))}</td>
+      <td>${esc(fmtKm(v.km) || '–')}</td>
       <td class="mileage-cell">${esc(fmtMileageText(v.mileage) || '–')}</td>`;
     tbody.appendChild(tr);
   });
@@ -1735,6 +1767,9 @@ const SPECIAL_ACTIONS = {
   document_printed:    { label: 'Document printed',    cls: 'pill-sky'  },
   progress_deleted:    { label: 'Progress picture deleted', cls: 'pill-red' },
   backup_downloaded:   { label: 'Full backup downloaded', cls: 'pill-sky' },
+  breakup_saved:       { label: 'Loads breakup saved', cls: 'pill-green' },
+  breakup_changed:     { label: 'Loads breakup changed', cls: 'pill-orange' },
+  breakup_cleared:     { label: 'Loads breakup cleared', cls: 'pill-red' },
   archive_restored:    { label: 'Restored from Archive', cls: 'pill-green' },
   archive_purged:      { label: 'Deleted permanently', cls: 'pill-red' },
   renewal_added:       { label: 'Renewal added',       cls: 'pill-green' },
@@ -2371,7 +2406,7 @@ async function loadUnloadPoints() {
 }
 
 function initLoadPoints() {
-  ['f', 'e'].forEach(p => {
+  ['d', 'e'].forEach(p => {
     document.getElementById(`${p}-loads`).addEventListener('input', () => updateLpTotal(p));
     const rows = lpEl(p, 'rows');
     rows.addEventListener('input', ev => { const row = ev.target.closest('.lp-row'); if (row) refreshLpRow(row); updateLpTotal(p); });
@@ -2461,7 +2496,7 @@ function updateLpTotal(p) {
   if (!rows.length) { el.textContent = ''; el.className = 'lp-total'; return; }
   const total = lpTotalLoads(p), sum = sumLoadPoints(p);
   let text, cls;
-  if (!total)            { text = 'Enter the total Loads above first'; cls = 'warn'; }
+  if (!total)            { text = p === 'd' ? 'No loads are recorded for this day yet' : 'Enter the total Loads above first'; cls = 'warn'; }
   else if (sum === total) { text = `✓ ${sum} of ${total} loads allocated`; cls = 'ok'; }
   else if (sum < total)   { text = `${sum} of ${total} loads allocated — ${total - sum} left`; cls = 'warn'; }
   else                    { text = `${sum} of ${total} loads — ${sum - total} too many`; cls = 'bad'; }
@@ -2482,7 +2517,7 @@ function validateLoadPoints(p) {
     if (r.rate !== '' && (!Number.isFinite(r.rate) || r.rate < 0)) return `The rate for "${r.point_name}" must be a number of 0 or more.`;
   }
   const total = lpTotalLoads(p), sum = sumLoadPoints(p);
-  if (sum !== total) return `The lines add up to ${sum} load${sum === 1 ? '' : 's'}, but Loads is ${total}. They must match.`;
+  if (sum !== total) return p === 'd' ? `The lines add up to ${sum} load${sum === 1 ? '' : 's'}, but the day has ${total}. They must match.` : `The lines add up to ${sum} load${sum === 1 ? '' : 's'}, but Loads is ${total}. They must match.`;
   return null;
 }
 
@@ -4553,3 +4588,121 @@ async function sendPermissions(u, call, okMessage) {
     PERM.busy = false;
   }
 }
+
+
+/* ── Loads breakup for the DAY ──────────────────────────────────────────────────────────────
+   One set of lines for a date and a site. Together they must equal ALL the loads the vehicles carried that day at that site.
+   It reuses the lines table of the older per-vehicle breakup (prefix "d"); the day's total is kept in the hidden #d-loads. */
+const DAYBP = { seq: 0, data: null, dirty: false, key: '' };
+const dayEl = id => document.getElementById(id);
+const dayKey = () => `${dayEl('d-date').value}|${dayEl('d-site').value}`;
+
+function initDayBreakup() {
+  const date = dayEl('d-date'), site = dayEl('d-site'), rows = dayEl('d-lp-rows');
+  if (!date || !site || !rows) return;
+  date.addEventListener('change', () => loadDayBreakup());
+  site.addEventListener('change', () => { try { localStorage.setItem('scc_last_site', site.value); } catch (e) { /* private mode */ } loadDayBreakup(); });
+  ['input', 'click'].forEach(ev => rows.addEventListener(ev, () => { DAYBP.dirty = true; }));         // typed lines are not thrown away when the totals refresh
+  // a sensible site to begin with: the only site, or the one used last
+  const names = [...site.options].map(o => o.value).filter(Boolean);
+  let last = ''; try { last = localStorage.getItem('scc_last_site') || ''; } catch (e) { /* private mode */ }
+  site.value = names.length === 1 ? names[0] : (names.includes(last) ? last : '');
+}
+
+/** Points the card at a date and site (used after an entry is saved) and reloads it. */
+function pickDayBreakup(date, site) {
+  const d = dayEl('d-date'), s = dayEl('d-site'); if (!d || !s) return;
+  if (date) d.value = date;
+  if (site && [...s.options].some(o => o.value === site)) { s.value = site; try { localStorage.setItem('scc_last_site', site); } catch (e) { /* private mode */ } }
+  loadDayBreakup();
+}
+
+async function loadDayBreakup() {
+  const card = dayEl('day-breakup-card'); if (!card) return;
+  if (!can('entry.add')) { card.hidden = true; return; }
+  card.hidden = false;
+  const date = dayEl('d-date').value, site = dayEl('d-site').value;
+  if (!date || !site) { dayBlank('Choose the date and the site to see that day\'s loads.'); DAYBP.data = null; return; }
+  const seq = ++DAYBP.seq, key = dayKey();
+  try {
+    const res = await Breakups.get(date, site);
+    if (seq !== DAYBP.seq) return;                                   // a newer choice has already been made
+    renderDayBreakup(res.data, key === DAYBP.key && DAYBP.dirty);   // same day, unsaved lines: keep them, refresh only the totals
+    DAYBP.key = key;
+  } catch (e) {
+    if (seq !== DAYBP.seq) return;
+    dayBlank(e.message || 'The loads for this day could not be loaded.');
+  }
+}
+
+function dayBlank(message) {
+  dayEl('d-summary').innerHTML = `<span class="day-note">${esc(message)}</span>`;
+  ['d-vehicles-box', 'd-banner', 'd-lp-section', 'd-actions', 'd-saved'].forEach(id => { dayEl(id).hidden = true; });
+}
+
+function dayStatus(d) {
+  if (d.status === 'match') return { text: '\u2713 Matches', cls: 'ok' };
+  if (d.status === 'short') return { text: `Short by ${-d.difference}`, cls: 'bad' };
+  if (d.status === 'over')  return { text: `${d.difference} too many`, cls: 'bad' };
+  if (d.status === 'none')  return { text: 'Not entered yet', cls: 'warn' };
+  return { text: '', cls: '' };
+}
+
+function renderDayBreakup(d, keepRows) {
+  DAYBP.data = d;
+  dayEl('d-loads').value = d.total_loads;
+  if (d.setup_required) { dayBlank('The daily loads breakup needs a one-time database update. Run run-in-supabase-13-daily-breakup.sql in Supabase > SQL Editor, then reload this page.'); return; }
+  const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+  if (!d.total_loads) {
+    dayBlank(`No loads are recorded for ${fmtDate(d.date)} at ${d.site} yet. Save the vehicle entries first, then split the loads here.`);
+    if (d.points.length) { /* lines exist but the loads were removed: show them so they can be corrected or cleared */ }
+    else { dayEl('d-lp-section').hidden = true; dayEl('d-actions').hidden = true; if (!keepRows) clearLoadPoints('d'); return; }
+  }
+  const st = dayStatus(d);
+  dayEl('d-summary').innerHTML = `<span class="day-big">${esc(plural(d.vehicles, 'vehicle'))} \u00b7 ${esc(plural(d.total_loads, 'load'))}</span> <span class="day-on">on ${esc(fmtDate(d.date))} at ${esc(d.site)}</span>${st.text ? ` <span class="day-chip ${st.cls}">${esc(st.text)}</span>` : ''}`;
+  const box = dayEl('d-vehicles-box'); box.hidden = !d.vehicle_loads.length;
+  dayEl('d-vehicles').innerHTML = d.vehicle_loads.map(v => `<span class="day-veh"><strong>${esc(v.vehicle_no)}</strong> ${esc(v.loads)}</span>`).join('');
+  const banner = dayEl('d-banner');
+  banner.hidden = !(d.points.length && (d.status === 'short' || d.status === 'over'));
+  if (!banner.hidden) banner.textContent = `The day's loads are now ${d.total_loads}, but the saved lines add up to ${d.points_total}. Change the lines so they match, then save.`;
+  dayEl('d-lp-section').hidden = false; dayEl('d-actions').hidden = false;
+  if (!keepRows) {
+    setLoadPoints('d', d.points);
+    if (!d.points.length) addLoadPoint('d', {}, false);              // a first line that already holds all the loads: usually exactly what is wanted
+    DAYBP.dirty = false;
+  } else updateLpTotal('d');
+  dayEl('d-clear').hidden = !d.points.length;
+  const saved = dayEl('d-saved');
+  saved.hidden = !(d.points.length && d.saved_by);
+  if (!saved.hidden) saved.textContent = `Saved by ${d.saved_by}${d.saved_at ? ` on ${fmtDateTime(d.saved_at)}` : ''}.`;
+}
+
+async function saveDayBreakup() {
+  const d = DAYBP.data; if (!d) return;
+  const problem = validateLoadPoints('d'); if (problem) { showToast(problem, true); return; }
+  const rows = readLoadPoints('d');
+  if (!rows.length) { showToast(d.points.length ? 'Add a line, or use Clear breakup.' : 'Add at least one line.', true); return; }
+  let reason;
+  if (d.points.length) {
+    reason = await askReason({ title: 'Change the loads breakup?', intro: `Please explain why the breakup for <strong>${esc(fmtDate(d.date))}</strong> at <strong>${esc(d.site)}</strong> is being changed. It is saved in the Activity Log.`, confirmLabel: 'Confirm & Save' });
+    if (!reason) return;
+  }
+  const btn = dayEl('d-save'); btn.disabled = true;
+  try {
+    const res = await Breakups.save({ date: d.date, site: d.site, points: rows, reason });
+    showToast(res.unchanged ? 'No changes were made.' : 'Loads breakup saved.');
+    DAYBP.dirty = false; renderDayBreakup(res.data, false);
+  } catch (e) { showToast(e.message || 'The breakup could not be saved.', true); }
+  finally { btn.disabled = false; }
+}
+
+async function clearDayBreakup() {
+  const d = DAYBP.data; if (!d || !d.points.length) return;
+  const reason = await askReason({ title: 'Clear the loads breakup?', intro: `The saved lines for <strong>${esc(fmtDate(d.date))}</strong> at <strong>${esc(d.site)}</strong> will be removed. The reason is saved in the Activity Log.`, confirmLabel: 'Clear breakup', danger: true });
+  if (!reason) return;
+  try {
+    const res = await Breakups.save({ date: d.date, site: d.site, points: [], reason });
+    showToast('Loads breakup cleared.'); DAYBP.dirty = false; renderDayBreakup(res.data, false);
+  } catch (e) { showToast(e.message || 'The breakup could not be cleared.', true); }
+}
+

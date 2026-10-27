@@ -179,20 +179,6 @@
       </div>
     </div>
 
-    <div class="lp-section" id="f-lp-section">
-      <div class="lp-head">
-        <div class="lp-title"><strong>Loads breakup</strong> <span class="badge">OPTIONAL</span></div>
-        <div class="lp-total" id="f-lp-total" aria-live="polite"></div>
-      </div>
-      <p class="form-hint lp-hint">Split the loads into lines. Amount = Loads &times; Rate. If you add lines, the loads must add up to Loads above.</p>
-      <div class="lp-table" role="table" aria-label="Loads breakup">
-        <div class="lp-thead" role="row"><span role="columnheader">Sl No</span><span role="columnheader">Name</span><span role="columnheader">Material</span><span role="columnheader">Location</span><span role="columnheader">Loads</span><span role="columnheader">Rate (&#8377;)</span><span role="columnheader">Amount (&#8377;)</span><span aria-hidden="true"></span></div>
-        <div class="lp-rows" id="f-lp-rows"></div>
-        <div class="lp-foot" id="f-lp-foot" hidden><span class="lp-foot-label">Total</span><span class="lp-foot-loads" id="f-lp-sum">0</span><span class="lp-foot-amount" id="f-lp-amt">0.00</span></div>
-      </div>
-      <button type="button" class="btn btn-outline btn-sm" onclick="addLoadPoint('f')">+ Add line</button>
-    </div>
-
     <div class="pg-section perm-progress-add" id="f-pg-section">
       <div class="lp-head">
         <div class="lp-title"><strong>Site Working Progress Images</strong> <span class="badge">OPTIONAL</span></div>
@@ -208,6 +194,38 @@
     <div class="btn-group">
       <button class="btn btn-primary" onclick="saveEntry()">Save Entry</button>
     </div>
+  </div>
+
+  <div class="card day-bp" id="day-breakup-card">
+    <div class="card-header">
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg></span> Loads breakup for the day</div>
+    </div>
+    <p class="form-hint">One breakup for the whole day. Add the unloading lines until they add up to all the loads the vehicles carried that day.</p>
+    <div class="day-pick">
+      <div class="form-group"><label for="d-date">Date</label><input type="date" id="d-date"></div>
+      <div class="form-group"><label for="d-site">Site</label><select id="d-site"></select></div>
+    </div>
+    <div class="day-summary" id="d-summary" aria-live="polite"></div>
+    <details class="day-vehicles" id="d-vehicles-box" hidden><summary>Loads by vehicle</summary><div id="d-vehicles"></div></details>
+    <div class="day-banner" id="d-banner" role="status" hidden></div>
+    <div class="lp-section" id="d-lp-section" hidden>
+      <input type="hidden" id="d-loads" value="0">
+      <div class="lp-head">
+        <div class="lp-title"><strong>Lines</strong></div>
+        <div class="lp-total" id="d-lp-total" aria-live="polite"></div>
+      </div>
+      <div class="lp-table" role="table" aria-label="Loads breakup for the day">
+        <div class="lp-thead" role="row"><span role="columnheader">Sl No</span><span role="columnheader">Name</span><span role="columnheader">Material</span><span role="columnheader">Location</span><span role="columnheader">Loads</span><span role="columnheader">Rate (&#8377;)</span><span role="columnheader">Amount (&#8377;)</span><span aria-hidden="true"></span></div>
+        <div class="lp-rows" id="d-lp-rows"></div>
+        <div class="lp-foot" id="d-lp-foot" hidden><span class="lp-foot-label">Total</span><span class="lp-foot-loads" id="d-lp-sum">0</span><span class="lp-foot-amount" id="d-lp-amt">0.00</span></div>
+      </div>
+      <button type="button" class="btn btn-outline btn-sm" onclick="addLoadPoint('d')">+ Add line</button>
+    </div>
+    <div class="btn-group" id="d-actions" hidden>
+      <button type="button" class="btn btn-primary" id="d-save" onclick="saveDayBreakup()">Save breakup</button>
+      <button type="button" class="btn btn-outline" id="d-clear" onclick="clearDayBreakup()" hidden>Clear breakup</button>
+    </div>
+    <p class="form-hint" id="d-saved" hidden></p>
   </div>
 </div>
 
@@ -359,6 +377,7 @@
       <div class="stat-card"><div class="stat-label">Total Diesel</div><div class="stat-val" id="s-diesel">–</div><div class="stat-unit">Litres</div></div>
       <div class="stat-card"><div class="stat-label">Total Loads</div><div class="stat-val" id="s-loads">–</div><div class="stat-unit">trips</div></div>
       <div class="stat-card"><div class="stat-label">Total Working Hours</div><div class="stat-val" id="s-hours">–</div><div class="stat-unit" id="s-hours-note">hours</div></div>
+      <div class="stat-card"><div class="stat-label">Total Km</div><div class="stat-val" id="s-km">&mdash;</div><div class="stat-unit">road vehicles (tippers &hellip;)</div></div>
       <div class="stat-card"><div class="stat-label">Mileage</div><div class="stat-val" id="s-mileage">–</div><div class="stat-unit" id="s-mileage-note">L per hour</div></div>
     </div>
   </div>
@@ -369,7 +388,7 @@
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>Vehicle No.</th><th>Entries</th><th>Total Diesel (L)</th><th>Total Loads</th><th>Total Working Hours</th><th>Mileage</th></tr>
+          <tr><th>Vehicle No.</th><th>Entries</th><th>Total Diesel (L)</th><th>Total Loads</th><th>Total Working Hours</th><th>Total Km</th><th>Mileage</th></tr>
         </thead>
         <tbody id="vehicle-summary-body"></tbody>
       </table>
@@ -383,7 +402,7 @@
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>Site</th><th>Entries</th><th>Total Diesel (L)</th><th>Total Loads</th><th>Total Working Hours</th><th>Mileage</th></tr>
+          <tr><th>Site</th><th>Entries</th><th>Total Diesel (L)</th><th>Total Loads</th><th>Total Working Hours</th><th>Total Km</th><th>Mileage</th></tr>
         </thead>
         <tbody id="site-summary-body"></tbody>
       </table>

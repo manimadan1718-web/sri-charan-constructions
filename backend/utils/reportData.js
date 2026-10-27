@@ -252,26 +252,28 @@ const SUMMARY_COLUMNS = [
   { key: 'diesel', header: 'Total diesel (L)', width: 18, weight: 13, align: 'right' },
   { key: 'loads', header: 'Total loads', width: 14, weight: 11, align: 'right' },
   { key: 'hours', header: 'Total working hours', width: 20, weight: 15, align: 'right' },
+  { key: 'km', header: 'Total km', width: 12, weight: 9, align: 'right' },
   { key: 'mileage', header: 'Mileage', width: 16, weight: 12, align: 'right' },
 ];
+const fmtKm = n => (Number(n) > 0 ? Number(n).toLocaleString('en-IN', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : '');
 const fmtHrs = n => Number(n).toLocaleString('en-IN', { minimumFractionDigits: 1, maximumFractionDigits: 2 });
 
 async function summaryReport(range) {
   const s = await summaryFor(range);
   const sum = (list, k) => list.reduce((a, v) => a + (parseFloat(v[k]) || 0), 0);
-  const rows = s.vehicles.map((v, i) => ({ n: i + 1, vehicle: v.vehicle_no, entries: v.entries, diesel: v.diesel, loads: v.loads, hours: fmtHrs(v.hours), mileage: fmtMileage(v.mileage) }));
+  const rows = s.vehicles.map((v, i) => ({ n: i + 1, vehicle: v.vehicle_no, entries: v.entries, diesel: v.diesel, loads: v.loads, hours: fmtHrs(v.hours), km: fmtKm(v.km), mileage: fmtMileage(v.mileage) }));
   if (rows.length) {
     rows.push({
       n: '', vehicle: 'TOTAL (vehicles listed)', entries: sum(s.vehicles, 'entries'),
-      diesel: sum(s.vehicles, 'diesel').toFixed(2), loads: sum(s.vehicles, 'loads'), hours: fmtHrs(Math.round(sum(s.vehicles, 'hours') * 100) / 100), mileage: fmtMileage(s.mileage),
+      diesel: sum(s.vehicles, 'diesel').toFixed(2), loads: sum(s.vehicles, 'loads'), hours: fmtHrs(Math.round(sum(s.vehicles, 'hours') * 100) / 100), km: fmtKm(sum(s.vehicles, 'km')), mileage: fmtMileage(s.mileage),
     });
   }
   // With no site chosen, the report also carries the site-wise summary underneath.
   if (s.site === null && s.sites.length) {
-    rows.push({ n: '', vehicle: '', entries: '', diesel: '', loads: '', hours: '', mileage: '' });
-    rows.push({ n: '', vehicle: 'SITE-WISE SUMMARY', entries: 'Entries', diesel: 'Diesel (L)', loads: 'Loads', hours: 'Working hours', mileage: 'Mileage' });
-    s.sites.forEach((x, i) => rows.push({ n: i + 1, vehicle: x.site, entries: x.entries, diesel: x.diesel, loads: x.loads, hours: fmtHrs(x.hours), mileage: fmtMileage(x.mileage) }));
-    rows.push({ n: '', vehicle: 'TOTAL (all sites)', entries: s.total_entries, diesel: s.total_diesel, loads: s.total_loads, hours: fmtHrs(s.total_hours), mileage: fmtMileage(s.mileage) });
+    rows.push({ n: '', vehicle: '', entries: '', diesel: '', loads: '', hours: '', km: '', mileage: '' });
+    rows.push({ n: '', vehicle: 'SITE-WISE SUMMARY', entries: 'Entries', diesel: 'Diesel (L)', loads: 'Loads', hours: 'Working hours', km: 'Km', mileage: 'Mileage' });
+    s.sites.forEach((x, i) => rows.push({ n: i + 1, vehicle: x.site, entries: x.entries, diesel: x.diesel, loads: x.loads, hours: fmtHrs(x.hours), km: fmtKm(x.km), mileage: fmtMileage(x.mileage) }));
+    rows.push({ n: '', vehicle: 'TOTAL (all sites)', entries: s.total_entries, diesel: s.total_diesel, loads: s.total_loads, hours: fmtHrs(s.total_hours), km: fmtKm(s.total_km), mileage: fmtMileage(s.mileage) });
   }
   return {
     title: 'Summary', sheet: 'Summary', columns: SUMMARY_COLUMNS, rows,

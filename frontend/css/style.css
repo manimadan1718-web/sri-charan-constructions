@@ -2325,3 +2325,25 @@ td .link-btn { margin: 0; color: var(--ink); text-decoration-color: var(--hazard
 @media (max-width: 520px) { .de-filters { grid-template-columns: 1fr; } .de-clear { justify-content: stretch; } .de-clear .btn { width: 100%; min-height: 44px; } .de-proof-btn { min-height: 44px; } }
 @media (pointer: coarse) { .de-proof-btn { min-height: 44px; } }
 
+/* ── Export pop-up: tick what to include, then pick the file type ── */
+.exp-intro { margin: 4px 0 12px; color: var(--steel); font-size: 14.5px; line-height: 1.5; }
+.exp-options { display: flex; flex-direction: column; gap: 8px; }
+.exp-opt { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; min-height: 56px; border: 1px solid var(--line); border-radius: 8px; background: #fff; cursor: pointer; transition: background .12s, border-color .12s; }
+.exp-opt[hidden] { display: none; }
+.exp-opt:hover { background: var(--hazard-tint); border-color: var(--hazard-mid); }
+.exp-opt.on { background: var(--hazard-tint); border-color: var(--hazard); }
+.exp-opt:focus-within { outline: 3px solid var(--hazard-mid); outline-offset: 1px; }
+.exp-opt input { width: 22px; height: 22px; margin: 1px 0 0; flex: none; accent-color: var(--hazard-deep); }
+.exp-opt span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.exp-opt strong { font-size: 15px; color: var(--ink); }
+.exp-opt small { font-size: 12.5px; color: var(--steel); line-height: 1.4; }
+.exp-all { margin-top: 6px; border-style: dashed; }
+.exp-note { margin: 10px 2px 2px; font-size: 13px; color: var(--steel); min-height: 18px; }
+.exp-formats { display: flex; flex-direction: column; gap: 8px; margin-bottom: 4px; }
+.exp-fmt { display: flex; align-items: center; gap: 14px; width: 100%; min-height: 60px; padding: 10px 14px; text-align: left; border: 1px solid var(--line); border-radius: 8px; background: #fff; cursor: pointer; font-family: var(--font-body); }
+.exp-fmt:hover, .exp-fmt:focus-visible { background: var(--hazard-tint); border-color: var(--hazard); outline: none; }
+.exp-fmt .fmt-text { display: flex; flex-direction: column; gap: 2px; }
+.exp-fmt .fmt-text strong { font-size: 15px; color: var(--ink); }
+.exp-fmt .fmt-text small { font-size: 12.5px; color: var(--steel); }
+@media (pointer: coarse) { .exp-opt { min-height: 60px; } .exp-fmt { min-height: 64px; } }
+

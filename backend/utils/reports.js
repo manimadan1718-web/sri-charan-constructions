@@ -96,6 +96,27 @@ function toRow(e, i) {
   };
 }
 
+/* ── What a report holds: any mix of the Records table, the Loads Breakup summary and the Site Working Progress pictures ── */
+const ALL_SECTIONS = { records: true, breakup: true, progress: true };
+const SECTION_KEYS = ['records', 'breakup', 'progress'];
+/** ['records', 'breakup'] -> { records: true, breakup: true, progress: false }; nothing given = everything (as before). Returns null when the list is not valid. */
+function normalizeSections(list) {
+  if (list === undefined || list === null) return { ...ALL_SECTIONS };
+  if (!Array.isArray(list) || !list.length || !list.every(x => SECTION_KEYS.includes(x))) return null;
+  return { records: list.includes('records'), breakup: list.includes('breakup'), progress: list.includes('progress') };
+}
+const gateExtras = (extras, sections) => ({ ...extras, breakup: sections.breakup ? (extras.breakup || []) : [], progress: sections.progress ? (extras.progress || []) : [] });
+const reportTitle = sections => (sections.records ? 'Site Activity Log' : sections.breakup && sections.progress ? 'Loads Breakup and Site Working Progress' : sections.breakup ? 'Loads Breakup' : 'Site Working Progress Images');
+/** One line saying what the file holds: "62 records · 40 photos · Loads breakup (17 lines) · Site working progress (14 images)". */
+function contentsLine(rows, thumbs, extras, sections) {
+  const parts = [];
+  if (sections.records) parts.push(`${rows.length} record${rows.length === 1 ? '' : 's'}`, photoSummary(rows, thumbs));
+  const bl = extras.breakup || [], pg = extras.progress || [];
+  if (sections.breakup) parts.push(`Loads breakup (${bl.length} line${bl.length === 1 ? '' : 's'})`);
+  if (sections.progress) parts.push(`Site working progress (${pg.length} image${pg.length === 1 ? '' : 's'})`);
+  return parts.join('  ·  ');
+}
+
 /** The overall mileage of the rows in a report (used for the closing Total line). */
 const totalMileageText = rows => fmtMileage(mileageOf(rows.map(r => ({ vehicle_no: r.vehicle, vehicle_type: r.vehicleType, diesel: r.diesel, working_hours: r.hours }))));
 
@@ -201,7 +222,8 @@ function csvEscape(val) {
   return s;
 }
 
-function buildCsv(rows, extras = {}) {
+function buildCsv(rows, extras = {}, sections = ALL_SECTIONS) {
+  extras = gateExtras(extras, sections);
   const headers = ['Date', 'Site', 'Category', 'Vehicle No.', 'Start', 'Start Photo', 'Close', 'Close Photo', 'Working Hrs', 'Diesel (L)', 'Diesel Photo', 'Mileage', 'Loads', 'Operator', 'Remarks'];
   const lines = rows.map(r => [
     r.date, r.site, r.category, r.vehicle, r.start, r.hadStartPhoto ? 'Yes' : 'No', r.close, r.hadClosePhoto ? 'Yes' : 'No',
@@ -223,7 +245,8 @@ function buildCsv(rows, extras = {}) {
     more.push([], ['Site working progress images (the pictures are in the Excel and PDF reports)'], ['Sl No', 'Date', 'Site', 'Vehicle No.', 'Caption', 'Added by']);
     pg.forEach((x, i) => more.push([i + 1, x.date, x.site, x.vehicle, x.caption, x.by]));
   }
-  const csv = [headers, ...lines, ...total, ...more].map(l => l.map(csvEscape).join(',')).join('\n');
+  if (!sections.records && more.length && !more[0].length) more.shift();                       // no empty first line when the Records table is not in the file
+  const csv = [...(sections.records ? [headers, ...lines, ...total] : []), ...more].map(l => l.map(csvEscape).join(',')).join('\n');
   return Buffer.from('\uFEFF' + csv, 'utf8');   // BOM so Excel reads accents/₹ correctly
 }
 
@@ -260,14 +283,15 @@ const argb = hex => ({ argb: 'FF' + hex });
 const thin = { style: 'thin', color: argb(COLORS.line) };
 const BORDER = { top: thin, left: thin, bottom: thin, right: thin };
 
-async function buildXlsx(rows, meta, thumbs, extras = {}) {
+async function buildXlsx(rows, meta, thumbs, extras = {}, sections = ALL_SECTIONS) {
+  extras = gateExtras(extras, sections);
   const ExcelJS = lib('exceljs');
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Sri Charan Constructions';
   wb.created = new Date();
 
   const ws = wb.addWorksheet('Site Log', {
-    views: [{ state: 'frozen', ySplit: HEADER_ROW, showGridLines: false }],
+    views: [sections.records ? { state: 'frozen', ySplit: HEADER_ROW, showGridLines: false } : { showGridLines: false }],
     pageSetup: { orientation: 'landscape', paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0, margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 } },
   });
   ws.columns = XL_COLS.map(c => ({ key: c.key, width: c.width }));
@@ -275,11 +299,11 @@ async function buildXlsx(rows, meta, thumbs, extras = {}) {
 
   // Title block
   ws.mergeCells(1, 1, 1, lastCol);
-  Object.assign(ws.getCell(1, 1), { value: 'SRI CHARAN CONSTRUCTIONS — Site Activity Log' });
+  Object.assign(ws.getCell(1, 1), { value: `SRI CHARAN CONSTRUCTIONS \u2014 ${reportTitle(sections)}` });
   ws.getCell(1, 1).font = { name: 'Calibri', size: 16, bold: true, color: argb(COLORS.orange) };
   ws.getRow(1).height = 26;
   ws.mergeCells(2, 1, 2, lastCol);
-  ws.getCell(2, 1).value = `Generated ${nowStamp()} by ${meta.user}  ·  ${rows.length} record${rows.length === 1 ? '' : 's'}  ·  ${photoSummary(rows, thumbs)}`;
+  ws.getCell(2, 1).value = `Generated ${nowStamp()} by ${meta.user}  \u00b7  ${contentsLine(rows, thumbs, extras, sections)}`;
   ws.getCell(2, 1).font = { name: 'Calibri', size: 10, color: argb(COLORS.steel) };
   ws.mergeCells(3, 1, 3, lastCol);
   ws.getCell(3, 1).value = meta.filtersText ? `Filters: ${meta.filtersText}` : 'Filters: none (all records shown on screen)';
@@ -288,6 +312,8 @@ async function buildXlsx(rows, meta, thumbs, extras = {}) {
   ws.getCell(3, 1).alignment = { wrapText: true, vertical: 'top' };
   { const widthChars = Math.max(60, Math.round(XL_COLS.reduce((a, c) => a + (c.width || 10), 0) * 1.05)); ws.getRow(3).height = Math.max(15, 14 * Math.ceil(String(ws.getCell(3, 1).value || '').length / widthChars)); }
 
+  const firstData = HEADER_ROW + 1;
+  if (sections.records) {                                         // ── the Records table: header, rows and the closing Total line ──
   // Table header
   const head = ws.getRow(HEADER_ROW);
   XL_COLS.forEach((c, i) => {
@@ -302,7 +328,6 @@ async function buildXlsx(rows, meta, thumbs, extras = {}) {
   ws.autoFilter = { from: { row: HEADER_ROW, column: 1 }, to: { row: HEADER_ROW, column: lastCol } };
 
   // Data rows
-  const firstData = HEADER_ROW + 1;
   rows.forEach((r, idx) => {
     const row = ws.getRow(firstData + idx);
     const hasPhoto = PHOTO_KEYS.some(k => r[k] && thumbs.has(r[k]));
@@ -379,7 +404,8 @@ async function buildXlsx(rows, meta, thumbs, extras = {}) {
   }
 
   // ── Under the table: Loads breakup summary, then Site Working Progress ──
-  let r0 = firstData + rows.length + 2;
+  }                                                               // (end of the Records table)
+  let r0 = sections.records ? firstData + rows.length + 2 : HEADER_ROW;
   const merged = (row, c1, c2, value, o = {}) => {
     if (c2 > c1) ws.mergeCells(row, c1, row, c2);
     for (let c = c1; c <= c2; c++) { const cell = ws.getCell(row, c); cell.border = BORDER; if (o.fill) cell.fill = o.fill; }
@@ -474,7 +500,8 @@ const PDF_COLS = [
   { key: 'remarks',    header: 'Remarks',     w: 77 },
 ];
 
-async function buildPdf(rows, meta, thumbs, extras = {}) {
+async function buildPdf(rows, meta, thumbs, extras = {}, sections = ALL_SECTIONS) {
+  extras = gateExtras(extras, sections);
   const PDFDocument = lib('pdfkit');
   const M = 28;
   const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: M, bufferPages: true, info: { Title: 'Site Activity Log — Sri Charan Constructions', Author: 'Sri Charan Constructions' } });
@@ -494,9 +521,9 @@ async function buildPdf(rows, meta, thumbs, extras = {}) {
   let y = M;
   try { doc.image(path.join(__dirname, '../../frontend/img/logo.png'), M, y - 2, { width: 34 }); } catch { /* logo is optional */ }
   doc.font('Helvetica-Bold').fontSize(15).fillColor(hex(COLORS.orange)).text('SRI CHARAN CONSTRUCTIONS', M + 42, y, { lineBreak: false });
-  doc.font('Helvetica').fontSize(9).fillColor(hex(COLORS.steel)).text('Site Activity Log report', M + 42, y + 19, { lineBreak: false });
+  doc.font('Helvetica').fontSize(9).fillColor(hex(COLORS.steel)).text(`${reportTitle(sections)} report`, M + 42, y + 19, { lineBreak: false });
   doc.fontSize(8).text(pdfText(`Generated ${nowStamp()} by ${meta.user}`), M, y, { width: usableW, align: 'right', lineBreak: false });
-  doc.text(`${rows.length} record${rows.length === 1 ? '' : 's'}  ·  ${photoSummary(rows, thumbs)}`, M, y + 12, { width: usableW, align: 'right', lineBreak: false });
+  doc.text(pdfText(contentsLine(rows, thumbs, extras, sections)), M, y + 12, { width: usableW, align: 'right', lineBreak: false });
   const filterLine = pdfText(meta.filtersText ? `Filters: ${meta.filtersText}` : 'Filters: none (all records shown on screen)');
   const longFilters = doc.widthOfString(filterLine) > usableW - 240;            // a short line stays in the corner; a long one (several choices) gets its own wrapped lines
   if (!longFilters) doc.text(filterLine, M, y + 24, { width: usableW, align: 'right', lineBreak: false, ellipsis: true, height: 10 });
@@ -516,7 +543,7 @@ async function buildPdf(rows, meta, thumbs, extras = {}) {
     PDF_COLS.forEach((c, i) => doc.text(c.header, x0[i] + PAD, y + 6, { width: c.w - PAD * 2, align: c.photo ? 'center' : c.right ? 'right' : 'left', lineBreak: false }));
     y += 18;
   };
-  drawHeader();
+  if (sections.records) drawHeader();
 
   const drawRow = (r, idx) => {
     doc.font('Helvetica').fontSize(FONT);
@@ -556,10 +583,10 @@ async function buildPdf(rows, meta, thumbs, extras = {}) {
     doc.moveTo(M, y + rowH).lineTo(M + usableW, y + rowH).lineWidth(0.4).strokeColor(hex(COLORS.line)).stroke();
     y += rowH;
   };
-  rows.forEach(drawRow);
+  if (sections.records) rows.forEach(drawRow);
 
   // Totals
-  if (rows.length) {
+  if (sections.records && rows.length) {
     const mtp = totalMileageText(rows), th = mtp && mtp.includes('\u00b7') ? 27 : 18, ty = th > 18 ? 9.5 : 5.5;      // two mileage figures (L/hr and km/L) get a taller row
     if (y + th + 2 > bottom) { doc.addPage(); y = M; drawHeader(); }
     doc.rect(M, y, usableW, th).fill('#FFF3E6');
@@ -644,7 +671,7 @@ async function buildPdf(rows, meta, thumbs, extras = {}) {
     doc.switchToPage(range.start + i);
     doc.page.margins.bottom = 0;           // otherwise writing in the margin would start a new page
     doc.font('Helvetica').fontSize(7).fillColor(hex(COLORS.steel))
-      .text('Sri Charan Constructions · Site Activity Log', M, PH - M - 4, { lineBreak: false })
+      .text(`Sri Charan Constructions \u00b7 ${reportTitle(sections)}`, M, PH - M - 4, { lineBreak: false })
       .text(`Page ${i + 1} of ${range.count}`, M, PH - M - 4, { width: usableW, align: 'right', lineBreak: false });
   }
 
@@ -657,4 +684,5 @@ module.exports = {
   MAX_ROWS, MAX_PHOTOS, todayStamp, cleanText, userError,
   fetchEntriesByIds, toRow, countPhotos, loadThumbnails, breakupLines, breakupLinesFor, breakupTotals, fetchProgress,
   buildCsv, buildXlsx, buildPdf, csvEscape, photoSummary,
+  normalizeSections, reportTitle, SECTION_KEYS,
 };

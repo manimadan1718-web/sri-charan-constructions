@@ -31,6 +31,9 @@ router.post('/entries', requirePerm('records.export'), async (req, res) => {
   const fmt = FORMATS[body.format];
   if (!fmt) return res.status(400).json({ error: 'Choose Excel, PDF or CSV.' });
 
+  const sections = reports.normalizeSections(body.sections);
+  if (!sections) return res.status(400).json({ error: 'Choose what to export: Records, Site Working Progress Images, Loads Breakup or All.' });
+
   if (!Array.isArray(body.ids) || !body.ids.length) return res.status(400).json({ error: 'There are no records to export.' });
   if (body.ids.length > reports.MAX_ROWS) {
     return res.status(413).json({ error: `That is too many records for one report (${body.ids.length}). Narrow the filters — for example to one month — and try again.` });
@@ -47,33 +50,49 @@ router.post('/entries', requirePerm('records.export'), async (req, res) => {
     const entries = await reports.fetchEntriesByIds(ids);
     if (!entries.length) return res.status(404).json({ error: 'Those records could not be found. Please reload the page and try again.' });
     const rows = entries.map(reports.toRow);
-    // Under the table: the loads breakup summary, and the site working progress images — the pictures only for people who may see them.
-    const extras = { breakup: await reports.breakupLinesFor(entries), progress: hasPerm(req, 'progress.view') ? await reports.fetchProgress(entries) : [] };
+    // Under the table: the loads breakup summary, and the site working progress images - the pictures only for people who may see them.
+    // body.sections picks what goes in the file (any mix of 'records', 'breakup', 'progress'); nothing given = everything, as before.
+    const mayProgress = hasPerm(req, 'progress.view');
+    if (sections.progress && !mayProgress && !sections.records && !sections.breakup) return res.status(403).json({ error: 'You do not have access to the Site Working Progress images.' });
+    if (!mayProgress) sections.progress = false;                      // (asked for with other parts: the pictures are simply left out)
+    const extras = {
+      breakup: sections.breakup ? await reports.breakupLinesFor(entries) : [],
+      progress: sections.progress ? await reports.fetchProgress(entries) : [],
+    };
+    const empties = [];
+    if (sections.breakup && !extras.breakup.length) { empties.push('Loads Breakup'); sections.breakup = false; }
+    if (sections.progress && !extras.progress.length) { empties.push('Site Working Progress Images'); sections.progress = false; }
+    if (!sections.records && !sections.breakup && !sections.progress) {
+      return res.status(400).json({ error: `There is no ${empties.join(' or ')} in these records, so there is nothing to export. Choose other records or another part.` });
+    }
 
     let buffer;
     let photoNote = '';
     if (body.format === 'csv') {
-      buffer = reports.buildCsv(rows, extras);
+      buffer = reports.buildCsv(rows, extras, sections);
     } else {
-      const attached = reports.countPhotos(rows) + extras.progress.length;
+      const attached = (sections.records ? reports.countPhotos(rows) : 0) + extras.progress.length;
       if (attached > reports.MAX_PHOTOS) {
-        return res.status(413).json({ error: `This report has ${attached} photos — too many for one file. Narrow the filters (for example to one month) or choose CSV.` });
+        return res.status(413).json({ error: `This report has ${attached} photos - too many for one file. Narrow the filters (for example to one month), leave out the pictures, or choose CSV.` });
       }
-      const thumbs = await reports.loadThumbnails(rows, extras.progress.map(x => x.key));
+      const thumbs = await reports.loadThumbnails(sections.records ? rows : [], extras.progress.map(x => x.key));
       const meta = { user: reports.cleanText(req.user.name, 60) || 'user', filtersText: reports.cleanText(body.filtersText, 1200) };
-      buffer = body.format === 'xlsx' ? await reports.buildXlsx(rows, meta, thumbs, extras) : await reports.buildPdf(rows, meta, thumbs, extras);
-      if (attached) photoNote = reports.photoSummary(rows, thumbs) + (extras.progress.length ? ` + ${extras.progress.length} progress image${extras.progress.length === 1 ? '' : 's'}` : '');     // what the report really contains
+      buffer = body.format === 'xlsx' ? await reports.buildXlsx(rows, meta, thumbs, extras, sections) : await reports.buildPdf(rows, meta, thumbs, extras, sections);
+      if (attached) photoNote = (sections.records ? reports.photoSummary(rows, thumbs) : '') + (extras.progress.length ? `${sections.records ? ' + ' : ''}${extras.progress.length} progress image${extras.progress.length === 1 ? '' : 's'}` : '');     // what the report really holds
     }
+    const parts = [sections.records && 'records', sections.breakup && 'loads breakup', sections.progress && 'progress images'].filter(Boolean).join(' + ');
 
     // Exporting business data is recorded in the Activity Logs, like any other action.
     await logActivity(req, {
       category: 'entry', action: 'report_exported', entityType: 'report',
-      entityLabel: `${fmt.label} report · ${rows.length} record${rows.length === 1 ? '' : 's'}${photoNote ? ` · ${photoNote}` : ''}`,
+      entityLabel: `${fmt.label} report \u00b7 ${parts} \u00b7 ${rows.length} record${rows.length === 1 ? '' : 's'}${photoNote ? ` \u00b7 ${photoNote}` : ''}`,
     });
 
+    if (empties.length) res.set('X-SCC-Note', `Not included, nothing to show: ${empties.join(' and ')}.`);
+    const stem = sections.records ? 'site-log' : sections.breakup && !sections.progress ? 'loads-breakup' : sections.progress && !sections.breakup ? 'progress-images' : 'site-log-extras';
     res.set({
       'Content-Type': fmt.type,
-      'Content-Disposition': `attachment; filename="SCC-site-log-${reports.todayStamp()}.${fmt.ext}"`,
+      'Content-Disposition': `attachment; filename="SCC-${stem}-${reports.todayStamp()}.${fmt.ext}"`,
       'Content-Length': buffer.length,
       'Cache-Control': 'no-store',
     });

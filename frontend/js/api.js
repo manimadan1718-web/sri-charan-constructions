@@ -56,7 +56,7 @@ async function apiFetch(path, options = {}) {
   }
 
   // A downloaded file (report) is returned as it is — reading it as JSON would destroy it.
-  if (options.asBlob && res.ok) return res.blob();
+  if (options.asBlob && res.ok) { const blob = await res.blob(); blob.sccNote = res.headers.get('X-SCC-Note') || ''; return blob; }       // (a note from the server, e.g. a part that had nothing in it)
 
   // Not every error response is JSON (proxies, crashes...), so never let a
   // parse failure hide the real status.

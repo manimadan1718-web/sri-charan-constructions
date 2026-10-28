@@ -237,23 +237,9 @@
       <div class="rec-actions">
         <button class="btn btn-outline btn-sm" onclick="clearFilters()">Clear filters</button>
         <div class="export-menu perm-records-export" id="export-menu">
-          <button type="button" class="btn btn-outline btn-sm" id="export-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="export-pop" onclick="toggleExportMenu(event)">
-            <span id="export-label">Export</span><span class="caret" aria-hidden="true">▾</span>
+          <button type="button" class="btn btn-outline btn-sm" id="export-btn" aria-haspopup="dialog" onclick="openExportDialog()">
+            <span id="export-label">Export</span><span class="caret" aria-hidden="true">&#9662;</span>
           </button>
-          <div class="export-pop" id="export-pop" role="menu" aria-label="Choose a report format" hidden>
-            <button type="button" role="menuitem" id="export-xlsx" onclick="exportReport('xlsx')">
-              <span class="fmt fmt-xlsx">XLS</span>
-              <span class="fmt-text"><strong>Excel</strong><small>.xlsx · photos shown in the sheet</small></span>
-            </button>
-            <button type="button" role="menuitem" id="export-pdf" onclick="exportReport('pdf')">
-              <span class="fmt fmt-pdf">PDF</span>
-              <span class="fmt-text"><strong>PDF</strong><small>.pdf · print-ready, photos included</small></span>
-            </button>
-            <button type="button" role="menuitem" id="export-csv" onclick="exportReport('csv')">
-              <span class="fmt fmt-csv">CSV</span>
-              <span class="fmt-text"><strong>CSV</strong><small>.csv · text only, photos marked Yes / No</small></span>
-            </button>
-          </div>
         </div>
         <button class="btn btn-outline btn-sm perm-records-export" onclick="window.print()">Print</button>
       </div>
@@ -1121,6 +1107,43 @@
     </div>
     <div class="history-entry" id="history-entry"></div>
     <div id="history-body"></div>
+  </div>
+</div>
+
+<!-- ═══════════════ EXPORT: what to include, then the file type ═══════════════ -->
+<div class="modal-overlay modal-top" id="export-overlay" onclick="if(event.target===this) closeExportDialog()">
+  <div class="modal-card modal-small" role="dialog" aria-modal="true" aria-labelledby="export-title">
+    <div class="card-header">
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span> <span id="export-title">Export</span></div>
+    </div>
+
+    <div id="export-step1">
+      <p class="exp-intro">What would you like in the report? Tick one or more.</p>
+      <div class="exp-options" role="group" aria-label="What to export">
+        <label class="exp-opt"><input type="checkbox" id="exp-records" onchange="syncExportAll()"><span><strong>Only Records</strong><small>The table of records, with its photos and totals</small></span></label>
+        <label class="exp-opt"><input type="checkbox" id="exp-progress" onchange="syncExportAll()"><span><strong>Only Site Working Progress Images</strong><small>The progress pictures added to these records</small></span></label>
+        <label class="exp-opt"><input type="checkbox" id="exp-breakup" onchange="syncExportAll()"><span><strong>Only Loads Breakup</strong><small>The unloading lines, with their totals</small></span></label>
+        <label class="exp-opt exp-all"><input type="checkbox" id="exp-all" onchange="onExportAll(this.checked)"><span><strong>All</strong><small>Everything above, together in one report</small></span></label>
+      </div>
+      <p class="exp-note" id="exp-note" role="status"></p>
+      <div class="btn-group">
+        <button type="button" class="btn btn-primary" id="exp-next" onclick="exportNext()" disabled>Next</button>
+        <button type="button" class="btn btn-outline" onclick="closeExportDialog()">Cancel</button>
+      </div>
+    </div>
+
+    <div id="export-step2" hidden>
+      <p class="exp-intro" id="exp-chosen"></p>
+      <div class="exp-formats" role="group" aria-label="Choose a file type">
+        <button type="button" class="exp-fmt" id="export-xlsx" onclick="exportReport('xlsx')"><span class="fmt fmt-xlsx">XLS</span><span class="fmt-text"><strong>Excel</strong><small>.xlsx &middot; photos shown in the sheet</small></span></button>
+        <button type="button" class="exp-fmt" id="export-pdf" onclick="exportReport('pdf')"><span class="fmt fmt-pdf">PDF</span><span class="fmt-text"><strong>PDF</strong><small>.pdf &middot; print-ready, photos included</small></span></button>
+        <button type="button" class="exp-fmt" id="export-csv" onclick="exportReport('csv')"><span class="fmt fmt-csv">CSV</span><span class="fmt-text"><strong>CSV</strong><small>.csv &middot; text only, no pictures (they are marked Yes / No)</small></span></button>
+      </div>
+      <div class="btn-group">
+        <button type="button" class="btn btn-outline" onclick="showExportStep(1)">Back</button>
+        <button type="button" class="btn btn-outline" onclick="closeExportDialog()">Cancel</button>
+      </div>
+    </div>
   </div>
 </div>
 

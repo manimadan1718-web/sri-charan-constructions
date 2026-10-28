@@ -65,7 +65,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initNetBanner();
   initReasonModal();
   initPhotoFields();
-  initExportMenu();
+  initExportDialog();
   initReportMenus();
   initLogSelection();
 
@@ -769,45 +769,64 @@ async function deleteEntry(id) {
 const EXPORT_LABELS = { xlsx: 'Excel', pdf: 'PDF', csv: 'CSV' };
 let exporting = false;
 
-function exportItems() { return [...document.querySelectorAll('#export-pop [role="menuitem"]')]; }
+/* ── Export: first choose WHAT goes in the report (tick boxes), then the file type ───────────────────────────────────────────
+   The parts: the Records table, the Site Working Progress pictures (only for people who may see them) and the Loads Breakup summary.
+   "All" ticks every part. At least one must be ticked before "Next"; then Excel, PDF or CSV. */
+const EXPORT_PARTS = [['records', 'exp-records'], ['progress', 'exp-progress'], ['breakup', 'exp-breakup']];
+const EXPORT_PART_LABEL = { records: 'Records', progress: 'Site Working Progress Images', breakup: 'Loads Breakup' };
+const expEl = id => document.getElementById(id);
+const exportAllowed = () => EXPORT_PARTS.map(([k]) => k).filter(k => k !== 'progress' || can('progress.view'));
+const exportChosen = () => EXPORT_PARTS.filter(([k, id]) => exportAllowed().includes(k) && expEl(id).checked).map(([k]) => k);
+let exportOpener = null;
 
-function openExportMenu() {
+function openExportDialog() {
   if (exporting) return;
-  document.getElementById('export-pop').hidden = false;
-  document.getElementById('export-btn').setAttribute('aria-expanded', 'true');
-  const first = exportItems()[0];
-  if (first) first.focus();
+  if (!currentRecords.length) { showToast('No records to export.', true); return; }
+  let saved = ['records'];
+  try { const s = JSON.parse(localStorage.getItem('scc_export_parts') || 'null'); if (Array.isArray(s) && s.length) saved = s; } catch (e) { /* private mode */ }
+  const allowed = exportAllowed();
+  EXPORT_PARTS.forEach(([k, id]) => { const box = expEl(id); box.closest('.exp-opt').hidden = !allowed.includes(k); box.checked = allowed.includes(k) && saved.includes(k); });
+  syncExportAll(); showExportStep(1);
+  exportOpener = document.activeElement;
+  expEl('export-overlay').classList.add('open');
+  const first = [...document.querySelectorAll('#export-step1 .exp-opt:not([hidden]) input')][0]; if (first) first.focus();
 }
 
-function closeExportMenu(returnFocus) {
-  const pop = document.getElementById('export-pop');
-  if (!pop || pop.hidden) return;
-  pop.hidden = true;
-  const btn = document.getElementById('export-btn');
-  btn.setAttribute('aria-expanded', 'false');
-  if (returnFocus) btn.focus();
+function closeExportDialog(returnFocus = true) {
+  expEl('export-overlay').classList.remove('open');
+  if (returnFocus && exportOpener && exportOpener.focus) exportOpener.focus();
 }
 
-function toggleExportMenu(ev) {
-  if (ev) ev.stopPropagation();
-  const pop = document.getElementById('export-pop');
-  if (pop.hidden) openExportMenu(); else closeExportMenu(false);
+function showExportStep(n) {
+  expEl('export-step1').hidden = n !== 1; expEl('export-step2').hidden = n !== 2;
+  expEl('export-title').textContent = n === 1 ? 'Export' : 'Export — choose the file type';
+  const target = n === 1 ? document.querySelector('#export-step1 .exp-opt:not([hidden]) input') : expEl('export-xlsx');
+  if (target && expEl('export-overlay').classList.contains('open')) target.focus();
 }
 
-function initExportMenu() {
-  const menu = document.getElementById('export-menu');
-  if (!menu) return;
-  document.addEventListener('click', ev => { if (!ev.target.closest('#export-menu')) closeExportMenu(false); });
-  menu.addEventListener('keydown', ev => {
-    const pop = document.getElementById('export-pop');
-    if (pop.hidden) return;
-    const items = exportItems();
-    const i = items.indexOf(document.activeElement);
-    if (ev.key === 'Escape')    { ev.preventDefault(); closeExportMenu(true); }
-    else if (ev.key === 'ArrowDown') { ev.preventDefault(); items[(i + 1) % items.length].focus(); }
-    else if (ev.key === 'ArrowUp')   { ev.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
-    else if (ev.key === 'Tab')  { closeExportMenu(false); }
-  });
+/** Keeps "All", the highlight of each choice and the Next button in step with the boxes. */
+function syncExportAll() {
+  const allowed = exportAllowed(), chosen = exportChosen();
+  expEl('exp-all').checked = !!allowed.length && chosen.length === allowed.length;
+  EXPORT_PARTS.forEach(([, id]) => expEl(id).closest('.exp-opt').classList.toggle('on', expEl(id).checked));
+  expEl('exp-all').closest('.exp-opt').classList.toggle('on', expEl('exp-all').checked);
+  expEl('exp-next').disabled = !chosen.length;
+  const n = currentRecords.length;
+  expEl('exp-note').textContent = chosen.length ? `${n} record${n === 1 ? '' : 's'} on screen will be used.` : 'Tick at least one to continue.';
+}
+
+function onExportAll(on) { exportAllowed().forEach(k => { expEl(EXPORT_PARTS.find(p => p[0] === k)[1]).checked = on; }); syncExportAll(); }
+
+function exportNext() {
+  const chosen = exportChosen(); if (!chosen.length) return;
+  try { localStorage.setItem('scc_export_parts', JSON.stringify(chosen)); } catch (e) { /* private mode */ }
+  expEl('exp-chosen').textContent = `You chose: ${chosen.map(k => EXPORT_PART_LABEL[k]).join(' · ')}. Now choose the file type.`;
+  showExportStep(2);
+}
+
+function initExportDialog() {
+  const ov = expEl('export-overlay'); if (!ov) return;
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && ov.classList.contains('open')) { e.preventDefault(); closeExportDialog(); } });
 }
 
 /** "From 01/10/2026 · Site: ISKCON" — printed at the top of Excel / PDF reports. */
@@ -842,17 +861,20 @@ function saveBlob(blob, filename) {
 }
 
 async function exportReport(format) {
-  closeExportMenu(false);
   if (exporting) return;
+  const parts = exportChosen();
+  if (!parts.length) { showExportStep(1); showToast('Tick what to export first.', true); return; }
+  closeExportDialog(false);
   if (!currentRecords.length) { showToast('No records to export.', true); return; }
 
   const label = EXPORT_LABELS[format] || 'report';
   exporting = true;
   setExportBusy(true, label);
   try {
-    const blob = await Reports.entries({ format, ids: currentRecords.map(e => e.id), filtersText: describeFilters() });
-    saveBlob(blob, `SCC-site-log-${today()}.${format}`);
-    showToast(`${label} report downloaded.`);
+    const blob = await Reports.entries({ format, ids: currentRecords.map(e => e.id), filtersText: describeFilters(), sections: parts });
+    const stem = parts.includes('records') ? 'site-log' : parts.length === 1 && parts[0] === 'breakup' ? 'loads-breakup' : parts.length === 1 && parts[0] === 'progress' ? 'progress-images' : 'site-log-extras';
+    saveBlob(blob, `SCC-${stem}-${today()}.${format}`);
+    showToast(`${label} report downloaded.${blob.sccNote ? ' ' + blob.sccNote : ''}`);
   } catch (e) {
     showToast('' + (e.message || 'The report could not be prepared.'), true);
   } finally {

@@ -132,7 +132,10 @@ const Entries = {
     return apiFetch('/entries/vehicle-numbers');
   },
   getAll(filters = {}) {
-    const params = new URLSearchParams(filters).toString();
+    // a filter may hold several values (type, vehicle_no, site_name): each is sent as its own parameter
+    const qs = new URLSearchParams();
+    Object.entries(filters).forEach(([k, v]) => { if (Array.isArray(v)) v.forEach(x => qs.append(k, x)); else if (v !== '' && v != null) qs.append(k, v); });
+    const params = qs.toString();
     return apiFetch(`/entries${params ? '?' + params : ''}`);
   },
   create(payload) {

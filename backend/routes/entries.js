@@ -148,7 +148,10 @@ async function withPoints(build) {
 // ── GET /api/entries  (Owner + Admin — "Records" & "Summary" reports) ───────
 router.get('/', requirePerm('records.view'), async (req, res) => {
   try {
-    const { date, date_from, date_to, vehicle, site, month, vehicle_no, site_name, category, type } = req.query;
+    const { date, date_from, date_to, vehicle, site, month, category } = req.query;
+    // The Records dropdowns can choose several vehicles / sites / types: the same parameter repeated (?site_name=A&site_name=B). One value works as before.
+    const many = v => [...new Set((Array.isArray(v) ? v : [v]).filter(x => typeof x === 'string').map(x => x.replace(/\s+/g, ' ').trim().slice(0, 200)).filter(Boolean))].slice(0, 300);
+    const types = many(req.query.type), vehicleNos = many(req.query.vehicle_no), siteNames = many(req.query.site_name);
     // order=asc → oldest first (a ledger / report reads best this way); anything else → newest first, as before
     const oldestFirst = req.query.order === 'asc';
 
@@ -162,13 +165,13 @@ router.get('/', requirePerm('records.view'), async (req, res) => {
 
     // Vehicle TYPE (Tipper, JCB, …) is stored in Inventory, not on the entry, so look up
     // which vehicle numbers have that type and filter the entries by those numbers.
-    // Case-insensitive; % and _ are escaped so they can't act as wildcards.
+    // Case-insensitive, exact match (no wildcards), one or several types.
     let typeNumbers = null;
-    if (typeof type === 'string' && type.trim()) {
-      const exact = type.trim().replace(/[\\%_]/g, '\\$&');
-      const { data: vs, error: vErr } = await supabase.from('vehicles').select('vehicle_no').ilike('type', exact);
+    if (types.length) {
+      const want = new Set(types.map(t => t.toLowerCase()));
+      const { data: vs, error: vErr } = await supabase.from('vehicles').select('vehicle_no, type');
       if (vErr) throw vErr;
-      typeNumbers = (vs || []).map(v => v.vehicle_no);
+      typeNumbers = (vs || []).filter(v => want.has(String(v.type || '').replace(/\s+/g, ' ').trim().toLowerCase())).map(v => v.vehicle_no);
       if (!typeNumbers.length) return res.json({ success: true, data: [] });
     }
 
@@ -181,8 +184,8 @@ router.get('/', requirePerm('records.view'), async (req, res) => {
       if (vehicle)   query = query.ilike('vehicle_no', `%${vehicle}%`);
       if (site)      query = query.ilike('site', `%${site}%`);
       // Exact matches — used by the Records dropdowns (values come from the inventory lists)
-      if (vehicle_no) query = query.eq('vehicle_no', vehicle_no);
-      if (site_name)  query = query.eq('site', site_name);
+      if (vehicleNos.length) query = query.in('vehicle_no', vehicleNos);
+      if (siteNames.length)  query = query.in('site', siteNames);
       if (category)   query = query.eq('category', category);
       if (monthRange) query = query.gte('date', monthRange[0]).lt('date', monthRange[1]);
       if (typeNumbers) query = query.in('vehicle_no', typeNumbers);
@@ -202,7 +205,7 @@ router.get('/', requirePerm('records.view'), async (req, res) => {
 
 // ── GET /api/entries/summary-stats  (Owner + Admin) ─────────────────────────
 // ?from=YYYY-MM-DD&to=YYYY-MM-DD (either may be left out), or the older ?month=YYYY-MM.
-// Totals count every entry; the per-vehicle list shows only vehicles that have loads.
+// Totals count every entry; the per-vehicle list shows every vehicle that has loads, hours, km or diesel.
 router.get('/summary-stats', requirePerm('summary.view'), async (req, res) => {
   try {
     const range = summaryRange(req.query);

@@ -217,6 +217,7 @@ function populateFilterSelect(id, items, field, placeholder) {
 }
 
 function renderFilterSelect(id) {
+  if (MULTI_FILTERS.includes(id)) return renderMulti(id);                // Type, Vehicle and Site are tick-box dropdowns
   const sel = $(id);
   const cfg = filterLists[id];
   if (!sel || !cfg) return;
@@ -248,7 +249,8 @@ const FILTER_IDS = ['filter-date-from', 'filter-date-to', 'filter-category', 'fi
 function syncFilterHighlights() {
   FILTER_IDS.forEach(id => {
     const el = $(id);
-    if (el && el.closest('.filter-field')) el.closest('.filter-field').classList.toggle('is-active', !!el.value);
+    const on = MULTI_FILTERS.includes(id) ? getMulti(id).length > 0 : !!(el && el.value);
+    if (el && el.closest('.filter-field')) el.closest('.filter-field').classList.toggle('is-active', on);
   });
 }
 
@@ -559,15 +561,15 @@ async function loadRecords() {
   const filters = {};
   const fFrom = document.getElementById('filter-date-from').value;
   const fTo   = document.getElementById('filter-date-to').value;
-  const fVeh  = document.getElementById('filter-vehicle').value;
-  const fSite = document.getElementById('filter-site').value;
+  const fVeh  = getMulti('filter-vehicle');
+  const fSite = getMulti('filter-site');
   const fCat  = document.getElementById('filter-category').value;
-  const fType = document.getElementById('filter-type').value;
-  if (fType) filters.type       = fType;       // vehicle type from Inventory (Tipper, JCB…)
+  const fType = getMulti('filter-type');
+  if (fType.length) filters.type = fType;       // vehicle type(s) from Inventory (Tipper, JCB…)
   if (fFrom) filters.date_from  = fFrom;
   if (fTo)   filters.date_to    = fTo;
-  if (fVeh)  filters.vehicle_no = fVeh;      // exact — the value comes from the dropdown
-  if (fSite) filters.site_name  = fSite;
+  if (fVeh.length)  filters.vehicle_no = fVeh;      // exact — the values come from the dropdown
+  if (fSite.length) filters.site_name  = fSite;
   if (fCat)  filters.category   = fCat;
 
   try {
@@ -735,10 +737,8 @@ function renderRecordsTotals(entries, from, to) {
 function clearFilters() {
   document.getElementById('filter-date-from').value = '';
   document.getElementById('filter-date-to').value   = '';
-  document.getElementById('filter-vehicle').value   = '';
-  document.getElementById('filter-site').value      = '';
   document.getElementById('filter-category').value  = '';
-  document.getElementById('filter-type').value      = '';
+  MULTI_FILTERS.forEach(id => { if (MSEL[id]) MSEL[id].selected.clear(); renderMulti(id); });
   loadRecords();
 }
 
@@ -815,9 +815,9 @@ function describeFilters() {
   if (val('filter-date-from')) parts.push(`From ${fmtDate(val('filter-date-from'))}`);
   if (val('filter-date-to'))   parts.push(`To ${fmtDate(val('filter-date-to'))}`);
   if (val('filter-category'))  parts.push(`Category: ${val('filter-category') === 'rental' ? 'Rental' : 'Own'}`);
-  if (val('filter-type'))      parts.push(`Type: ${val('filter-type')}`);
-  if (val('filter-vehicle'))   parts.push(`Vehicle: ${val('filter-vehicle')}`);
-  if (val('filter-site'))      parts.push(`Site: ${val('filter-site')}`);
+  if (getMulti('filter-type').length)    parts.push(`Type: ${getMulti('filter-type').join(', ')}`);
+  if (getMulti('filter-vehicle').length) parts.push(`Vehicle: ${getMulti('filter-vehicle').join(', ')}`);
+  if (getMulti('filter-site').length)    parts.push(`Site: ${getMulti('filter-site').join(', ')}`);
   return parts.join(' · ');
 }
 
@@ -1015,6 +1015,8 @@ async function loadSummary() {
     document.getElementById('s-loads').textContent    = s.total_loads    ?? '–';
     document.getElementById('s-hours').textContent    = s.total_hours === undefined ? '–' : fmtHours(s.total_hours);
     document.getElementById('s-km').textContent = s.total_km === undefined ? '—' : (Number(s.total_km) > 0 ? fmtKm(s.total_km) : '0.0');
+    const unl = document.getElementById('s-unlisted'), nUn = Number(s.unlisted_entries) || 0;
+    if (unl) { unl.hidden = !nUn; unl.textContent = nUn ? `${nUn} entr${nUn === 1 ? 'y' : 'ies'} with no loads, hours, km or diesel (for example "No work" days) ${nUn === 1 ? 'is' : 'are'} not listed here, but ${nUn === 1 ? 'is' : 'are'} counted in the totals at the top.` : ''; }
     document.getElementById('s-hours-note').textContent = s.hours_entries === undefined || s.hours_entries === s.total_entries ? 'hours' : `hours · from ${s.hours_entries} of ${s.total_entries} entries`;
     const mc = mileageCard(s.mileage);
     document.getElementById('s-mileage').textContent = mc.value;
@@ -1068,7 +1070,7 @@ function renderVehicleBreakdown(list) {
   const tbody = document.getElementById('vehicle-summary-body');
   tbody.innerHTML = '';
   if (!list.length) {
-    tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No vehicles with loads, working hours or km in this period.</td></tr>';
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No vehicles with loads, working hours, km or diesel in this period.</td></tr>';
     return;
   }
   list.forEach(v => {
@@ -4705,4 +4707,106 @@ async function clearDayBreakup() {
     showToast('Loads breakup cleared.'); DAYBP.dirty = false; renderDayBreakup(res.data, false);
   } catch (e) { showToast(e.message || 'The breakup could not be cleared.', true); }
 }
+
+
+/* ── Tick-box filters (Records: Type, Vehicle / Machine No., Site) ──────────────────────────────────────────────────
+   One button that opens a list with a tick box for each choice: pick as many as you need, search a long list, "Select all" / "Clear".
+   The chosen values go to the server (as repeated parameters) and are named on the Excel / PDF / Print reports. */
+const MULTI_FILTERS = ['filter-type', 'filter-vehicle', 'filter-site'];
+const MSEL = {};                                                       // id -> { selected: Set, options: [{ value, label }] }
+const getMulti = id => (MSEL[id] ? [...MSEL[id].selected] : []);
+const MSEL_CHEVRON = '<svg class="msel-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>';
+
+function mselOptions(id) {
+  const cfg = filterLists[id]; if (!cfg) return [];
+  const inInventory = new Set(), out = [];
+  cfg.items.forEach(i => { inInventory.add(i[cfg.field]); out.push({ value: i[cfg.field], label: i.active === false ? `${i[cfg.field]} (inactive)` : i[cfg.field] }); });
+  [...(extraFilterValues[id] || [])].filter(v => !inInventory.has(v)).sort().forEach(v => out.push({ value: v, label: `${v} (not in inventory)` }));
+  return out;
+}
+
+function ensureMsel(id) {
+  const box = document.getElementById(id); if (!box) return null;
+  if (!MSEL[id]) MSEL[id] = { selected: new Set(), options: [] };
+  if (box.dataset.built) return box;
+  box.dataset.built = '1';
+  box.innerHTML = `<button type="button" class="msel-btn" id="${id}-btn" aria-haspopup="true" aria-expanded="false"><span class="msel-text"></span>${MSEL_CHEVRON}</button>
+    <div class="msel-panel" hidden role="group" aria-label="${esc(box.dataset.all || 'Choose')}">
+      <div class="msel-tools"><input type="search" class="msel-search" placeholder="Search…" aria-label="Search the list" autocomplete="off">
+        <div class="msel-acts"><button type="button" data-act="all">Select all</button><button type="button" data-act="none">Clear</button></div></div>
+      <div class="msel-list"></div>
+    </div>`;
+  const panel = box.querySelector('.msel-panel'), btn = box.querySelector('.msel-btn'), search = box.querySelector('.msel-search'), list = box.querySelector('.msel-list');
+  const setOpen = open => {
+    panel.hidden = !open; btn.setAttribute('aria-expanded', open ? 'true' : 'false'); box.classList.toggle('open', open);
+    if (open) {
+      if (!search.hidden) { search.value = ''; mselFilterList(id); }
+      const target = !search.hidden ? search : (list.querySelector('input:checked') || list.querySelector('.msel-opt:not([hidden]) input'));
+      if (target) target.focus();
+    }
+  };
+  box._setOpen = setOpen;
+  btn.addEventListener('click', () => { document.querySelectorAll('.msel.open').forEach(o => { if (o !== box && o._setOpen) o._setOpen(false); }); setOpen(panel.hidden); });
+  search.addEventListener('input', () => mselFilterList(id));
+  list.addEventListener('change', e => {
+    if (!e.target.matches('input[type=checkbox]')) return;
+    e.target.checked ? MSEL[id].selected.add(e.target.value) : MSEL[id].selected.delete(e.target.value);
+    mselChanged(id);
+  });
+  box.querySelector('.msel-acts').addEventListener('click', e => {
+    const act = e.target.getAttribute && e.target.getAttribute('data-act'); if (!act) return;
+    const shown = [...list.querySelectorAll('.msel-opt:not([hidden]) input')];
+    shown.forEach(i => { i.checked = act === 'all'; act === 'all' ? MSEL[id].selected.add(i.value) : MSEL[id].selected.delete(i.value); });
+    if (act === 'none' && !search.value) MSEL[id].selected.clear();
+    mselChanged(id);
+  });
+  box.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !panel.hidden) { setOpen(false); btn.focus(); e.preventDefault(); e.stopPropagation(); return; }
+    if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && !panel.hidden) {
+      const items = [...box.querySelectorAll('.msel-search:not([hidden]), .msel-opt:not([hidden]) input')], i = items.indexOf(document.activeElement);
+      if (!items.length) return; const next = e.key === 'ArrowDown' ? (i + 1) % items.length : (i - 1 + items.length) % items.length; items[next].focus(); e.preventDefault();
+    }
+  });
+  return box;
+}
+
+function mselFilterList(id) {
+  const box = document.getElementById(id), q = box.querySelector('.msel-search').value.trim().toLowerCase();
+  box.querySelectorAll('.msel-opt').forEach(o => { o.hidden = !!q && !o.textContent.toLowerCase().includes(q); });
+  const none = box.querySelector('.msel-none'); if (none) none.hidden = !q || !!box.querySelector('.msel-opt:not([hidden])');
+}
+
+function mselLabel(id) {
+  const st = MSEL[id], box = document.getElementById(id), n = st.selected.size;
+  if (!n) return box.dataset.all || 'All';
+  if (n === 1) { const v = [...st.selected][0], o = st.options.find(x => x.value === v); return o ? o.label : v; }
+  return `${n} ${box.dataset.noun || 'items'} selected`;
+}
+
+function mselChanged(id) {
+  const box = document.getElementById(id), st = MSEL[id];
+  box.querySelector('.msel-text').textContent = mselLabel(id);
+  box.querySelector('.msel-btn').title = [...st.selected].join(', ');
+  syncFilterHighlights();
+  loadRecordsDebounced();                                              // many ticks in a row make ONE request
+}
+
+/** (Re)builds the list from Inventory + the values found in the records. Keeps what is ticked, the search text and whether it is open. */
+function renderMulti(id) {
+  const box = ensureMsel(id); if (!box) return;
+  const st = MSEL[id]; st.options = mselOptions(id);
+  const valid = new Set(st.options.map(o => o.value));
+  [...st.selected].forEach(v => { if (!valid.has(v)) st.selected.delete(v); });
+  const list = box.querySelector('.msel-list'), search = box.querySelector('.msel-search'), q = search.value;
+  list.innerHTML = st.options.map((o, i) => `<label class="msel-opt"><input type="checkbox" value="${esc(o.value)}"${st.selected.has(o.value) ? ' checked' : ''}><span>${esc(o.label)}</span></label>`).join('') + '<div class="msel-none" hidden>No match</div>';
+  search.hidden = st.options.length <= 7;                              // a short list needs no search
+  box.querySelector('.msel-acts').hidden = !st.options.length;
+  if (q && !search.hidden) mselFilterList(id);
+  box.querySelector('.msel-text').textContent = mselLabel(id);
+  box.querySelector('.msel-btn').title = [...st.selected].join(', ');
+  syncFilterHighlights();
+}
+
+// a click anywhere else closes an open list
+document.addEventListener('click', e => { document.querySelectorAll('.msel.open').forEach(b => { if (!b.contains(e.target) && b._setOpen) b._setOpen(false); }); });
 

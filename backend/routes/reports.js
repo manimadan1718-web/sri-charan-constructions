@@ -58,7 +58,7 @@ router.post('/entries', requirePerm('records.export'), async (req, res) => {
         return res.status(413).json({ error: `This report has ${attached} photos — too many for one file. Narrow the filters (for example to one month) or choose CSV.` });
       }
       const thumbs = await reports.loadThumbnails(rows, extras.progress.map(x => x.key));
-      const meta = { user: reports.cleanText(req.user.name, 60) || 'user', filtersText: reports.cleanText(body.filtersText, 300) };
+      const meta = { user: reports.cleanText(req.user.name, 60) || 'user', filtersText: reports.cleanText(body.filtersText, 1200) };
       buffer = body.format === 'xlsx' ? await reports.buildXlsx(rows, meta, thumbs, extras) : await reports.buildPdf(rows, meta, thumbs, extras);
       if (attached) photoNote = reports.photoSummary(rows, thumbs) + (extras.progress.length ? ` + ${extras.progress.length} progress image${extras.progress.length === 1 ? '' : 's'}` : '');     // what the report really contains
     }

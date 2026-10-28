@@ -63,7 +63,7 @@ async function summaryFor({ from, to, site }) {
     vehicleRows.get(key).push(e);
   }
   const vehicles = [...byVehicle.entries()]
-    .filter(([, v]) => v.loads > 0 || v.minutes > 0 || v.km > 0)           // vehicles that did work: loads, hours or km
+    .filter(([, v]) => v.loads > 0 || v.minutes > 0 || v.km > 0 || v.diesel > 0)    // vehicles that did work or took diesel: loads, hours, km or diesel
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([vehicle_no, v]) => ({ vehicle_no, entries: v.entries, diesel: v.diesel.toFixed(2), loads: v.loads, hours: hoursFromMinutes(v.minutes), km: round1(v.km), mileage: mileageOf(vehicleRows.get(vehicle_no)) }));
 
@@ -76,6 +76,7 @@ async function summaryFor({ from, to, site }) {
     mileage: mileageOf(rows),                                                // { lph, kpl } for everything shown
     hours_entries: total.hoursEntries,                                       // how many entries had hours that could be added up
     unique_vehicles: byVehicle.size,
+    unlisted_entries: rows.length - vehicles.reduce((a, v) => a + v.entries, 0),   // entries of vehicles with no loads, hours, km or diesel at all (e.g. "No work" days): in the totals, not in the list
     vehicles_with_loads: vehicles.length,                                    // (older name, kept) = vehicles listed
     vehicles_listed: vehicles.length,
     vehicles,

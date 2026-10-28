@@ -2272,3 +2272,37 @@ html[data-lang]:not([data-lang="en"]) .btn { white-space: normal; text-align: ce
 .day-vehicles summary::before { content: "\25B8"; display: inline-block; width: 16px; color: var(--hazard-deep); }
 .day-vehicles[open] summary::before { content: "\25BE"; }
 
+/* ── Tick-box filter dropdowns (Records) ── */
+.msel { position: relative; }
+.msel-btn {
+  width: 100%; min-height: 40px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; text-align: left;
+  background: var(--panel); color: var(--ink); border: 1px solid #C9D1DD; border-radius: 6px; font: 500 14px/1.3 var(--font-body); cursor: pointer;
+}
+.msel-btn:hover { border-color: var(--steel-light); }
+.msel-btn:focus-visible, .msel-opt:focus-within { outline: 3px solid var(--hazard-mid); outline-offset: 1px; }
+.msel-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.msel-chev { width: 16px; height: 16px; color: var(--steel); flex: none; transition: transform .15s ease; }
+.msel.open .msel-chev { transform: rotate(180deg); }
+.filter-field.is-active .msel-btn { border-color: var(--hazard); background-color: var(--hazard-tint); }
+.msel-panel {
+  position: absolute; z-index: 60; top: calc(100% + 6px); left: 0; width: max(100%, 280px); max-width: min(360px, 92vw);
+  background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 14px 34px rgba(10, 16, 28, .22); padding: 8px; overflow: hidden;
+}
+.msel-panel[hidden] { display: none; }
+.filter-field:last-child .msel-panel { left: auto; right: 0; }
+.msel-tools { display: flex; flex-direction: column; gap: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.msel-search { width: 100%; min-height: 38px; }
+.msel-acts { display: flex; gap: 14px; }
+.msel-acts button { background: none; border: 0; padding: 4px 2px; color: var(--hazard-deep); font: 700 13px/1.2 var(--font-body); cursor: pointer; min-height: 30px; }
+.msel-acts button:hover { text-decoration: underline; }
+.msel-list { max-height: 280px; overflow-y: auto; padding-top: 4px; }
+.msel-opt { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 14px; line-height: 1.35; }
+.msel-opt[hidden] { display: none; }
+.msel-opt:hover { background: var(--hazard-tint); }
+.msel-opt input { width: 18px; height: 18px; flex: none; margin: 0; accent-color: var(--hazard-deep); }
+.msel-opt span { min-width: 0; overflow-wrap: anywhere; }
+.msel-none { padding: 10px 8px; color: var(--steel); font-size: 14px; }
+@media (pointer: coarse) { .msel-opt { min-height: 46px; } .msel-btn { min-height: 44px; } .msel-acts button { min-height: 40px; } }
+@media (max-width: 640px) { .msel-panel { width: 100%; max-width: none; } .filter-field:last-child .msel-panel { left: 0; right: auto; } }
+@media print { .msel-panel { display: none !important; } }
+

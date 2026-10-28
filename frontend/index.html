@@ -290,22 +290,16 @@
           </select>
         </div>
         <div class="filter-field">
-          <label for="filter-type">Type</label>
-          <select id="filter-type" onchange="loadRecords()">
-            <option value="">All types</option>
-          </select>
+          <label for="filter-type-btn">Type</label>
+          <div class="msel" id="filter-type" data-noun="types" data-all="All types"></div>
         </div>
         <div class="filter-field">
-          <label for="filter-vehicle">Vehicle / Machine No.</label>
-          <select id="filter-vehicle" onchange="loadRecords()">
-            <option value="">All vehicles</option>
-          </select>
+          <label for="filter-vehicle-btn">Vehicle / Machine No.</label>
+          <div class="msel" id="filter-vehicle" data-noun="vehicles" data-all="All vehicles"></div>
         </div>
         <div class="filter-field">
-          <label for="filter-site">Site</label>
-          <select id="filter-site" onchange="loadRecords()">
-            <option value="">All sites</option>
-          </select>
+          <label for="filter-site-btn">Site</label>
+          <div class="msel" id="filter-site" data-noun="sites" data-all="All sites"></div>
         </div>
       </div>
     </div>
@@ -384,7 +378,7 @@
 
   <!-- Per-Vehicle Breakdown -->
   <div class="card">
-    <div class="card-title" style="margin-bottom:14px;"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1" y="3" width="15" height="13" rx="1"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></span> Per-Vehicle Breakdown</div>
+    <div class="card-title" style="margin-bottom:14px;"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1" y="3" width="15" height="13" rx="1"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></span> Per-Vehicle Break Up</div>
     <div class="table-wrap">
       <table>
         <thead>
@@ -393,7 +387,8 @@
         <tbody id="vehicle-summary-body"></tbody>
       </table>
     </div>
-    <p class="form-hint">Only vehicles that have loads or working hours are listed. The totals at the top count every entry in the period. Mileage = diesel &divide; working hours (L/hr), or km &divide; diesel (km/L) when the readings are in km, over the whole period.</p>
+    <p class="form-hint">Every vehicle that has loads, working hours, km or diesel is listed, so these rows add up to the totals at the top. Mileage = diesel &divide; working hours (L/hr), or km &divide; diesel (km/L) when the readings are in km, over the whole period.</p>
+    <p class="form-hint" id="s-unlisted" hidden></p>
   </div>
 
   <!-- Site-wise summary (only while "All sites" is chosen — picking a site shows just that site) -->

@@ -277,7 +277,7 @@ async function summaryReport(range) {
   }
   return {
     title: 'Summary', sheet: 'Summary', columns: SUMMARY_COLUMNS, rows,
-    subtitle: `Period: ${rangeText(s.range)}  ·  Site: ${s.site === null ? 'All sites' : s.site}  ·  Vehicles with loads or working hours are listed  ·  All entries: ${s.total_entries} entries, ${s.total_diesel} L diesel, ${s.total_loads} loads, ${fmtHrs(s.total_hours)} working hours${fmtMileage(s.mileage) ? `, mileage ${fmtMileage(s.mileage)}` : ''}`,
+    subtitle: `Period: ${rangeText(s.range)}  ·  Site: ${s.site === null ? 'All sites' : s.site}  ·  Vehicles with loads, working hours, km or diesel are listed${s.unlisted_entries ? `  \u00b7  ${s.unlisted_entries} ${s.unlisted_entries === 1 ? 'entry' : 'entries'} with none of these (for example "No work") not listed` : ''}  ·  All entries: ${s.total_entries} entries, ${s.total_diesel} L diesel, ${s.total_loads} loads, ${fmtHrs(s.total_hours)} working hours${fmtMileage(s.mileage) ? `, mileage ${fmtMileage(s.mileage)}` : ''}`,
     realRows: s.vehicles.length,
   };
 }

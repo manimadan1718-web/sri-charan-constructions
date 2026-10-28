@@ -284,6 +284,9 @@ async function buildXlsx(rows, meta, thumbs, extras = {}) {
   ws.mergeCells(3, 1, 3, lastCol);
   ws.getCell(3, 1).value = meta.filtersText ? `Filters: ${meta.filtersText}` : 'Filters: none (all records shown on screen)';
   ws.getCell(3, 1).font = { name: 'Calibri', size: 10, color: argb(COLORS.steel) };
+  // several vehicles / sites ticked make a long line: let it wrap and give the row the height it needs, so nothing is cut off
+  ws.getCell(3, 1).alignment = { wrapText: true, vertical: 'top' };
+  { const widthChars = Math.max(60, Math.round(XL_COLS.reduce((a, c) => a + (c.width || 10), 0) * 1.05)); ws.getRow(3).height = Math.max(15, 14 * Math.ceil(String(ws.getCell(3, 1).value || '').length / widthChars)); }
 
   // Table header
   const head = ws.getRow(HEADER_ROW);
@@ -489,10 +492,18 @@ async function buildPdf(rows, meta, thumbs, extras = {}) {
   doc.font('Helvetica').fontSize(9).fillColor(hex(COLORS.steel)).text('Site Activity Log report', M + 42, y + 19, { lineBreak: false });
   doc.fontSize(8).text(pdfText(`Generated ${nowStamp()} by ${meta.user}`), M, y, { width: usableW, align: 'right', lineBreak: false });
   doc.text(`${rows.length} record${rows.length === 1 ? '' : 's'}  ·  ${photoSummary(rows, thumbs)}`, M, y + 12, { width: usableW, align: 'right', lineBreak: false });
-  doc.text(pdfText(meta.filtersText ? `Filters: ${meta.filtersText}` : 'Filters: none (all records shown on screen)'), M, y + 24, { width: usableW, align: 'right', lineBreak: false, ellipsis: true, height: 10 });
+  const filterLine = pdfText(meta.filtersText ? `Filters: ${meta.filtersText}` : 'Filters: none (all records shown on screen)');
+  const longFilters = doc.widthOfString(filterLine) > usableW - 240;            // a short line stays in the corner; a long one (several choices) gets its own wrapped lines
+  if (!longFilters) doc.text(filterLine, M, y + 24, { width: usableW, align: 'right', lineBreak: false, ellipsis: true, height: 10 });
   y += 46;
   doc.moveTo(M, y).lineTo(M + usableW, y).lineWidth(1.5).strokeColor(hex(COLORS.orange)).stroke();
   y += 8;
+  if (longFilters) {
+    doc.font('Helvetica').fontSize(8).fillColor(hex(COLORS.steel));
+    const fh = doc.heightOfString(filterLine, { width: usableW });
+    doc.text(filterLine, M, y, { width: usableW });
+    y += fh + 6;
+  }
 
   const drawHeader = () => {
     doc.rect(M, y, usableW, 18).fill(hex(COLORS.ink));

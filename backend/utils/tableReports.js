@@ -14,7 +14,7 @@ const argb = hex => ({ argb: 'FF' + hex });
 const thin = { style: 'thin', color: argb(COLORS.line) };
 const BORDER = { top: thin, left: thin, bottom: thin, right: thin };
 const TONES = { danger: 'B4372A', muted: '8A94A6' };
-const KIND_FILL = { subtotal: 'FFF3E6', total: 'FFE2C2' };      // rows may also be { _kind: 'section', _label } (a heading band), 'subtotal' or 'total'
+const KIND_FILL = { subtotal: 'FFF3E6', total: 'FFE2C2', subhead: 'E9EDF3' };      // rows may also be { _kind: 'section', _label } (a heading band), 'subtotal' or 'total'
 
 /** "09/10/2026" and "08:43 pm" in the report time zone, from a stored timestamp. */
 function istDate(iso) {
@@ -81,7 +81,7 @@ async function buildTableXlsx({ sheetName, title, columns, rows, meta }) {
       row.height = 26;
       return;
     }
-    const strong = r._kind === 'subtotal' || r._kind === 'total';
+    const strong = r._kind === 'subtotal' || r._kind === 'total' || r._kind === 'subhead';      // totals and sub-headings are printed in bold
     let lines = 1;
     columns.forEach((c, i) => {
       const cell = row.getCell(i + 1);
@@ -152,7 +152,7 @@ async function buildTablePdf({ title, columns, rows, meta }) {
       y += 19;
       return;
     }
-    const strong = r._kind === 'subtotal' || r._kind === 'total';
+    const strong = r._kind === 'subtotal' || r._kind === 'total' || r._kind === 'subhead';      // totals and sub-headings are printed in bold
     doc.font('Helvetica').fontSize(FONT);
     let textH = 11;
     const texts = columns.map((c, i) => {

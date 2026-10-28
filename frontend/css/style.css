@@ -2306,3 +2306,22 @@ html[data-lang]:not([data-lang="en"]) .btn { white-space: normal; text-align: ce
 @media (max-width: 640px) { .msel-panel { width: 100%; max-width: none; } .filter-field:last-child .msel-panel { left: 0; right: auto; } }
 @media print { .msel-panel { display: none !important; } }
 
+/* ── Summary → Diesel Expenses ── */
+.sum-seg { max-width: 100%; }
+.de-filters { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px 16px; align-items: end; margin: 8px 0 6px; }
+.de-clear { justify-content: flex-end; }
+.de-missing { background: var(--hazard-tint); border: 1px solid var(--hazard-mid); color: var(--hazard-deep); border-radius: 6px; padding: 10px 12px; font-size: 14px; line-height: 1.5; margin: 8px 0 12px; }
+.de-missing[hidden], #de-loading[hidden] { display: none; }
+.link-btn { background: none; border: 0; padding: 0; margin: 0 0 0 4px; color: var(--hazard-deep); font: 700 inherit/inherit var(--font-body); text-decoration: underline; cursor: pointer; }
+td .link-btn { margin: 0; color: var(--ink); text-decoration-color: var(--hazard-mid); text-underline-offset: 3px; }
+.de-total td { background: #FFF3E6; border-top: 1.5px solid var(--hazard); font-weight: 800; }
+.de-table .r, #de-sites-body .r, #de-sites-foot .r { text-align: right; font-variant-numeric: tabular-nums; }
+.nowrap { white-space: nowrap; }
+.muted { color: var(--steel-light); }
+.de-proof-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; }
+.de-proof-btn svg { width: 16px; height: 16px; }
+@media (max-width: 1100px) { .de-filters { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .de-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .de-filters { grid-template-columns: 1fr; } .de-clear { justify-content: stretch; } .de-clear .btn { width: 100%; min-height: 44px; } .de-proof-btn { min-height: 44px; } }
+@media (pointer: coarse) { .de-proof-btn { min-height: 44px; } }
+

@@ -7,7 +7,7 @@
  *     The cache is only a fallback for when the network fails.
  *   • Bump VERSION whenever you change the list below, so old caches are cleaned up.
  */
-const VERSION = 'v22';
+const VERSION = 'v23';
 const SHELL   = `scc-shell-${VERSION}`;
 const RUNTIME = `scc-runtime-${VERSION}`;
 

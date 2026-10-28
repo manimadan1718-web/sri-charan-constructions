@@ -336,6 +336,14 @@
 <!-- ═══════════════════════════════ SUMMARY ══════════════════════════════════ -->
 <div class="section" id="section-summary">
 
+  <!-- Summary views: Auto Summary | Diesel Expenses -->
+  <div class="pl-seg sum-seg" role="tablist" aria-label="Summary views">
+    <button type="button" class="pl-seg-btn active" role="tab" id="sumtab-auto" aria-selected="true" aria-controls="sum-panel-auto" onclick="showSummaryTab('auto')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="6" y1="20" x2="6" y2="12"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="18" y1="20" x2="18" y2="9"/></svg><span>Auto Summary</span></button>
+    <button type="button" class="pl-seg-btn" role="tab" id="sumtab-diesel" aria-selected="false" aria-controls="sum-panel-diesel" onclick="showSummaryTab('diesel')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.7s6 6.1 6 10.3a6 6 0 0 1-12 0c0-4.2 6-10.3 6-10.3z"/></svg><span>Diesel Expenses</span></button>
+  </div>
+
+  <div id="sum-panel-auto" role="tabpanel" aria-labelledby="sumtab-auto">
+
   <!-- Auto Stats -->
   <div class="card">
     <div class="card-header">
@@ -404,6 +412,65 @@
     </div>
     <p class="form-hint">Press a site name to see only that site's summary, with its own per-vehicle breakdown.</p>
   </div>
+
+  </div><!-- /sum-panel-auto -->
+
+  <!-- Diesel Expenses: every diesel fill with litres and proof, by period and site -->
+  <div id="sum-panel-diesel" role="tabpanel" aria-labelledby="sumtab-diesel" hidden>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.7s6 6.1 6 10.3a6 6 0 0 1-12 0c0-4.2 6-10.3 6-10.3z"/></svg></span> Diesel Expenses</div>
+        <div class="export-menu rm">
+          <button type="button" class="btn btn-outline btn-sm rm-btn" id="de-export-btn" aria-haspopup="menu" aria-expanded="false"><span class="rm-label">Export</span><span class="caret" aria-hidden="true">&#9662;</span></button>
+          <div class="export-pop" role="menu" aria-label="Choose a report format" hidden>
+            <button type="button" role="menuitem" data-rm-kind="diesel" data-rm-format="xlsx"><span class="fmt fmt-xlsx">XLS</span><span class="fmt-text"><strong>Excel</strong><small>.xlsx &middot; with the proof photos</small></span></button>
+            <button type="button" role="menuitem" data-rm-kind="diesel" data-rm-format="pdf"><span class="fmt fmt-pdf">PDF</span><span class="fmt-text"><strong>PDF</strong><small>.pdf &middot; print-ready, photos included</small></span></button>
+          </div>
+        </div>
+      </div>
+      <p class="form-hint">Every diesel fill that has litres and a proof photo, collected from the entries (nothing is typed twice). Choose a period and the sites, then download.</p>
+      <div class="de-filters">
+        <div class="filter-field"><label for="de-from">From date</label><input type="date" id="de-from"></div>
+        <div class="filter-field"><label for="de-to">To date</label><input type="date" id="de-to"></div>
+        <div class="filter-field"><label for="de-site-btn">Site</label><div class="msel" id="de-site" data-noun="sites" data-all="All sites"></div></div>
+        <div class="filter-field"><label for="de-proof">Proof photo</label>
+          <select id="de-proof"><option value="with">With proof</option><option value="without">Without proof</option><option value="all">With and without</option></select></div>
+        <div class="filter-field de-clear"><button type="button" class="btn btn-outline btn-sm" onclick="clearDieselFilters()">Clear filters</button></div>
+      </div>
+      <p class="sum-range-text" id="de-range-text"></p>
+      <div class="de-missing" id="de-missing" role="status" hidden></div>
+      <div class="stats-grid">
+        <div class="stat-card"><div class="stat-label">Total Diesel</div><div class="stat-val" id="de-litres">&mdash;</div><div class="stat-unit">Litres in the list below</div></div>
+        <div class="stat-card"><div class="stat-label">Fills</div><div class="stat-val" id="de-fills">&mdash;</div><div class="stat-unit">diesel fills listed</div></div>
+        <div class="stat-card"><div class="stat-label">With proof</div><div class="stat-val" id="de-with">&mdash;</div><div class="stat-unit" id="de-with-note">fills</div></div>
+        <div class="stat-card"><div class="stat-label">Without proof</div><div class="stat-val" id="de-without">&mdash;</div><div class="stat-unit" id="de-without-note">fills</div></div>
+      </div>
+    </div>
+
+    <div class="card" id="de-sites-card">
+      <div class="card-title" style="margin-bottom:14px;"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></span> Site-wise Diesel</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Site</th><th>Fills</th><th class="r">Diesel (L)</th></tr></thead>
+          <tbody id="de-sites-body"></tbody>
+          <tfoot id="de-sites-foot"></tfoot>
+        </table>
+      </div>
+      <p class="form-hint">Press a site name to see only that site.</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title" style="margin-bottom:14px;"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg></span> Diesel Fills</div>
+      <div id="de-loading" class="loading" hidden><span class="spinner"></span>Loading&hellip;</div>
+      <div class="table-wrap">
+        <table class="de-table">
+          <thead><tr><th>#</th><th>Date</th><th>Site</th><th>Category</th><th>Vehicle No.</th><th>Operator</th><th class="r">Diesel (L)</th><th>Proof</th></tr></thead>
+          <tbody id="de-body"></tbody>
+          <tfoot id="de-foot"></tfoot>
+        </table>
+      </div>
+    </div>
+  </div><!-- /sum-panel-diesel -->
 
 </div><!-- /summary -->
 

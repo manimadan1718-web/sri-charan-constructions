@@ -264,16 +264,16 @@ async function summaryReport(range) {
   const rows = s.vehicles.map((v, i) => ({ n: i + 1, vehicle: v.vehicle_no, entries: v.entries, diesel: v.diesel, loads: v.loads, hours: fmtHrs(v.hours), km: fmtKm(v.km), mileage: fmtMileage(v.mileage) }));
   if (rows.length) {
     rows.push({
-      n: '', vehicle: 'TOTAL (vehicles listed)', entries: sum(s.vehicles, 'entries'),
+      _kind: 'total', n: '', vehicle: 'TOTAL (vehicles listed)', entries: sum(s.vehicles, 'entries'),
       diesel: sum(s.vehicles, 'diesel').toFixed(2), loads: sum(s.vehicles, 'loads'), hours: fmtHrs(Math.round(sum(s.vehicles, 'hours') * 100) / 100), km: fmtKm(sum(s.vehicles, 'km')), mileage: fmtMileage(s.mileage),
     });
   }
   // With no site chosen, the report also carries the site-wise summary underneath.
   if (s.site === null && s.sites.length) {
     rows.push({ n: '', vehicle: '', entries: '', diesel: '', loads: '', hours: '', km: '', mileage: '' });
-    rows.push({ n: '', vehicle: 'SITE-WISE SUMMARY', entries: 'Entries', diesel: 'Diesel (L)', loads: 'Loads', hours: 'Working hours', km: 'Km', mileage: 'Mileage' });
+    rows.push({ _kind: 'subhead', n: '', vehicle: 'SITE-WISE SUMMARY', entries: 'Entries', diesel: 'Diesel (L)', loads: 'Loads', hours: 'Working hours', km: 'Km', mileage: 'Mileage' });
     s.sites.forEach((x, i) => rows.push({ n: i + 1, vehicle: x.site, entries: x.entries, diesel: x.diesel, loads: x.loads, hours: fmtHrs(x.hours), km: fmtKm(x.km), mileage: fmtMileage(x.mileage) }));
-    rows.push({ n: '', vehicle: 'TOTAL (all sites)', entries: s.total_entries, diesel: s.total_diesel, loads: s.total_loads, hours: fmtHrs(s.total_hours), km: fmtKm(s.total_km), mileage: fmtMileage(s.mileage) });
+    rows.push({ _kind: 'total', n: '', vehicle: 'TOTAL (all sites)', entries: s.total_entries, diesel: s.total_diesel, loads: s.total_loads, hours: fmtHrs(s.total_hours), km: fmtKm(s.total_km), mileage: fmtMileage(s.mileage) });
   }
   return {
     title: 'Summary', sheet: 'Summary', columns: SUMMARY_COLUMNS, rows,

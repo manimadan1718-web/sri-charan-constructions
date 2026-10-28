@@ -7,6 +7,8 @@ const tableReports = require('../utils/tableReports');
 const reportData = require('../utils/reportData');
 const lq = require('../utils/logQuery');
 const { summaryRange } = require('./entries');
+const diesel = require('../utils/dieselRegister');
+const dieselReport = require('../utils/dieselReport');
 
 router.use(requireAuth);
 
@@ -149,6 +151,42 @@ router.post('/summary', requirePerm('summary.view'), (req, res) => {
   if (range.error) return res.status(400).json({ error: range.error });
   range.site = typeof body.site === 'string' ? body.site.trim().slice(0, 100) : '';
   return serveTableReport(req, res, { format: body.format, filePrefix: 'summary', category: 'entry', load: () => reportData.summaryReport(range) });
+});
+
+// POST /api/reports/diesel  (Owner + Admin) - { format: 'xlsx' | 'pdf', from?, to?, sites?: [...], proof?: 'with' | 'without' | 'all' }
+// The Diesel Expenses register with its proof photos: a bold TOTAL line, then a site-wise summary.
+router.post('/diesel', requirePerm('summary.view'), async (req, res) => {
+  const body = req.body || {};
+  const fmt = TABLE_FORMATS[body.format];
+  if (!fmt) return res.status(400).json({ error: 'Choose Excel or PDF.' });
+  const range = summaryRange(body);
+  if (range.error) return res.status(400).json({ error: range.error });
+  const proof = typeof body.proof === 'string' ? body.proof : 'with';
+  if (!diesel.PROOF_MODES.includes(proof)) return res.status(400).json({ error: 'proof must be "with", "without" or "all".' });
+  if (active >= MAX_AT_ONCE) return res.status(429).json({ error: 'Another report is being prepared right now. Please try again in a moment.' });
+  active++;
+  try {
+    const d = await diesel.dieselRegister({ from: range.from, to: range.to, sites: diesel.many(body.sites), proof });
+    if (!d.rows.length) return res.status(400).json({ error: 'There are no diesel records for these choices, so there is nothing to export.' });
+    if (d.rows.length > reports.MAX_ROWS) return res.status(413).json({ error: `That is too many diesel records for one report (${d.rows.length}). Narrow the period or the sites and try again.` });
+    const attached = d.rows.filter(r => r.photo).length;
+    if (attached > reports.MAX_PHOTOS) return res.status(413).json({ error: `This report has ${attached} proof photos - too many for one file. Narrow the period or the sites and try again.` });
+    const thumbs = await reports.loadThumbnails(d.rows.map(r => ({ dieselPhoto: r.photo })));
+    const meta = { user: reports.cleanText(req.user.name, 60) || 'user', filtersText: reports.cleanText(diesel.filtersText(d), 1200) };
+    const buffer = body.format === 'xlsx' ? await dieselReport.buildDieselXlsx(d, meta, thumbs) : await dieselReport.buildDieselPdf(d, meta, thumbs);
+    const shown = d.rows.filter(r => r.photo && thumbs.has(r.photo)).length;
+    await logActivity(req, {
+      category: 'entry', action: 'report_exported', entityType: 'report',
+      entityLabel: `${fmt.label} report \u00b7 Diesel Expenses \u00b7 ${d.fills} fill${d.fills === 1 ? '' : 's'} \u00b7 ${shown} proof photo${shown === 1 ? '' : 's'}`,
+    });
+    res.set({ 'Content-Type': fmt.type, 'Content-Disposition': `attachment; filename="SCC-diesel-expenses-${reports.todayStamp()}.${fmt.ext}"`, 'Content-Length': buffer.length, 'Cache-Control': 'no-store' });
+    res.send(buffer);
+  } catch (err) {
+    console.error('POST /reports/diesel:', err.message);
+    res.status(err.status || 500).json({ error: err.userMessage || 'The report could not be prepared. Please try again.' });
+  } finally {
+    active--;
+  }
 });
 
 // ── POST /api/reports/logs  (Owner + Admin) — { format, ids?: [...] | filters?: {...} } ──

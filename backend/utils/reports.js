@@ -370,7 +370,12 @@ async function buildXlsx(rows, meta, thumbs, extras = {}) {
       if (i === dI || i === lI || i === hI || i === mI) cell.alignment = { horizontal: 'right', vertical: 'middle', indent: 1 };
       else cell.alignment = { vertical: 'middle', indent: 1 };
     }
-    totalRow.height = 24;
+    const mtx = totalMileageText(rows) || '';
+    if (mtx.includes(' \u00b7 ')) {                                       // both L/hr and km/L: one under the other, so neither is cut off
+      totalRow.getCell(mI).value = mtx.replace(' \u00b7 ', '\n');
+      totalRow.getCell(mI).alignment = { horizontal: 'right', vertical: 'middle', indent: 1, wrapText: true };
+      totalRow.height = 34;
+    } else totalRow.height = 24;
   }
 
   // ── Under the table: Loads breakup summary, then Site Working Progress ──
@@ -555,17 +560,18 @@ async function buildPdf(rows, meta, thumbs, extras = {}) {
 
   // Totals
   if (rows.length) {
-    if (y + 20 > bottom) { doc.addPage(); y = M; drawHeader(); }
-    doc.rect(M, y, usableW, 18).fill('#FFF3E6');
+    const mtp = totalMileageText(rows), th = mtp && mtp.includes('\u00b7') ? 27 : 18, ty = th > 18 ? 9.5 : 5.5;      // two mileage figures (L/hr and km/L) get a taller row
+    if (y + th + 2 > bottom) { doc.addPage(); y = M; drawHeader(); }
+    doc.rect(M, y, usableW, th).fill('#FFF3E6');
     doc.moveTo(M, y).lineTo(M + usableW, y).lineWidth(1.2).strokeColor(hex(COLORS.orange)).stroke();
     doc.font('Helvetica-Bold').fontSize(8).fillColor(hex(COLORS.ink));
     const ci = k => PDF_COLS.findIndex(c => c.key === k);
-    doc.text('Total', x0[ci('vehicle')] + PAD, y + 5.5, { width: PDF_COLS[ci('vehicle')].w, lineBreak: false });
-    { const mt = totalMileageText(rows); if (mt) doc.text(mt, x0[ci('mileage')] + PAD, y + 5.5, { width: PDF_COLS[ci('mileage')].w - PAD * 2, align: 'left', lineBreak: false }); }
-    if (rows.some(r => r.hoursMin !== null)) doc.text(String(hoursFromMinutes(rows.reduce((a, r) => a + (r.hoursMin || 0), 0))), x0[ci('hours')] + PAD, y + 5.5, { width: PDF_COLS[ci('hours')].w - PAD * 2, align: 'left', lineBreak: false });
-    doc.text(rows.reduce((a, r) => a + r.diesel, 0).toFixed(2), x0[ci('diesel')] + PAD, y + 5.5, { width: PDF_COLS[ci('diesel')].w - PAD * 2, align: 'right', lineBreak: false });
-    doc.text(String(rows.reduce((a, r) => a + r.loads, 0)), x0[ci('loads')] + PAD, y + 5.5, { width: PDF_COLS[ci('loads')].w - PAD * 2, align: 'right', lineBreak: false });
-    y += 18;
+    doc.text('Total', x0[ci('vehicle')] + PAD, y + ty, { width: PDF_COLS[ci('vehicle')].w, lineBreak: false });
+    if (mtp) mtp.split(' \u00b7 ').forEach((part, k) => doc.text(part, x0[ci('mileage')] + PAD, y + (th > 18 ? 4 : ty) + k * 10, { width: PDF_COLS[ci('mileage')].w - PAD * 2, align: 'left', lineBreak: false }));
+    if (rows.some(r => r.hoursMin !== null)) doc.text(String(hoursFromMinutes(rows.reduce((a, r) => a + (r.hoursMin || 0), 0))), x0[ci('hours')] + PAD, y + ty, { width: PDF_COLS[ci('hours')].w - PAD * 2, align: 'left', lineBreak: false });
+    doc.text(rows.reduce((a, r) => a + r.diesel, 0).toFixed(2), x0[ci('diesel')] + PAD, y + ty, { width: PDF_COLS[ci('diesel')].w - PAD * 2, align: 'right', lineBreak: false });
+    doc.text(String(rows.reduce((a, r) => a + r.loads, 0)), x0[ci('loads')] + PAD, y + ty, { width: PDF_COLS[ci('loads')].w - PAD * 2, align: 'right', lineBreak: false });
+    y += th;
   }
 
   // ── Under the table: Loads breakup summary, then Site Working Progress ──

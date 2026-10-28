@@ -82,6 +82,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   toggleCategoryFields('f');
   initLoadPoints();
   initDayBreakup();
+  initDiesel();
   initProgressAdd();
   initBell();
   loadUnloadPoints();
@@ -173,6 +174,7 @@ async function loadDropdownData() {
       }).catch(() => { /* the filter simply lists the inventory vehicles */ });
     }
     populateFilterSelect('filter-site',    sites,    'name',       'All sites');
+    populateFilterSelect('de-site',        sites,    'name',       'All sites');
     populateFilterSelect('pgv-site',       sites,    'name',       'All sites');
     populateFilterSelect('filter-type',    distinctTypes(vehicles), 'type', 'All types');
   } catch (e) {
@@ -209,7 +211,7 @@ function distinctTypes(vehicles) {
 // in Inventory (rental vehicles are typed in by hand; a site may have been removed).
 // Those are discovered from the records themselves and added, so nothing is unfindable.
 const filterLists  = {};                                          // id → { items, field, placeholder }
-const extraFilterValues = { 'filter-vehicle': new Set(), 'filter-site': new Set() };
+const extraFilterValues = { 'filter-vehicle': new Set(), 'filter-site': new Set(), 'de-site': new Set() };
 
 function populateFilterSelect(id, items, field, placeholder) {
   filterLists[id] = { items, field, placeholder };
@@ -473,7 +475,7 @@ function switchTab(name) {
   if (name === 'home')      initHome();
   if (name === 'archive')   initArchive();
   setCrumb(name);
-  if (name === 'summary')   loadSummary();
+  if (name === 'summary')   { if (DIESEL.tab === 'diesel') loadDiesel(); else loadSummary(); }
   if (name === 'documents') loadDocuments();
   if (name === 'payments')  initPayments();
   if (name === 'purchases') initPurchases();
@@ -738,7 +740,7 @@ function clearFilters() {
   document.getElementById('filter-date-from').value = '';
   document.getElementById('filter-date-to').value   = '';
   document.getElementById('filter-category').value  = '';
-  MULTI_FILTERS.forEach(id => { if (MSEL[id]) MSEL[id].selected.clear(); renderMulti(id); });
+  RECORD_MULTI.forEach(id => { if (MSEL[id]) MSEL[id].selected.clear(); renderMulti(id); });
   loadRecords();
 }
 
@@ -1583,6 +1585,11 @@ async function runTableReport(kind, format, itemEl) {
   else if (group === 'users') { call = () => Reports.users({ format }); name = 'users'; }
   else if (group === 'logs')  { call = () => Reports.logs(logsReportBody(format)); name = 'activity-logs'; }
   else if (group === 'payments') { call = () => Reports.payments({ format, kind: type, ...plFilters(type) }); name = type === 'all' ? 'payments-cumulative' : `payments-${type}`; }
+  else if (group === 'diesel') {
+    const f = dieselFilters();
+    if (f.from && f.to && f.from > f.to) { showToast('The "from" date cannot be after the "to" date.', true); return; }
+    call = () => Reports.diesel({ format, from: f.from || undefined, to: f.to || undefined, sites: f.site, proof: f.proof }); name = 'diesel-expenses';
+  }
   else if (group === 'summary') {
     const per = summaryPeriod();
     if (per.from && per.to && per.from > per.to) { showToast('The "from" date cannot be after the "to" date.', true); return; }
@@ -4712,7 +4719,9 @@ async function clearDayBreakup() {
 /* ── Tick-box filters (Records: Type, Vehicle / Machine No., Site) ──────────────────────────────────────────────────
    One button that opens a list with a tick box for each choice: pick as many as you need, search a long list, "Select all" / "Clear".
    The chosen values go to the server (as repeated parameters) and are named on the Excel / PDF / Print reports. */
-const MULTI_FILTERS = ['filter-type', 'filter-vehicle', 'filter-site'];
+const RECORD_MULTI = ['filter-type', 'filter-vehicle', 'filter-site'];            // the Records filters
+const MULTI_FILTERS = [...RECORD_MULTI, 'de-site'];                                // every tick-box list (the last is Diesel Expenses > Site)
+const MSEL_ON_CHANGE = { 'de-site': () => loadDieselDebounced() };               // what to do when a list changes (Records is the default)
 const MSEL = {};                                                       // id -> { selected: Set, options: [{ value, label }] }
 const getMulti = id => (MSEL[id] ? [...MSEL[id].selected] : []);
 const MSEL_CHEVRON = '<svg class="msel-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>';
@@ -4722,6 +4731,7 @@ function mselOptions(id) {
   const inInventory = new Set(), out = [];
   cfg.items.forEach(i => { inInventory.add(i[cfg.field]); out.push({ value: i[cfg.field], label: i.active === false ? `${i[cfg.field]} (inactive)` : i[cfg.field] }); });
   [...(extraFilterValues[id] || [])].filter(v => !inInventory.has(v)).sort().forEach(v => out.push({ value: v, label: `${v} (not in inventory)` }));
+  if (id === 'de-site' && DIESEL.hasNoSite) out.push({ value: '__none__', label: '(no site)' });                  // fills of entries that have no site
   return out;
 }
 
@@ -4787,8 +4797,9 @@ function mselChanged(id) {
   const box = document.getElementById(id), st = MSEL[id];
   box.querySelector('.msel-text').textContent = mselLabel(id);
   box.querySelector('.msel-btn').title = [...st.selected].join(', ');
+  const fld = box.closest('.filter-field'); if (fld) fld.classList.toggle('is-active', st.selected.size > 0);
   syncFilterHighlights();
-  loadRecordsDebounced();                                              // many ticks in a row make ONE request
+  (MSEL_ON_CHANGE[id] || loadRecordsDebounced)();                     // many ticks in a row make ONE request
 }
 
 /** (Re)builds the list from Inventory + the values found in the records. Keeps what is ticked, the search text and whether it is open. */
@@ -4804,9 +4815,113 @@ function renderMulti(id) {
   if (q && !search.hidden) mselFilterList(id);
   box.querySelector('.msel-text').textContent = mselLabel(id);
   box.querySelector('.msel-btn').title = [...st.selected].join(', ');
+  const fld = box.closest('.filter-field'); if (fld) fld.classList.toggle('is-active', st.selected.size > 0);
   syncFilterHighlights();
 }
 
 // a click anywhere else closes an open list
 document.addEventListener('click', e => { document.querySelectorAll('.msel.open').forEach(b => { if (!b.contains(e.target) && b._setOpen) b._setOpen(false); }); });
+
+
+/* ── Summary → Diesel Expenses ───────────────────────────────────────────────────────────────
+   Every diesel fill with litres and a proof photo, taken from the entries (nothing is typed twice), by period and site. */
+const DIESEL = { tab: 'auto', seq: 0, data: null, hasNoSite: false, timer: null };
+const deEl = id => document.getElementById(id);
+const fmtL = n => Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+function showSummaryTab(which) {
+  DIESEL.tab = which === 'diesel' ? 'diesel' : 'auto';
+  ['auto', 'diesel'].forEach(k => {
+    const on = k === DIESEL.tab, btn = deEl(`sumtab-${k}`);
+    btn.classList.toggle('active', on); btn.setAttribute('aria-selected', String(on));
+    deEl(`sum-panel-${k}`).hidden = !on;
+  });
+  if (DIESEL.tab === 'diesel') loadDiesel(); else loadSummary();
+}
+
+function dieselFilters() { return { from: deEl('de-from').value, to: deEl('de-to').value, site: getMulti('de-site'), proof: deEl('de-proof').value || 'with' }; }
+
+function syncDieselHighlights() {
+  [['de-from', !!deEl('de-from').value], ['de-to', !!deEl('de-to').value], ['de-proof', deEl('de-proof').value !== 'with']].forEach(([id, on]) => {
+    const fld = deEl(id).closest('.filter-field'); if (fld) fld.classList.toggle('is-active', on);
+  });
+}
+
+function initDiesel() {
+  if (!deEl('de-body')) return;
+  ['de-from', 'de-to', 'de-proof'].forEach(id => deEl(id).addEventListener('change', () => { syncDieselHighlights(); loadDiesel(); }));
+}
+
+function loadDieselDebounced() { clearTimeout(DIESEL.timer); DIESEL.timer = setTimeout(loadDiesel, 250); }
+
+function clearDieselFilters() {
+  deEl('de-from').value = ''; deEl('de-to').value = ''; deEl('de-proof').value = 'with';
+  if (MSEL['de-site']) MSEL['de-site'].selected.clear();
+  renderMulti('de-site'); syncDieselHighlights(); loadDiesel();
+}
+
+function setDieselProof(mode) { deEl('de-proof').value = mode; syncDieselHighlights(); loadDiesel(); }
+function selectDieselSite(value) { ensureMsel('de-site'); MSEL['de-site'].selected = new Set([value]); renderMulti('de-site'); loadDiesel(); }
+
+async function loadDiesel() {
+  if (!deEl('de-body')) return;
+  const f = dieselFilters();
+  if (f.from && f.to && f.from > f.to) { showToast('The "from" date cannot be after the "to" date.', true); return; }
+  const seq = ++DIESEL.seq;
+  deEl('de-loading').hidden = false;
+  try {
+    const res = await Diesel.get(f);
+    if (seq !== DIESEL.seq) return;                                              // a newer choice has been made
+    DIESEL.data = res.data;
+    if (!f.site.length) {                                                         // learn the sites that are not in Inventory (and "no site"), so nothing is unfindable
+      (res.data.sites || []).forEach(s => { if (s.value === '__none__') DIESEL.hasNoSite = true; else extraFilterValues['de-site'].add(s.site); });
+      renderMulti('de-site');
+    }
+    renderDiesel(res.data);
+  } catch (e) {
+    if (seq !== DIESEL.seq) return;
+    deEl('de-body').innerHTML = `<tr class="empty-row"><td colspan="8">${esc(e.message || 'The diesel fills could not be loaded.')}</td></tr>`;
+    deEl('de-foot').innerHTML = ''; deEl('de-sites-body').innerHTML = ''; deEl('de-sites-foot').innerHTML = '';
+  } finally {
+    if (seq === DIESEL.seq) deEl('de-loading').hidden = true;
+  }
+}
+
+function renderDiesel(d) {
+  const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+  const period = d.range.from || d.range.to ? `${d.range.from ? `From ${fmtDate(d.range.from)}` : ''}${d.range.from && d.range.to ? ' to ' : ''}${d.range.to ? `${d.range.from ? '' : 'Up to '}${fmtDate(d.range.to)}` : ''}` : 'All time';
+  const sites = d.sites_filter.length ? d.sites_filter.map(s => (s === '__none__' ? '(no site)' : s)).join(', ') : 'All sites';
+  deEl('de-range-text').textContent = `Showing: ${period} · ${sites} · ${{ with: 'With proof', without: 'Without proof', all: 'With and without proof' }[d.proof]}`;
+  deEl('de-litres').textContent = fmtL(d.total_litres);
+  deEl('de-fills').textContent = d.fills;
+  deEl('de-with').textContent = d.with_proof.fills;     deEl('de-with-note').textContent = `${fmtL(d.with_proof.litres)} L`;
+  deEl('de-without').textContent = d.without_proof.fills; deEl('de-without-note').textContent = d.without_proof.fills ? `${fmtL(d.without_proof.litres)} L · need a photo` : 'every fill has proof';
+  const miss = deEl('de-missing');
+  miss.hidden = !(d.proof === 'with' && d.without_proof.fills > 0) && !d.proof_setup_required;
+  if (d.proof_setup_required) miss.innerHTML = 'Photo proof needs a one-time database update (run-in-supabase-photos.sql in Supabase → SQL Editor). Until then no fill has proof.';
+  else if (!miss.hidden) miss.innerHTML = `${esc(plural(d.without_proof.fills, 'diesel fill'))} (${esc(fmtL(d.without_proof.litres))} L) ${d.without_proof.fills === 1 ? 'has' : 'have'} no proof photo yet, so ${d.without_proof.fills === 1 ? 'it is' : 'they are'} not listed. <button type="button" class="link-btn" onclick="setDieselProof('without')">Show ${d.without_proof.fills === 1 ? 'it' : 'them'}</button>`;
+
+  deEl('de-sites-card').hidden = !d.sites.length;
+  deEl('de-sites-body').innerHTML = d.sites.map(s => `<tr>
+      <td data-label="Site"><button type="button" class="link-btn" onclick="selectDieselSite(${esc(JSON.stringify(s.value))})">${esc(s.site)}</button></td>
+      <td data-label="Fills">${esc(s.fills)}</td><td class="r" data-label="Diesel (L)">${esc(fmtL(s.litres))}</td></tr>`).join('');
+  deEl('de-sites-foot').innerHTML = d.sites.length ? `<tr class="de-total"><td>TOTAL (all sites)</td><td>${esc(d.sites.reduce((a, s) => a + s.fills, 0))}</td><td class="r">${esc(fmtL(d.total_litres))}</td></tr>` : '';
+
+  deEl('de-body').innerHTML = d.rows.length ? d.rows.map(r => `<tr>
+      <td data-label="#">${esc(r.n)}</td>
+      <td data-label="Date" class="nowrap">${esc(fmtDate(r.date))}</td>
+      <td data-label="Site">${esc(r.site) || '<span class="muted">–</span>'}</td>
+      <td data-label="Category">${r.category === 'rental' ? '<span class="pill pill-rental">Rental</span>' : '<span class="pill pill-own">Own</span>'}</td>
+      <td data-label="Vehicle No."><strong>${esc(r.vehicle_no)}</strong></td>
+      <td data-label="Operator">${esc(r.operator) || '<span class="muted">–</span>'}</td>
+      <td class="r" data-label="Diesel (L)">${esc(fmtL(r.litres))}</td>
+      <td data-label="Proof">${r.has_proof ? `<button type="button" class="btn btn-outline btn-sm de-proof-btn" onclick="viewDieselProof(${esc(JSON.stringify(r.id))})" aria-label="View the proof photo for ${esc(r.vehicle_no)} on ${esc(fmtDate(r.date))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>View</button>` : '<span class="pill pill-red">No proof</span>'}</td>
+    </tr>`).join('') : `<tr class="empty-row"><td colspan="8">${d.proof === 'with' && d.without_proof.fills ? 'No fills with a proof photo match these choices. Some fills have no photo yet — choose "Without proof" to see them.' : 'No diesel fills match these choices.'}</td></tr>`;
+  deEl('de-foot').innerHTML = d.rows.length ? `<tr class="de-total"><td colspan="6">TOTAL · ${esc(plural(d.fills, 'fill'))}</td><td class="r">${esc(fmtL(d.total_litres))}</td><td></td></tr>` : '';
+}
+
+function viewDieselProof(id) {
+  const r = DIESEL.data && DIESEL.data.rows.find(x => x.id === id);
+  if (r && r.photo) viewSavedPhoto(r.photo, `Diesel proof · ${r.vehicle_no} · ${fmtDate(r.date)} · ${fmtL(r.litres)} L`);
+}
 

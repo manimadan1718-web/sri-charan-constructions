@@ -290,6 +290,10 @@ const Reports = {
   summary(body) {
     return apiFetch('/reports/summary', { method: 'POST', body: JSON.stringify(body), asBlob: true });
   },
+  // { format, from?, to?, sites?: [...], proof? }   (Owner + Admin) - the Diesel Expenses register with its proof photos
+  diesel(body) {
+    return apiFetch('/reports/diesel', { method: 'POST', body: JSON.stringify(body), asBlob: true });
+  },
   // { format: 'xlsx' | 'pdf', kind: 'company' | 'outside' | 'all' }   (Owner + Admin) ? the Payments ledgers and the cumulative report
   payments(body) {
     return apiFetch('/reports/payments', { method: 'POST', body: JSON.stringify(body), asBlob: true });
@@ -383,6 +387,18 @@ const Documents = {
 };
 
 // ── Payments (Supervisor adds · Owner + Admin see · Admin edits) ───────────────
+const Diesel = {
+  // { from?, to?, site: [names...], proof: 'with' | 'without' | 'all' }  (Owner + Admin) - the Diesel Expenses register
+  get(f = {}) {
+    const qs = new URLSearchParams();
+    if (f.from) qs.set('from', f.from);
+    if (f.to) qs.set('to', f.to);
+    (f.site || []).forEach(s => qs.append('site', s));
+    if (f.proof) qs.set('proof', f.proof);
+    return apiFetch('/diesel?' + qs.toString());
+  },
+};
+
 const Breakups = {
   get(date, site) { return apiFetch('/breakups?' + new URLSearchParams({ date, site })); },                  // one day's loads, its vehicles and its saved lines
   save(body) { return apiFetch('/breakups', { method: 'PUT', body: JSON.stringify(body) }); },               // { date, site, points, reason }

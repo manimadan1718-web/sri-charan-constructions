@@ -66,7 +66,7 @@ router.delete('/progress', requirePerm('progress.add'), async (req, res) => {
 
 // ── GET /api/uploads/reading/url?path=…  (Owner + Admin — people who can open Records) ──
 // Returns a link that stops working after 10 minutes. Only photos attached to an entry can be opened.
-router.get('/reading/url', requirePerm('records.view'), async (req, res) => {
+router.get('/reading/url', requirePerm('records.view', 'summary.view'), async (req, res) => {
   try {
     const { path } = req.query;
     if (!photos.isReadingPath(path)) return res.status(400).json({ error: 'That is not a valid photo.' });

@@ -160,6 +160,7 @@
       <div class="form-group">
         <label for="f-diesel">Diesel (Litres)</label>
         <input type="number" id="f-diesel" placeholder="0" min="0" step="0.5">
+        <div class="stock-hint" id="f-diesel-stock" role="status" hidden></div>
         <div class="photo-field" data-key="f-diesel" data-label="Diesel photo"></div>
       </div>
       <div class="form-group">
@@ -403,9 +404,94 @@
 
   <!-- Diesel Expenses: every diesel fill with litres and proof, by period and site -->
   <div id="sum-panel-diesel" role="tabpanel" aria-labelledby="sumtab-diesel" hidden>
+    <div class="pl-seg de-seg" role="tablist" aria-label="Diesel views">
+      <button type="button" class="pl-seg-btn active" role="tab" id="desub-stock" aria-selected="true" onclick="showDieselView('stock')"><span>Stock &amp; Balance</span></button>
+      <button type="button" class="pl-seg-btn" role="tab" id="desub-fills" aria-selected="false" onclick="showDieselView('fills')"><span>Fills with proof</span></button>
+    </div>
+
+    <!-- ── Stock & Balance: Diesel Stock Received - Usage = Balance Stock, by date and site ── -->
+    <div id="de-view-stock">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.7s6 6.1 6 10.3a6 6 0 0 1-12 0c0-4.2 6-10.3 6-10.3z"/></svg></span> Diesel Stock &amp; Balance</div>
+          <div class="export-menu rm">
+            <button type="button" class="btn btn-outline btn-sm rm-btn" id="ds-export-btn" aria-haspopup="menu" aria-expanded="false"><span class="rm-label">Export</span><span class="caret" aria-hidden="true">&#9662;</span></button>
+            <div class="export-pop" role="menu" aria-label="Choose a report format" hidden>
+              <button type="button" role="menuitem" data-rm-kind="diesel-stock" data-rm-format="xlsx"><span class="fmt fmt-xlsx">XLS</span><span class="fmt-text"><strong>Excel</strong><small>.xlsx &middot; ledger, site-wise, vehicle-wise</small></span></button>
+              <button type="button" role="menuitem" data-rm-kind="diesel-stock" data-rm-format="pdf"><span class="fmt fmt-pdf">PDF</span><span class="fmt-text"><strong>PDF</strong><small>.pdf &middot; print-ready</small></span></button>
+            </div>
+          </div>
+        </div>
+        <p class="form-hint">Enter the diesel received at a site. The usage is picked up automatically from the entries (site-wise and vehicle-wise), and the Balance Stock is what is left.</p>
+
+        <div class="ds-add" id="ds-add">
+          <div class="ds-add-title">Diesel Stock Received</div>
+          <div class="ds-add-grid">
+            <div class="filter-field"><label for="ds-add-date">Date</label><input type="date" id="ds-add-date"></div>
+            <div class="filter-field"><label for="ds-add-site">Site</label><select id="ds-add-site"></select></div>
+            <div class="filter-field"><label for="ds-add-litres">Diesel Stock Received (L)</label><input type="number" id="ds-add-litres" min="0" step="0.01" inputmode="decimal" placeholder="0.00"></div>
+            <div class="filter-field"><label for="ds-add-note">Note (optional)</label><input type="text" id="ds-add-note" maxlength="200" placeholder="Supplier, bill no."></div>
+            <div class="filter-field ds-add-btn"><button type="button" class="btn btn-primary" id="ds-add-btn" onclick="addStockInline()">Add stock</button></div>
+          </div>
+          <p class="form-error" id="ds-add-error" role="alert" hidden></p>
+        </div>
+
+        <div class="de-filters ds-filters">
+          <div class="filter-field"><label for="ds-from">From date</label><input type="date" id="ds-from"></div>
+          <div class="filter-field"><label for="ds-to">To date</label><input type="date" id="ds-to"></div>
+          <div class="filter-field"><label for="ds-site-btn">Site</label><div class="msel" id="ds-site" data-noun="sites" data-all="All sites"></div></div>
+          <div class="filter-field de-clear"><button type="button" class="btn btn-outline btn-sm" onclick="clearLedgerFilters()">Clear filters</button></div>
+        </div>
+        <p class="sum-range-text" id="ds-range-text"></p>
+        <div class="de-missing" id="ds-warn" role="status" hidden></div>
+        <div class="stats-grid">
+          <div class="stat-card"><div class="stat-label">Opening Balance</div><div class="stat-val" id="ds-opening">&mdash;</div><div class="stat-unit" id="ds-opening-note">Litres before the period</div></div>
+          <div class="stat-card"><div class="stat-label">Diesel Stock Received</div><div class="stat-val" id="ds-received">&mdash;</div><div class="stat-unit">Litres received</div></div>
+          <div class="stat-card"><div class="stat-label">Usage</div><div class="stat-val" id="ds-used">&mdash;</div><div class="stat-unit">Litres used (from the entries)</div></div>
+          <div class="stat-card"><div class="stat-label">Balance Stock</div><div class="stat-val" id="ds-balance">&mdash;</div><div class="stat-unit">Litres left</div></div>
+        </div>
+      </div>
+
+      <div class="card" id="ds-ledger-card">
+        <div class="card-title" style="margin-bottom:14px;"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg></span> Stock Ledger</div>
+        <div id="ds-loading" class="loading" hidden><span class="spinner"></span>Loading&hellip;</div>
+        <div class="table-wrap">
+          <table class="de-table ds-table">
+            <thead><tr><th>Date</th><th>Site</th><th class="r">Diesel Stock Received (L)</th><th class="r">Usage (L)</th><th class="r">Balance Stock (L)</th></tr></thead>
+            <tbody id="ds-body"></tbody>
+            <tfoot id="ds-foot"></tfoot>
+          </table>
+        </div>
+        <p class="form-hint">Press a usage figure to see which vehicles used the diesel that day.</p>
+      </div>
+
+      <div class="card" id="ds-sites-card">
+        <div class="card-title" style="margin-bottom:14px;"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></span> Site-wise Balance</div>
+        <div class="table-wrap">
+          <table class="de-table">
+            <thead><tr><th>Site</th><th class="r">Opening (L)</th><th class="r">Received (L)</th><th class="r">Used (L)</th><th class="r">Balance Stock (L)</th></tr></thead>
+            <tbody id="ds-sites-body"></tbody>
+            <tfoot id="ds-sites-foot"></tfoot>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" id="ds-stock-card">
+        <div class="card-title" style="margin-bottom:14px;"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.7s6 6.1 6 10.3a6 6 0 0 1-12 0c0-4.2 6-10.3 6-10.3z"/></svg></span> Stock Received Entries</div>
+        <div class="table-wrap">
+          <table class="de-table">
+            <thead><tr><th>Date</th><th>Site</th><th class="r">Litres</th><th>Note</th><th>Added by</th><th class="ds-act-col">Actions</th></tr></thead>
+            <tbody id="ds-stock-body"></tbody>
+            <tfoot id="ds-stock-foot"></tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="de-view-fills" hidden>
     <div class="card">
       <div class="card-header">
-        <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.7s6 6.1 6 10.3a6 6 0 0 1-12 0c0-4.2 6-10.3 6-10.3z"/></svg></span> Diesel Expenses</div>
+        <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.7s6 6.1 6 10.3a6 6 0 0 1-12 0c0-4.2 6-10.3 6-10.3z"/></svg></span> Fills with proof</div>
         <div class="export-menu rm">
           <button type="button" class="btn btn-outline btn-sm rm-btn" id="de-export-btn" aria-haspopup="menu" aria-expanded="false"><span class="rm-label">Export</span><span class="caret" aria-hidden="true">&#9662;</span></button>
           <div class="export-pop" role="menu" aria-label="Choose a report format" hidden>
@@ -456,6 +542,7 @@
         </table>
       </div>
     </div>
+    </div><!-- /de-view-fills -->
   </div><!-- /sum-panel-diesel -->
 
 </div><!-- /summary -->
@@ -1107,6 +1194,28 @@
     </div>
     <div class="history-entry" id="history-entry"></div>
     <div id="history-body"></div>
+  </div>
+</div>
+
+<!-- ═══════════════ DIESEL STOCK: add stock (Data Entry asks for it when a site has none) / correct an entry ═══════════════ -->
+<div class="modal-overlay modal-top" id="stock-overlay" onclick="if(event.target===this) closeStockDialog()">
+  <div class="modal-card modal-small" role="dialog" aria-modal="true" aria-labelledby="stock-title">
+    <div class="card-header">
+      <div class="card-title"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.7s6 6.1 6 10.3a6 6 0 0 1-12 0c0-4.2 6-10.3 6-10.3z"/></svg></span> <span id="stock-title">Add diesel stock</span></div>
+    </div>
+    <p class="exp-intro" id="stock-intro"></p>
+    <div class="stock-form">
+      <div class="form-group"><label for="sk-date">Date *</label><input type="date" id="sk-date"></div>
+      <div class="form-group"><label for="sk-site">Site *</label><select id="sk-site"></select></div>
+      <div class="form-group"><label for="sk-litres">Diesel Stock Received (L) *</label><input type="number" id="sk-litres" min="0" step="0.01" inputmode="decimal" placeholder="0.00"></div>
+      <div class="form-group"><label for="sk-note">Note (optional)</label><input type="text" id="sk-note" maxlength="200" placeholder="Supplier, bill number"></div>
+      <div class="form-group" id="sk-reason-row" hidden><label for="sk-reason">Reason for the change *</label><textarea id="sk-reason" rows="2" placeholder="Why is this being changed? (at least 10 characters)"></textarea></div>
+    </div>
+    <p class="form-error" id="sk-error" role="alert" hidden></p>
+    <div class="btn-group">
+      <button type="button" class="btn btn-primary" id="sk-save" onclick="saveStockDialog()">Add stock</button>
+      <button type="button" class="btn btn-outline" id="sk-cancel" onclick="closeStockDialog()">Not now</button>
+    </div>
   </div>
 </div>
 

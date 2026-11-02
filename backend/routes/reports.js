@@ -9,6 +9,8 @@ const lq = require('../utils/logQuery');
 const { summaryRange } = require('./entries');
 const diesel = require('../utils/dieselRegister');
 const dieselReport = require('../utils/dieselReport');
+const dieselStock = require('../utils/dieselStock');
+const dieselLedgerReport = require('../utils/dieselLedgerReport');
 
 router.use(requireAuth);
 
@@ -170,6 +172,34 @@ router.post('/summary', requirePerm('summary.view'), (req, res) => {
   if (range.error) return res.status(400).json({ error: range.error });
   range.site = typeof body.site === 'string' ? body.site.trim().slice(0, 100) : '';
   return serveTableReport(req, res, { format: body.format, filePrefix: 'summary', category: 'entry', load: () => reportData.summaryReport(range) });
+});
+
+// POST /api/reports/diesel-stock  (Owner + Admin) - { format: 'xlsx' | 'pdf', from?, to?, sites?: [...] }
+// Diesel Stock Received, Usage and Balance Stock by date and site, with a site-wise summary and the vehicle-wise usage.
+router.post('/diesel-stock', requirePerm('summary.view'), async (req, res) => {
+  const body = req.body || {};
+  const fmt = TABLE_FORMATS[body.format];
+  if (!fmt) return res.status(400).json({ error: 'Choose Excel or PDF.' });
+  const range = summaryRange(body);
+  if (range.error) return res.status(400).json({ error: range.error });
+  if (active >= MAX_AT_ONCE) return res.status(429).json({ error: 'Another report is being prepared right now. Please try again in a moment.' });
+  active++;
+  try {
+    const d = await dieselStock.ledger({ from: range.from, to: range.to, sites: diesel.many(body.sites) });
+    if (d.setup_required) return res.status(503).json({ error: dieselStock.SETUP_MESSAGE, setup_required: true });
+    if (!d.rows.length && !d.sites.length) return res.status(400).json({ error: 'There is no diesel stock and no diesel usage for these choices, so there is nothing to export.' });
+    if (d.rows.length > reports.MAX_ROWS) return res.status(413).json({ error: `That is too many days for one report (${d.rows.length}). Narrow the period or the sites and try again.` });
+    const meta = { user: reports.cleanText(req.user.name, 60) || 'user' };
+    const buffer = body.format === 'xlsx' ? await dieselLedgerReport.buildLedgerXlsx(d, meta) : await dieselLedgerReport.buildLedgerPdf(d, meta);
+    await logActivity(req, { category: 'entry', action: 'report_exported', entityType: 'report', entityLabel: `${fmt.label} report \u00b7 Diesel Stock & Balance \u00b7 ${d.rows.length} day${d.rows.length === 1 ? '' : 's'} \u00b7 ${d.sites.length} site${d.sites.length === 1 ? '' : 's'}` });
+    res.set({ 'Content-Type': fmt.type, 'Content-Disposition': `attachment; filename="SCC-diesel-stock-${reports.todayStamp()}.${fmt.ext}"`, 'Content-Length': buffer.length, 'Cache-Control': 'no-store' });
+    res.send(buffer);
+  } catch (err) {
+    console.error('POST /reports/diesel-stock:', err.message);
+    res.status(err.status || 500).json({ error: err.userMessage || 'The report could not be prepared. Please try again.' });
+  } finally {
+    active--;
+  }
 });
 
 // POST /api/reports/diesel  (Owner + Admin) - { format: 'xlsx' | 'pdf', from?, to?, sites?: [...], proof?: 'with' | 'without' | 'all' }

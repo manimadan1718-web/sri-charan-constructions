@@ -16,7 +16,7 @@ const TYPES = {
   entry: { label: 'Record', table: 'entries' }, purchase: { label: 'Purchase', table: 'purchases' }, payment: { label: 'Payment line', table: 'payment_lines' },
   renewal: { label: 'Renewal', table: 'renewals' }, renewal_file: { label: 'Renewal document', table: 'renewal_files' }, document: { label: 'Document', table: 'documents' },
   progress: { label: 'Progress picture', table: 'progress_photos' }, vehicle: { label: 'Vehicle', table: 'vehicles' }, operator: { label: 'Operator', table: 'operators' },
-  site: { label: 'Site', table: 'sites' }, user: { label: 'User', table: 'users' },
+  site: { label: 'Site', table: 'sites' }, user: { label: 'User', table: 'users' }, diesel_stock: { label: 'Diesel stock', table: 'diesel_stock' },
 };
 const SETUP_MESSAGE = 'The Archive needs a one-time database update. Run run-in-supabase-10-archive.sql in Supabase > SQL Editor, then try again.';
 const isMissingArchive = err => !!err && /archive_items/i.test(String(err.message || '')) &&

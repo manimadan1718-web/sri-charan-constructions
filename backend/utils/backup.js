@@ -15,6 +15,7 @@ const SHEETS = [
   { name: 'Records',             table: 'entries' },
   { name: 'Unloading lines',     table: 'load_points' },
   { name: 'Daily breakup lines', table: 'day_load_points' },
+  { name: 'Diesel stock',        table: 'diesel_stock' },
   { name: 'Progress pictures',   table: 'progress_photos' },
   { name: 'Purchases',           table: 'purchases' },
   { name: 'Payments',            table: 'payment_lines' },

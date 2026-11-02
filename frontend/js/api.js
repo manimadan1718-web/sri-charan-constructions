@@ -290,6 +290,10 @@ const Reports = {
   summary(body) {
     return apiFetch('/reports/summary', { method: 'POST', body: JSON.stringify(body), asBlob: true });
   },
+  // { format, from?, to?, sites?: [...] }   (Owner + Admin) - Diesel Stock & Balance: the ledger, site-wise and vehicle-wise usage
+  dieselStock(body) {
+    return apiFetch('/reports/diesel-stock', { method: 'POST', body: JSON.stringify(body), asBlob: true });
+  },
   // { format, from?, to?, sites?: [...], proof? }   (Owner + Admin) - the Diesel Expenses register with its proof photos
   diesel(body) {
     return apiFetch('/reports/diesel', { method: 'POST', body: JSON.stringify(body), asBlob: true });
@@ -387,6 +391,21 @@ const Documents = {
 };
 
 // ── Payments (Supervisor adds · Owner + Admin see · Admin edits) ───────────────
+const DieselStock = {
+  // Diesel Stock Received, Usage (from the entries) and Balance Stock.  ledger: { from?, to?, site: [names...] } (Owner + Admin)
+  ledger(f = {}) {
+    const qs = new URLSearchParams();
+    if (f.from) qs.set('from', f.from);
+    if (f.to) qs.set('to', f.to);
+    (f.site || []).forEach(s => qs.append('site', s));
+    return apiFetch('/diesel/ledger?' + qs.toString());
+  },
+  balance(site, date) { const qs = new URLSearchParams({ site }); if (date) qs.set('date', date); return apiFetch('/diesel/balance?' + qs.toString()); },
+  add(body) { return apiFetch('/diesel/stock', { method: 'POST', body: JSON.stringify(body) }); },                      // { date, site, litres, note }
+  update(id, body) { return apiFetch('/diesel/stock/' + encodeURIComponent(id), { method: 'PUT', body: JSON.stringify(body) }); },   // + reason
+  remove(id, reason) { return apiFetch('/diesel/stock/' + encodeURIComponent(id), { method: 'DELETE', body: JSON.stringify({ reason }) }); },
+};
+
 const Diesel = {
   // { from?, to?, site: [names...], proof: 'with' | 'without' | 'all' }  (Owner + Admin) - the Diesel Expenses register
   get(f = {}) {

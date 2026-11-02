@@ -83,6 +83,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initLoadPoints();
   initDayBreakup();
   initDiesel();
+  initDieselStock();
   initProgressAdd();
   initBell();
   loadUnloadPoints();
@@ -175,6 +176,8 @@ async function loadDropdownData() {
     }
     populateFilterSelect('filter-site',    sites,    'name',       'All sites');
     populateFilterSelect('de-site',        sites,    'name',       'All sites');
+    populateFilterSelect('ds-site',        sites,    'name',       'All sites');
+    ['ds-add-site', 'sk-site'].forEach(id => populateSelect(id, sites, 'name', 'Select site\u2026'));
     populateFilterSelect('pgv-site',       sites,    'name',       'All sites');
     populateFilterSelect('filter-type',    distinctTypes(vehicles), 'type', 'All types');
   } catch (e) {
@@ -211,7 +214,7 @@ function distinctTypes(vehicles) {
 // in Inventory (rental vehicles are typed in by hand; a site may have been removed).
 // Those are discovered from the records themselves and added, so nothing is unfindable.
 const filterLists  = {};                                          // id → { items, field, placeholder }
-const extraFilterValues = { 'filter-vehicle': new Set(), 'filter-site': new Set(), 'de-site': new Set() };
+const extraFilterValues = { 'filter-vehicle': new Set(), 'filter-site': new Set(), 'de-site': new Set(), 'ds-site': new Set() };
 
 function populateFilterSelect(id, items, field, placeholder) {
   filterLists[id] = { items, field, placeholder };
@@ -475,7 +478,7 @@ function switchTab(name) {
   if (name === 'home')      initHome();
   if (name === 'archive')   initArchive();
   setCrumb(name);
-  if (name === 'summary')   { if (DIESEL.tab === 'diesel') loadDiesel(); else loadSummary(); }
+  if (name === 'summary')   { if (DIESEL.tab === 'diesel') loadDieselView(); else loadSummary(); }
   if (name === 'documents') loadDocuments();
   if (name === 'payments')  initPayments();
   if (name === 'purchases') initPurchases();
@@ -488,6 +491,7 @@ function switchTab(name) {
 
 /* ── Form ────────────────────────────────────────────────────────────────────── */
 function clearForm() {
+  const stockHint = document.getElementById('f-diesel-stock'); if (stockHint) stockHint.hidden = true;       // (it belongs to the site that was just cleared)
   ['f-vehicle','f-vehicle-text','f-start','f-close','f-hours','f-diesel','f-loads','f-operator','f-operator-text','f-remarks','f-site']
     .forEach(id => document.getElementById(id).value = '');
   document.getElementById('f-date').value = today();
@@ -510,6 +514,7 @@ async function saveEntry() {
   }
   if (photosBusy('f')) { showToast('Please wait — the photo is still uploading.', true); return; }
   if (pgBusy()) { showToast('Please wait — a progress photo is still uploading.', true); return; }
+  if ((parseFloat(document.getElementById('f-diesel').value) || 0) > 0 && !(await ensureDieselStock(siteEl.value.trim(), date))) return;     // diesel is taken from the site's stock: add it first
   const payload = {
     date, vehicle_no,
     start_photo: photoPath('f-start'),
@@ -534,6 +539,7 @@ async function saveEntry() {
     await Entries.create(payload);
     showToast('Entry saved successfully!');
     pickDayBreakup(payload.date, payload.site);     // the daily breakup card jumps to this entry's day and site
+    if (payload.diesel > 0) warnIfStockLow(payload.site, payload.date);
     releasePhotos('f', false);   // the photos now belong to the entry — keep them
     pgReset(true);               // …and so do the progress pictures
     clearForm();
@@ -1607,6 +1613,11 @@ async function runTableReport(kind, format, itemEl) {
   else if (group === 'users') { call = () => Reports.users({ format }); name = 'users'; }
   else if (group === 'logs')  { call = () => Reports.logs(logsReportBody(format)); name = 'activity-logs'; }
   else if (group === 'payments') { call = () => Reports.payments({ format, kind: type, ...plFilters(type) }); name = type === 'all' ? 'payments-cumulative' : `payments-${type}`; }
+  else if (group === 'diesel-stock') {
+    const f = ledgerFilters();
+    if (f.from && f.to && f.from > f.to) { showToast('The "from" date cannot be after the "to" date.', true); return; }
+    call = () => Reports.dieselStock({ format, from: f.from || undefined, to: f.to || undefined, sites: f.site }); name = 'diesel-stock';
+  }
   else if (group === 'diesel') {
     const f = dieselFilters();
     if (f.from && f.to && f.from > f.to) { showToast('The "from" date cannot be after the "to" date.', true); return; }
@@ -1798,6 +1809,9 @@ const SPECIAL_ACTIONS = {
   document_printed:    { label: 'Document printed',    cls: 'pill-sky'  },
   progress_deleted:    { label: 'Progress picture deleted', cls: 'pill-red' },
   backup_downloaded:   { label: 'Full backup downloaded', cls: 'pill-sky' },
+  diesel_stock_added:   { label: 'Diesel stock added', cls: 'pill-green' },
+  diesel_stock_updated: { label: 'Diesel stock changed', cls: 'pill-orange' },
+  diesel_stock_deleted: { label: 'Diesel stock deleted', cls: 'pill-red' },
   breakup_saved:       { label: 'Loads breakup saved', cls: 'pill-green' },
   breakup_changed:     { label: 'Loads breakup changed', cls: 'pill-orange' },
   breakup_cleared:     { label: 'Loads breakup cleared', cls: 'pill-red' },
@@ -4742,8 +4756,8 @@ async function clearDayBreakup() {
    One button that opens a list with a tick box for each choice: pick as many as you need, search a long list, "Select all" / "Clear".
    The chosen values go to the server (as repeated parameters) and are named on the Excel / PDF / Print reports. */
 const RECORD_MULTI = ['filter-type', 'filter-vehicle', 'filter-site'];            // the Records filters
-const MULTI_FILTERS = [...RECORD_MULTI, 'de-site'];                                // every tick-box list (the last is Diesel Expenses > Site)
-const MSEL_ON_CHANGE = { 'de-site': () => loadDieselDebounced() };               // what to do when a list changes (Records is the default)
+const MULTI_FILTERS = [...RECORD_MULTI, 'de-site', 'ds-site'];                                // every tick-box list (the last is Diesel Expenses > Site)
+const MSEL_ON_CHANGE = { 'de-site': () => loadDieselDebounced(), 'ds-site': () => loadLedgerDebounced() };               // what to do when a list changes (Records is the default)
 const MSEL = {};                                                       // id -> { selected: Set, options: [{ value, label }] }
 const getMulti = id => (MSEL[id] ? [...MSEL[id].selected] : []);
 const MSEL_CHEVRON = '<svg class="msel-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>';
@@ -4753,7 +4767,7 @@ function mselOptions(id) {
   const inInventory = new Set(), out = [];
   cfg.items.forEach(i => { inInventory.add(i[cfg.field]); out.push({ value: i[cfg.field], label: i.active === false ? `${i[cfg.field]} (inactive)` : i[cfg.field] }); });
   [...(extraFilterValues[id] || [])].filter(v => !inInventory.has(v)).sort().forEach(v => out.push({ value: v, label: `${v} (not in inventory)` }));
-  if (id === 'de-site' && DIESEL.hasNoSite) out.push({ value: '__none__', label: '(no site)' });                  // fills of entries that have no site
+  if ((id === 'de-site' && DIESEL.hasNoSite) || (id === 'ds-site' && DS.hasNoSite)) out.push({ value: '__none__', label: '(no site)' });                  // fills of entries that have no site
   return out;
 }
 
@@ -4858,7 +4872,7 @@ function showSummaryTab(which) {
     btn.classList.toggle('active', on); btn.setAttribute('aria-selected', String(on));
     deEl(`sum-panel-${k}`).hidden = !on;
   });
-  if (DIESEL.tab === 'diesel') loadDiesel(); else loadSummary();
+  if (DIESEL.tab === 'diesel') loadDieselView(); else loadSummary();
 }
 
 function dieselFilters() { return { from: deEl('de-from').value, to: deEl('de-to').value, site: getMulti('de-site'), proof: deEl('de-proof').value || 'with' }; }
@@ -4945,5 +4959,220 @@ function renderDiesel(d) {
 function viewDieselProof(id) {
   const r = DIESEL.data && DIESEL.data.rows.find(x => x.id === id);
   if (r && r.photo) viewSavedPhoto(r.photo, `Diesel proof · ${r.vehicle_no} · ${fmtDate(r.date)} · ${fmtL(r.litres)} L`);
+}
+
+
+/* ── Diesel Stock & Balance ───────────────────────────────────────────────────────────────────
+   Diesel Stock Received (typed: date, site, litres)  -  Usage (read from the entries, site and vehicle wise)  =  Balance Stock.
+   Data Entry shows the site's balance, and asks for stock to be added first when a site has none. */
+const DS = { view: 'stock', seq: 0, data: null, timer: null, hasNoSite: false, hintSeq: 0, prompted: new Set() };
+const dsEl = id => document.getElementById(id);
+const dsNum = n => Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const dsNeg = n => (Number(n) < 0 ? ' neg' : '');
+
+function showDieselView(which) {
+  DS.view = which === 'fills' ? 'fills' : 'stock';
+  [['stock', 'desub-stock', 'de-view-stock'], ['fills', 'desub-fills', 'de-view-fills']].forEach(([k, btn, panel]) => {
+    const on = k === DS.view; dsEl(btn).classList.toggle('active', on); dsEl(btn).setAttribute('aria-selected', String(on)); dsEl(panel).hidden = !on;
+  });
+  loadDieselView();
+}
+function loadDieselView() { setupStockForms(); if (DS.view === 'fills') loadDiesel(); else loadLedger(); }
+
+function setupStockForms() {
+  const add = dsEl('ds-add'); if (!add) return;
+  add.hidden = !can('diesel.stock.add');
+  if (!dsEl('ds-add-date').value) dsEl('ds-add-date').value = today();
+}
+
+function initDieselStock() {
+  if (!dsEl('ds-body')) return;
+  ['ds-from', 'ds-to'].forEach(id => dsEl(id).addEventListener('change', () => loadLedger()));
+  ['ds-add-litres', 'ds-add-note'].forEach(id => dsEl(id).addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addStockInline(); } }));
+  // Data Entry: show the site's balance, and ask for stock when the site has none
+  const site = dsEl('f-site'), date = dsEl('f-date');
+  if (site) site.addEventListener('change', () => onEntrySiteChange());
+  if (date) date.addEventListener('change', () => refreshDieselHint());
+  const ov = dsEl('stock-overlay');
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && ov.classList.contains('open')) { e.preventDefault(); closeStockDialog(); } });
+}
+
+/* ── the ledger ── */
+const ledgerFilters = () => ({ from: dsEl('ds-from').value, to: dsEl('ds-to').value, site: getMulti('ds-site') });
+function loadLedgerDebounced() { clearTimeout(DS.timer); DS.timer = setTimeout(loadLedger, 250); }
+function clearLedgerFilters() { dsEl('ds-from').value = ''; dsEl('ds-to').value = ''; if (MSEL['ds-site']) MSEL['ds-site'].selected.clear(); renderMulti('ds-site'); loadLedger(); }
+
+async function loadLedger() {
+  if (!dsEl('ds-body')) return;
+  const f = ledgerFilters();
+  if (f.from && f.to && f.from > f.to) { showToast('The "from" date cannot be after the "to" date.', true); return; }
+  const seq = ++DS.seq; dsEl('ds-loading').hidden = false;
+  try {
+    const res = await DieselStock.ledger(f);
+    if (seq !== DS.seq) return;
+    DS.data = res.data;
+    if (!f.site.length) { (res.data.sites || []).forEach(s => { if (s.value === '__none__') DS.hasNoSite = true; else extraFilterValues['ds-site'].add(s.site); }); renderMulti('ds-site'); }
+    renderLedger(res.data);
+  } catch (e) {
+    if (seq !== DS.seq) return;
+    dsEl('ds-body').innerHTML = `<tr class="empty-row"><td colspan="5">${esc(e.message || 'The diesel stock could not be loaded.')}</td></tr>`;
+    ['ds-foot', 'ds-sites-body', 'ds-sites-foot', 'ds-stock-body', 'ds-stock-foot'].forEach(id => { dsEl(id).innerHTML = ''; });
+  } finally { if (seq === DS.seq) dsEl('ds-loading').hidden = true; }
+}
+
+function renderLedger(d) {
+  const period = d.range.from || d.range.to ? `${d.range.from ? `From ${fmtDate(d.range.from)}` : ''}${d.range.from && d.range.to ? ' to ' : ''}${d.range.to ? `${d.range.from ? '' : 'Up to '}${fmtDate(d.range.to)}` : ''}` : 'All time';
+  dsEl('ds-range-text').textContent = `Showing: ${period} · ${d.sites_filter.length ? d.sites_filter.map(s => (s === '__none__' ? '(no site)' : s)).join(', ') : 'All sites'}`;
+  const t = d.totals;
+  dsEl('ds-opening').textContent = dsNum(t.opening); dsEl('ds-opening-note').textContent = d.range.from ? `Litres before ${fmtDate(d.range.from)}` : 'No period chosen';
+  dsEl('ds-received').textContent = dsNum(t.received); dsEl('ds-used').textContent = dsNum(t.used);
+  const bal = dsEl('ds-balance'); bal.textContent = dsNum(t.balance); bal.classList.toggle('neg', t.balance < 0);
+  const warn = dsEl('ds-warn');
+  if (d.setup_required) { warn.hidden = false; warn.innerHTML = 'Diesel stock needs a one-time database update. Run <strong>run-in-supabase-14-diesel-stock.sql</strong> in Supabase → SQL Editor, then reload this page. Until then the usage is shown, and no stock can be added.'; }
+  else if (d.below_zero.length) { warn.hidden = false; warn.innerHTML = `More diesel was used than the stock recorded at <strong>${d.below_zero.map(x => esc(x.site)).join(', ')}</strong>. Add the missing stock entry, or check the usage.`; }
+  else warn.hidden = true;
+
+  const rows = []; let n = 0;
+  if (d.range.from) d.sites.filter(s => s.opening !== 0).forEach(s => rows.push(`<tr class="ds-open"><td data-label="Date">Opening</td><td data-label="Site">${esc(s.site)}</td><td class="r" data-label="Diesel Stock Received (L)">–</td><td class="r" data-label="Usage (L)">–</td><td class="r${dsNeg(s.opening)}" data-label="Balance Stock (L)">${esc(dsNum(s.opening))}</td></tr>`));
+  d.rows.forEach(r => {
+    const i = n++;
+    rows.push(`<tr class="ds-row">
+      <td data-label="Date" class="nowrap">${esc(fmtDate(r.date))}</td>
+      <td data-label="Site">${esc(r.site)}</td>
+      <td class="r" data-label="Diesel Stock Received (L)">${r.received ? esc(dsNum(r.received)) : '<span class="muted">–</span>'}</td>
+      <td class="r" data-label="Usage (L)">${r.usage ? `<button type="button" class="link-btn ds-use" aria-expanded="false" aria-controls="ds-sub-${i}" onclick="toggleLedgerRow(${i}, this)">${esc(dsNum(r.usage))} <span aria-hidden="true">▾</span></button>` : '<span class="muted">–</span>'}</td>
+      <td class="r${dsNeg(r.balance)}" data-label="Balance Stock (L)">${esc(dsNum(r.balance))}</td></tr>
+      <tr class="ds-sub" id="ds-sub-${i}" hidden><td colspan="5"><span class="ds-sub-title">Vehicle-wise usage · ${esc(fmtDate(r.date))} · ${esc(r.site)}</span>${r.vehicles.map(v => `<span class="day-veh"><strong>${esc(v.vehicle_no)}</strong> ${esc(dsNum(v.litres))} L${v.entries > 1 ? ` <small>(${esc(v.entries)} entries)</small>` : ''}</span>`).join('')}</td></tr>`);
+  });
+  dsEl('ds-body').innerHTML = rows.length ? rows.join('') : `<tr class="empty-row"><td colspan="5">${d.setup_required ? 'No usage in this period.' : 'No diesel stock was received and no diesel was used for these choices.'}</td></tr>`;
+  dsEl('ds-foot').innerHTML = rows.length ? `<tr class="de-total"><td>TOTAL</td><td>${d.range.from ? 'incl. opening balance' : ''}</td><td class="r">${esc(dsNum(t.received))}</td><td class="r">${esc(dsNum(t.used))}</td><td class="r${dsNeg(t.balance)}">${esc(dsNum(t.balance))}</td></tr>` : '';
+
+  dsEl('ds-sites-card').hidden = !d.sites.length;
+  dsEl('ds-sites-body').innerHTML = d.sites.map(s => `<tr><td data-label="Site"><button type="button" class="link-btn" onclick="selectLedgerSite(${esc(JSON.stringify(s.value))})">${esc(s.site)}</button></td>
+      <td class="r" data-label="Opening (L)">${esc(dsNum(s.opening))}</td><td class="r" data-label="Received (L)">${esc(dsNum(s.received))}</td><td class="r" data-label="Used (L)">${esc(dsNum(s.used))}</td><td class="r${dsNeg(s.balance)}" data-label="Balance Stock (L)">${esc(dsNum(s.balance))}</td></tr>`).join('');
+  dsEl('ds-sites-foot').innerHTML = d.sites.length ? `<tr class="de-total"><td>TOTAL (all sites)</td><td class="r">${esc(dsNum(t.opening))}</td><td class="r">${esc(dsNum(t.received))}</td><td class="r">${esc(dsNum(t.used))}</td><td class="r${dsNeg(t.balance)}">${esc(dsNum(t.balance))}</td></tr>` : '';
+
+  const canEdit = can('diesel.stock.edit');
+  document.querySelectorAll('.ds-act-col').forEach(el => { el.hidden = !canEdit; });
+  dsEl('ds-stock-body').innerHTML = d.stock.length ? d.stock.map(s => `<tr>
+      <td data-label="Date" class="nowrap">${esc(fmtDate(s.date))}</td><td data-label="Site">${esc(s.site)}</td><td class="r" data-label="Litres">${esc(dsNum(s.litres))}</td>
+      <td data-label="Note">${esc(s.note) || '<span class="muted">–</span>'}</td><td data-label="Added by">${esc(s.created_by_name || '–')}${s.updated_by_name ? ` <small class="muted">(changed by ${esc(s.updated_by_name)})</small>` : ''}</td>
+      ${canEdit ? `<td class="ds-act-col" data-label="Actions"><button type="button" class="btn btn-outline btn-sm" onclick="openStockEdit(${esc(JSON.stringify(s.id))})">Edit</button> <button type="button" class="btn btn-sm btn-danger" onclick="deleteStock(${esc(JSON.stringify(s.id))})">Delete</button></td>` : ''}</tr>`).join('')
+    : `<tr class="empty-row"><td colspan="${canEdit ? 6 : 5}">No diesel stock was received in this period. ${can('diesel.stock.add') ? 'Add it above (Date, Site, Diesel Stock Received).' : ''}</td></tr>`;
+  dsEl('ds-stock-foot').innerHTML = d.stock.length ? `<tr class="de-total"><td colspan="2">TOTAL · ${esc(d.stock.length)} entr${d.stock.length === 1 ? 'y' : 'ies'}</td><td class="r">${esc(dsNum(d.stock.reduce((a, s) => a + s.litres, 0)))}</td><td colspan="${canEdit ? 3 : 2}"></td></tr>` : '';
+}
+
+function toggleLedgerRow(i, btn) {
+  const row = dsEl(`ds-sub-${i}`); if (!row) return;
+  row.hidden = !row.hidden; if (btn) btn.setAttribute('aria-expanded', String(!row.hidden));
+}
+function selectLedgerSite(value) { ensureMsel('ds-site'); MSEL['ds-site'].selected = new Set([value]); renderMulti('ds-site'); loadLedger(); }
+
+/* ── adding stock: the form in the tab ── */
+async function addStockInline() {
+  const err = dsEl('ds-add-error'); err.hidden = true;
+  const body = { date: dsEl('ds-add-date').value, site: dsEl('ds-add-site').value, litres: dsEl('ds-add-litres').value, note: dsEl('ds-add-note').value.trim() };
+  const problem = stockProblem(body);
+  if (problem) { err.textContent = problem; err.hidden = false; return; }
+  const btn = dsEl('ds-add-btn'); btn.disabled = true;
+  try {
+    const res = await DieselStock.add(body);
+    showToast(`Diesel stock added: ${dsNum(res.data.litres)} L at ${res.data.site}.`);
+    dsEl('ds-add-litres').value = ''; dsEl('ds-add-note').value = '';
+    loadLedger(); refreshDieselHint();
+  } catch (e) { err.textContent = e.message || 'The stock could not be added.'; err.hidden = false; }
+  finally { btn.disabled = false; }
+}
+function stockProblem(b) {
+  if (!b.date) return 'Choose the date.';
+  if (b.date > today()) return 'The date cannot be in the future.';
+  if (!b.site) return 'Choose the site.';
+  const l = Number(b.litres);
+  if (b.litres === '' || !Number.isFinite(l)) return 'Enter the litres of diesel received.';
+  if (l <= 0) return 'The litres received must be more than 0.';
+  return '';
+}
+
+/* ── the shared pop-up: add stock (also asked for by Data Entry) / correct an entry ── */
+const SK = { mode: 'add', row: null, onDone: null, onCancel: null, opener: null, done: false };
+function openStockDialog({ mode = 'add', site = '', row = null, intro = '', onDone = null, onCancel = null } = {}) {
+  Object.assign(SK, { mode, row, onDone, onCancel, opener: document.activeElement, done: false });
+  dsEl('stock-title').textContent = mode === 'edit' ? 'Change diesel stock' : mode === 'required' ? 'Add diesel stock first' : 'Add diesel stock';
+  dsEl('stock-intro').innerHTML = intro || (mode === 'edit' ? 'A written reason is needed. The change is saved in the Activity Log.' : 'Enter the diesel received at the site.');
+  dsEl('sk-date').value = row ? row.date : today(); dsEl('sk-site').value = row ? row.site : site;
+  if (row && ![...dsEl('sk-site').options].some(o => o.value === row.site)) dsEl('sk-site').insertAdjacentHTML('beforeend', `<option value="${esc(row.site)}">${esc(row.site)}</option>`), dsEl('sk-site').value = row.site;
+  dsEl('sk-litres').value = row ? row.litres : ''; dsEl('sk-note').value = row ? row.note : ''; dsEl('sk-reason').value = '';
+  dsEl('sk-reason-row').hidden = mode !== 'edit'; dsEl('sk-error').hidden = true;
+  dsEl('sk-save').textContent = mode === 'edit' ? 'Save changes' : mode === 'required' ? 'Add stock and continue' : 'Add stock';
+  dsEl('sk-cancel').textContent = mode === 'required' ? 'Cancel' : mode === 'edit' ? 'Cancel' : 'Not now';
+  dsEl('stock-overlay').classList.add('open');
+  setTimeout(() => dsEl('sk-litres').focus(), 50);
+}
+function closeStockDialog(finished = false) {
+  dsEl('stock-overlay').classList.remove('open');
+  if (!finished && !SK.done && SK.onCancel) { const f = SK.onCancel; SK.onCancel = null; f(); }
+  if (SK.opener && SK.opener.focus) { try { SK.opener.focus(); } catch (e) { /* the opener is gone */ } }
+}
+async function saveStockDialog() {
+  const err = dsEl('sk-error'); err.hidden = true;
+  const body = { date: dsEl('sk-date').value, site: dsEl('sk-site').value, litres: dsEl('sk-litres').value, note: dsEl('sk-note').value.trim() };
+  let problem = stockProblem(body);
+  if (!problem && SK.mode === 'edit') { body.reason = dsEl('sk-reason').value.trim(); if (body.reason.length < 10) problem = 'Please write a reason of at least 10 characters.'; }
+  if (problem) { err.textContent = problem; err.hidden = false; return; }
+  const btn = dsEl('sk-save'); btn.disabled = true;
+  try {
+    const res = SK.mode === 'edit' ? await DieselStock.update(SK.row.id, body) : await DieselStock.add(body);
+    SK.done = true; closeStockDialog(true);
+    showToast(res.unchanged ? 'No changes were made.' : SK.mode === 'edit' ? 'Diesel stock changed.' : `Diesel stock added: ${dsNum(res.data.litres)} L at ${res.data.site}.`);
+    if (!dsEl('de-view-stock').hidden && !dsEl('sum-panel-diesel').hidden) loadLedger();
+    refreshDieselHint();
+    if (SK.onDone) { const f = SK.onDone; SK.onDone = null; f(res); }
+  } catch (e) { err.textContent = e.message || 'The stock could not be saved.'; err.hidden = false; }
+  finally { btn.disabled = false; }
+}
+function openStockEdit(id) { const row = DS.data && DS.data.stock.find(s => s.id === id); if (row) openStockDialog({ mode: 'edit', row }); }
+async function deleteStock(id) {
+  const row = DS.data && DS.data.stock.find(s => s.id === id); if (!row) return;
+  const reason = await askReason({ title: 'Delete this diesel stock entry?', intro: `<strong>${esc(dsNum(row.litres))} L</strong> received at <strong>${esc(row.site)}</strong> on ${esc(fmtDate(row.date))} will be removed from the stock. It goes to the Archived tab, where it can be restored. The reason is saved in the Activity Log.`, confirmLabel: 'Delete', danger: true });
+  if (!reason) return;
+  try { await DieselStock.remove(id, reason); showToast('Diesel stock deleted.'); loadLedger(); }
+  catch (e) { showToast(e.message || 'The stock could not be deleted.', true); }
+}
+
+/* ── Data Entry: the balance under the diesel litres, and "add stock first" ── */
+async function refreshDieselHint() {
+  const el = dsEl('f-diesel-stock'); if (!el) return null;
+  const site = dsEl('f-site').value.trim(), date = dsEl('f-date').value;
+  if (!site || !can('entry.add')) { el.hidden = true; return null; }
+  const seq = ++DS.hintSeq;
+  try {
+    const b = (await DieselStock.balance(site, date)).data;
+    if (seq !== DS.hintSeq) return null;
+    if (b.setup_required) { el.hidden = true; return b; }
+    if (!b.has_stock) { el.className = 'stock-hint warn'; el.innerHTML = `No diesel stock has been added for ${esc(site)} yet.${can('diesel.stock.add') ? ' <button type="button" class="link-btn" onclick="promptStock()">Add stock</button>' : ''}`; }
+    else { el.className = `stock-hint${b.balance < 0 ? ' neg' : ''}`; el.textContent = `Diesel stock at ${site}: ${dsNum(b.balance)} L left${b.balance < 0 ? ' (more has been used than the stock recorded)' : ''}`; }
+    el.hidden = false; return b;
+  } catch (e) { if (seq === DS.hintSeq) el.hidden = true; return null; }
+}
+async function onEntrySiteChange() {
+  const b = await refreshDieselHint(), site = dsEl('f-site').value.trim();
+  if (b && !b.has_stock && !b.setup_required && can('diesel.stock.add') && !DS.prompted.has(site.toLowerCase())) { DS.prompted.add(site.toLowerCase()); promptStock(); }
+}
+function promptStock() {
+  const site = dsEl('f-site').value.trim();
+  openStockDialog({ mode: 'add', site, intro: `No diesel stock has been added for <strong>${esc(site)}</strong> yet. Please add the diesel stock received first, so the diesel you enter is taken from it.` });
+}
+/** Before an entry that uses diesel is saved: the site must have stock. Resolves true to carry on, false to stop (nothing is blocked if the check itself fails). */
+async function ensureDieselStock(site, date) {
+  let b; try { b = (await DieselStock.balance(site, date)).data; } catch (e) { return true; }
+  if (b.setup_required || b.has_stock) return true;
+  if (!can('diesel.stock.add')) { showToast(`No diesel stock has been added for ${site}. Ask the Admin or Owner to add it, then save this entry.`, true); return false; }
+  return new Promise(resolve => openStockDialog({
+    mode: 'required', site, onDone: () => resolve(true), onCancel: () => resolve(false),
+    intro: `No diesel stock has been added for <strong>${esc(site)}</strong> yet, and this entry uses diesel. Please add the diesel stock received first. Your entry is kept, and it is saved as soon as the stock is added.`,
+  }));
+}
+async function warnIfStockLow(site, date) {
+  try { const b = (await DieselStock.balance(site, date)).data; if (!b.setup_required && b.has_stock && b.balance < 0) setTimeout(() => showToast(`Diesel stock at ${site} is now below zero (${dsNum(b.balance)} L). Please check the stock entries.`, true), 1800); } catch (e) { /* only a courtesy */ }
 }
 

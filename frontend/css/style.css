@@ -2347,3 +2347,39 @@ td .link-btn { margin: 0; color: var(--ink); text-decoration-color: var(--hazard
 .exp-fmt .fmt-text small { font-size: 12.5px; color: var(--steel); }
 @media (pointer: coarse) { .exp-opt { min-height: 60px; } .exp-fmt { min-height: 64px; } }
 
+/* ── Diesel Stock & Balance ── */
+.de-seg { margin-bottom: 14px; }
+.ds-add { background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px 10px; margin: 8px 0 16px; }
+.ds-add-title { font: 700 14px/1.3 var(--font-body); color: var(--ink); margin-bottom: 10px; }
+.ds-add-grid { display: grid; grid-template-columns: 1fr 1.5fr 1.3fr 1.5fr auto; gap: 12px 14px; align-items: end; }
+.ds-add-btn .btn { min-height: 40px; white-space: nowrap; }
+.ds-filters { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.ds-table td.neg, .ds-table th.neg, td.neg, .stat-val.neg { color: var(--brick); font-weight: 800; }
+.ds-open td { background: var(--paper); color: var(--steel); font-style: italic; }
+.ds-use { font-weight: 700; }
+.ds-sub td { background: #FBFCFE; border-top: 0; padding-top: 6px; padding-bottom: 12px; }
+.ds-sub[hidden] { display: none; }
+.ds-sub-title { display: block; font-size: 12px; font-weight: 700; color: var(--steel); margin-bottom: 6px; }
+.ds-sub .day-veh { display: inline-block; margin: 0 6px 6px 0; }
+.ds-act-col { white-space: nowrap; width: 1%; }
+.ds-act-col[hidden] { display: none; }
+.stock-hint { margin-top: 6px; font-size: 13px; line-height: 1.45; color: var(--moss); background: var(--moss-tint); border-radius: 6px; padding: 6px 10px; }
+.stock-hint.warn { color: var(--hazard-deep); background: var(--hazard-tint); }
+.stock-hint.neg { color: var(--brick); background: var(--brick-tint); }
+.stock-hint[hidden] { display: none; }
+.stock-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 14px; margin: 4px 0 6px; }
+.stock-form .form-group { margin: 0; }
+.stock-form .form-group:nth-child(2), .stock-form #sk-reason-row { grid-column: 1 / -1; }
+@media (max-width: 1100px) { .ds-add-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ds-add-btn { grid-column: 1 / -1; } .ds-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) {
+  .ds-add-grid, .ds-filters, .stock-form { grid-template-columns: 1fr; }
+  .stock-form .form-group:nth-child(2), .stock-form #sk-reason-row { grid-column: auto; }
+  .ds-add-btn .btn { width: 100%; min-height: 44px; }
+  .ds-act-col { white-space: normal; }
+  .ds-act-col .btn { min-height: 44px; margin: 4px 6px 0 0; }
+}
+@media (pointer: coarse) { .ds-use { min-height: 40px; } }
+
+
+/* the closing TOTAL lines of the diesel tables: the same cell padding as the rows above, so the figures line up */
+.de-total td { padding: 12px 14px; font-variant-numeric: tabular-nums; }

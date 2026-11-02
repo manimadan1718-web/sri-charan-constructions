@@ -14,6 +14,7 @@
 const CATALOG = [
   { key: 'entry.add',          group: 'Data Entry',    label: 'Add site entries',                 desc: 'Use the Data Entry tab to record each day’s vehicle and machine activity, with photos.' },
   { key: 'progress.add',       group: 'Data Entry',    label: 'Add site working progress images', desc: 'Attach pictures of the work in progress to an entry in the Data Entry tab. They cannot see the pictures afterwards.', requires: 'entry.add' },
+  { key: 'diesel.stock.add',   group: 'Data Entry',    label: 'Add diesel stock received',        desc: 'Record diesel delivered to a site (date, site, litres), see the stock balance while entering data, and add stock when Data Entry asks for it.' },
 
   { key: 'records.view',       group: 'Records',       label: 'See Records',                      desc: 'Open the Records tab: every entry, with filters and photos.' },
   { key: 'records.export',     group: 'Records',       label: 'Export and print Records',         desc: 'Download Records as Excel, PDF or CSV, and print them.', requires: 'records.view' },
@@ -31,6 +32,7 @@ const CATALOG = [
   { key: 'purchases.edit',     group: 'Purchases',     label: 'Edit and delete purchases',        desc: 'Change or remove a saved purchase (a written reason is always needed).', requires: 'purchases.view' },
 
   { key: 'summary.view',       group: 'Summary',       label: 'See the Summary',                  desc: 'Totals by day, week or any date range, with Excel and PDF export.' },
+  { key: 'diesel.stock.edit',  group: 'Summary',       label: 'Edit and delete diesel stock',     desc: 'Change or remove a diesel stock entry in Diesel Expenses (a written reason is always needed).', requires: 'summary.view' },
 
   { key: 'documents.view',     group: 'Documents',     label: 'See and download documents',       desc: 'Open the Documents tab, view and download stored files.' },
   { key: 'documents.print',    group: 'Documents',     label: 'Print documents',                  desc: 'Open a print view of a PDF, picture or text document.', requires: 'documents.view' },
@@ -60,8 +62,8 @@ const GROUPS = [...new Set(CATALOG.map(c => c.group))];
 // What each role can do when nothing has been customised — exactly how the app behaved before permissions existed.
 const ROLE_DEFAULTS = {
   admin: [...KEYS],
-  owner: ['records.view', 'records.export', 'progress.view', 'renewals.view', 'renewals.add', 'purchases.view', 'summary.view', 'documents.view', 'documents.print', 'documents.upload', 'payments.view', 'logs.view'],
-  supervisor: ['entry.add', 'progress.add', 'purchases.add', 'payments.add'],
+  owner: ['diesel.stock.add', 'records.view', 'records.export', 'progress.view', 'renewals.view', 'renewals.add', 'purchases.view', 'summary.view', 'documents.view', 'documents.print', 'documents.upload', 'payments.view', 'logs.view'],
+  supervisor: ['entry.add', 'diesel.stock.add', 'progress.add', 'purchases.add', 'payments.add'],
 };
 const ROLES = Object.keys(ROLE_DEFAULTS);
 

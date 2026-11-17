@@ -1612,6 +1612,7 @@ async function runTableReport(kind, format, itemEl) {
   if (group === 'inventory')  { call = () => Reports.inventory({ type, format }); name = type; }
   else if (group === 'users') { call = () => Reports.users({ format }); name = 'users'; }
   else if (group === 'logs')  { call = () => Reports.logs(logsReportBody(format)); name = 'activity-logs'; }
+  else if (group === 'payledger') { call = () => Reports.payLedger(pllReportBody(format)); name = PLL.view === 'party' && PLL.party ? 'party-ledger' : 'party-ledger-all'; }
   else if (group === 'payments') { call = () => Reports.payments({ format, kind: type, ...plFilters(type) }); name = type === 'all' ? 'payments-cumulative' : `payments-${type}`; }
   else if (group === 'diesel-stock') {
     const f = ledgerFilters();
@@ -2997,7 +2998,7 @@ const plSt = b => (b > 0.004 ? 'due' : b < -0.004 ? 'over' : 'settled');
 const num2 = n => Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const inrS = n => `${Number(n) < -0.004 ? '−' : ''}₹${num2(Math.abs(Number(n) || 0))}`;
 const plTotals = rows => { const payable = r2(rows.reduce((a, x) => a + (Number(x.payable) || 0), 0)), paid = r2(rows.reduce((a, x) => a + (Number(x.paid) || 0), 0)); return { count: rows.length, payable, paid, balance: r2(payable - paid) }; };
-const plKinds = () => [...(can('payments.add') || can('payments.view') ? ['company', 'outside'] : []), ...(can('payments.view') ? ['all'] : [])];
+const plKinds = () => [...(can('payments.add') || can('payments.view') ? ['company', 'outside'] : []), ...(can('payments.view') ? ['all', 'ledger'] : [])];
 const plFilters = k => Object.fromEntries(Object.entries(PL.filter[k] || {}).filter(([, v]) => v));       // only the filters that are set — sent to the server and to the exports
 
 const PL_ICON = {
@@ -3060,6 +3061,7 @@ function initPayments() {
     PL.built = true;
     ['company', 'outside'].forEach(buildPlPanel);
     buildPlCumulative();
+    buildPlLedger();
     const root = document.getElementById('section-payments');
     root.addEventListener('input', ev => {
       const t = ev.target;
@@ -3084,12 +3086,12 @@ function initPayments() {
 function showPayTab(kind) {
   if (!plKinds().includes(kind)) return;
   PL.tab = kind;
-  ['company', 'outside', 'all'].forEach(k => {
+  ['company', 'outside', 'all', 'ledger'].forEach(k => {
     const on = k === kind, btn = document.getElementById(`pltab-${k}`);
     btn.classList.toggle('active', on); btn.setAttribute('aria-selected', String(on));
     document.getElementById(`pl-panel-${k}`).hidden = !on;
   });
-  if (kind === 'all') loadPlCumulative(); else loadPlLedger(kind);
+  if (kind === 'all') loadPlCumulative(); else if (kind === 'ledger') loadPlLedgerView(); else loadPlLedger(kind);
 }
 
 /* ── a ledger panel (Company or Outside Rental) ───────────────────────────────────────── */

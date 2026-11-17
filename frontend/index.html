@@ -791,10 +791,12 @@
     <button type="button" class="pl-seg-btn active" role="tab" id="pltab-company" aria-selected="true" aria-controls="pl-panel-company" onclick="showPayTab('company')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="1.5"/><path d="M9 21v-4h6v4"/><path d="M8 7h.01M12 7h.01M16 7h.01M8 11h.01M12 11h.01M16 11h.01"/></svg><span>Company Payments</span></button>
     <button type="button" class="pl-seg-btn" role="tab" id="pltab-outside" aria-selected="false" aria-controls="pl-panel-outside" onclick="showPayTab('outside')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 3h13v13H1z"/><path d="M14 8h4l4 4v4h-8z"/><circle cx="5.5" cy="18.5" r="2"/><circle cx="17.5" cy="18.5" r="2"/></svg><span>Outside Rental Payments</span></button>
     <button type="button" class="pl-seg-btn perm-payments-view" role="tab" id="pltab-all" aria-selected="false" aria-controls="pl-panel-all" onclick="showPayTab('all')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg><span>Cumulative Report</span></button>
+    <button type="button" class="pl-seg-btn perm-payments-view" role="tab" id="pltab-ledger" aria-selected="false" aria-controls="pl-panel-ledger" onclick="showPayTab('ledger')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h12a4 4 0 0 1 4 4v12H8a4 4 0 0 1-4-4z"/><path d="M8 9h8M8 13h8M8 17h4"/></svg><span>Party Ledger (Dr / Cr)</span></button>
   </div>
   <div id="pl-panel-company" role="tabpanel" aria-labelledby="pltab-company"></div>
   <div id="pl-panel-outside" role="tabpanel" aria-labelledby="pltab-outside" hidden></div>
   <div id="pl-panel-all" role="tabpanel" aria-labelledby="pltab-all" hidden></div>
+  <div id="pl-panel-ledger" role="tabpanel" aria-labelledby="pltab-ledger" hidden></div>
 </div>
 
 <!-- ═══════════════════════════════ INVENTORY (Admin) ═════════════════════════ -->
@@ -1455,6 +1457,16 @@
 </div>
 
 <!-- ═══════════════ EDIT PAYMENT (Admin) ═══════════════ -->
+<div class="modal-overlay" id="pll-entry-overlay">
+  <div class="modal-card modal-small" role="dialog" aria-modal="true" aria-labelledby="pll-entry-title">
+    <div class="card-header">
+      <div class="card-title"><span id="pll-entry-title">Add ledger entry</span></div>
+      <button type="button" class="btn btn-outline btn-sm" id="pll-e-close">Close</button>
+    </div>
+    <div id="pll-entry-body"></div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="pay-edit-overlay" onclick="if(event.target===this) closePayEdit()">
   <div class="modal-card modal-small" role="dialog" aria-modal="true" aria-labelledby="pay-edit-title">
     <div class="card-header">
@@ -1556,6 +1568,7 @@
 <script src="/js/site.js"></script>
 <script src="/js/api.js"></script>
 <script src="/js/app.js"></script>
+<script src="/js/payledger.js"></script>
 <script src="/js/pwa.js"></script>
 </body>
 </html>

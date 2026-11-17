@@ -13,7 +13,7 @@ const supabase = require('../config/supabase');
 const photos = require('./photos');
 
 const TYPES = {
-  entry: { label: 'Record', table: 'entries' }, purchase: { label: 'Purchase', table: 'purchases' }, payment: { label: 'Payment line', table: 'payment_lines' },
+  entry: { label: 'Record', table: 'entries' }, purchase: { label: 'Purchase', table: 'purchases' }, payment: { label: 'Payment line', table: 'payment_lines' }, pay_opening: { label: 'Opening balance', table: 'payment_openings' },
   renewal: { label: 'Renewal', table: 'renewals' }, renewal_file: { label: 'Renewal document', table: 'renewal_files' }, document: { label: 'Document', table: 'documents' },
   progress: { label: 'Progress picture', table: 'progress_photos' }, vehicle: { label: 'Vehicle', table: 'vehicles' }, operator: { label: 'Operator', table: 'operators' },
   site: { label: 'Site', table: 'sites' }, user: { label: 'User', table: 'users' }, diesel_stock: { label: 'Diesel stock', table: 'diesel_stock' },

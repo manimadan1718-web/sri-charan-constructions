@@ -8,6 +8,10 @@
  *   POST   /api/payments                        { kind, items:[{ party_name, item, description, payable, paid }] }   (payments.add) — all lines or none
  *   PUT    /api/payments/:id                    change a line — needs a written reason                               (payments.edit)
  *   DELETE /api/payments/:id                    remove a line — needs a written reason                               (payments.edit)
+ *   GET    /api/payments/ledger?party=&kind=&from=&to=&site=   one party's Tally-style ledger: Opening, Dr / Cr, Closing  (payments.view)
+ *   GET    /api/payments/ledger/parties?kind=&from=&to=&site=  every party: Opening, Dr, Cr, Closing, with totals       (payments.view)
+ *   POST   /api/payments/openings               { kind, party_name, as_on, side: cr|dr, amount, note } an opening balance   (payments.add)
+ *   DELETE /api/payments/openings/:id           remove an opening balance — needs a written reason                      (payments.edit)
  * Balance = Payable − Paid is always worked out here, never stored. Every line has a Date and a typed "Paid By".
  */
 const express = require('express');
@@ -19,6 +23,7 @@ const { serverError } = require('../utils/http');
 const archive = require('../utils/archive');
 const { fetchAll } = require('../utils/db');
 const pay = require('../utils/payments');
+const led = require('../utils/payLedger');
 
 router.use(requireAuth);
 
@@ -232,6 +237,92 @@ router.delete('/:id', requirePerm('payments.edit'), async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     sendError(res, err, 'DELETE /payments/:id');
+  }
+});
+
+/* ── Party Ledger (Tally style): Opening Balance, Dr / Cr entries, Closing Balance ─────────────────── */
+const ledgerLines = async () => {
+  const { data, error } = await allLines();
+  if (error) throw error;
+  return pay.sortRows(data.map(publicRow).map(r => ({ ...r, party_key: pay.keyOf(r.party_name) })));
+};
+/** Opening balances; if their table has not been created yet the ledger still works (with none) and says so. */
+const ledgerOpenings = async () => {
+  const { data, error } = await fetchAll(() => supabase.from('payment_openings').select('*').order('as_on', { ascending: true }).order('id', { ascending: true }), 20000);
+  if (error) { if (led.isMissingOpenings(error)) return { rows: [], setup_required: true }; throw error; }
+  return { rows: data || [], setup_required: false };
+};
+const ledgerKind = q => (q === undefined || q === '' ? 'all' : q);
+
+router.get('/ledger/parties', requirePerm('payments.view'), async (req, res) => {
+  try {
+    const kind = ledgerKind(req.query.kind);
+    if (kind !== 'all' && !pay.KINDS.includes(kind)) return res.status(400).json({ error: 'kind must be company, outside or all.' });
+    const pf = pay.parseFilters(req.query); if (pf.error) return res.status(400).json({ error: pf.error });
+    const [lines, op] = await Promise.all([ledgerLines(), ledgerOpenings()]);
+    const f = pf.filters;
+    res.json({ success: true, data: led.allParties({ lines, openings: op.rows, kind, from: f.from, to: f.to, site: f.site }), openings_setup_required: op.setup_required });
+  } catch (err) {
+    if (pay.isMissingPayments(err)) return res.json({ success: true, data: led.allParties({ lines: [], openings: [], kind: 'all' }), setup_required: true });
+    sendError(res, err, 'GET /payments/ledger/parties');
+  }
+});
+
+router.get('/ledger', requirePerm('payments.view'), async (req, res) => {
+  try {
+    const kind = ledgerKind(req.query.kind);
+    if (kind !== 'all' && !pay.KINDS.includes(kind)) return res.status(400).json({ error: 'kind must be company, outside or all.' });
+    const party = pay.clean(req.query.party, 120);
+    if (!party) return res.status(400).json({ error: 'Choose a party.' });
+    const pf = pay.parseFilters(req.query); if (pf.error) return res.status(400).json({ error: pf.error });
+    const [lines, op] = await Promise.all([ledgerLines(), ledgerOpenings()]);
+    const f = pf.filters;
+    res.json({ success: true, data: led.partyLedger({ lines, openings: op.rows, party, kind, from: f.from, to: f.to, site: f.site }), openings_setup_required: op.setup_required });
+  } catch (err) {
+    if (pay.isMissingPayments(err)) return res.json({ success: true, data: led.partyLedger({ lines: [], openings: [], party: '' }), setup_required: true });
+    sendError(res, err, 'GET /payments/ledger');
+  }
+});
+
+router.post('/openings', requirePerm('payments.add'), async (req, res) => {
+  try {
+    const parsed = led.parseOpening(req.body);
+    if (parsed.error) return res.status(400).json({ error: parsed.error });
+    const o = parsed.opening;
+    const row = { ...o, created_by_id: String(req.user.id), created_by_name: req.user.name };
+    const { data, error } = await supabase.from('payment_openings').insert(row).select('*').maybeSingle();
+    if (error) { if (led.isMissingOpenings(error)) return res.status(503).json({ error: led.OPENINGS_SETUP_MESSAGE, setup_required: true }); throw error; }
+    await logActivity(req, {
+      category: 'payment', action: 'payment_opening_added', entityType: 'payment', entityId: data && data.id,
+      entityLabel: `${o.party_name} — ${pay.KIND_LABEL[o.kind]} — opening balance ${pay.money(o.amount)} ${led.SIDE_LABEL[o.side]} as on ${pay.dmy(o.as_on)}`,
+      changes: [{ field: 'Opening balance', from: null, to: `${pay.money(o.amount)} ${led.SIDE_LABEL[o.side]}${o.note ? ` — ${o.note}` : ''}` }],
+    });
+    res.status(201).json({ success: true, data });
+  } catch (err) {
+    sendError(res, err, 'POST /payments/openings');
+  }
+});
+
+router.delete('/openings/:id', requirePerm('payments.edit'), async (req, res) => {
+  try {
+    if (!ID_RE.test(req.params.id)) return res.status(404).json({ error: 'Opening balance not found.' });
+    const rErr = reasonError(req.body && req.body.reason, 'delete an opening balance');
+    if (rErr) return res.status(400).json({ error: rErr });
+    const reason = cleanReason(req.body.reason);
+    const { data: o, error: getErr } = await supabase.from('payment_openings').select('*').eq('id', req.params.id).maybeSingle();
+    if (getErr) { if (led.isMissingOpenings(getErr)) return res.status(503).json({ error: led.OPENINGS_SETUP_MESSAGE, setup_required: true }); throw getErr; }
+    if (!o) return res.status(404).json({ error: 'Opening balance not found.' });
+    await archive.keep(req, { type: 'pay_opening', id: o.id, label: `${o.party_name} — opening balance ${pay.money(o.amount)} ${led.SIDE_LABEL[o.side]}`, detail: `As on ${pay.dmy(o.as_on)} · ${pay.KIND_LABEL[o.kind]}`, row: o, reason });
+    const { error } = await supabase.from('payment_openings').delete().eq('id', req.params.id);
+    if (error) throw error;
+    await logActivity(req, {
+      category: 'payment', action: 'payment_opening_deleted', entityType: 'payment', entityId: o.id,
+      entityLabel: `${o.party_name} — ${pay.KIND_LABEL[o.kind]} — opening balance ${pay.money(o.amount)} ${led.SIDE_LABEL[o.side]}`, reason,
+      changes: [{ field: 'Opening balance', from: `${pay.money(o.amount)} ${led.SIDE_LABEL[o.side]}`, to: null }],
+    });
+    res.json({ success: true });
+  } catch (err) {
+    sendError(res, err, 'DELETE /payments/openings/:id');
   }
 });
 

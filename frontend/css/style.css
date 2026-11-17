@@ -2383,3 +2383,40 @@ td .link-btn { margin: 0; color: var(--ink); text-decoration-color: var(--hazard
 
 /* the closing TOTAL lines of the diesel tables: the same cell padding as the rows above, so the figures line up */
 .de-total td { padding: 12px 14px; font-variant-numeric: tabular-nums; }
+
+/* ── Payments → Party Ledger (Dr / Cr) ─────────────────────────────────────────────── */
+.pll-head-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.pll-view { display: inline-flex; gap: 4px; padding: 4px; margin: 4px 0 14px; background: var(--paper); border: 1px solid var(--line); border-radius: 6px; }
+.pll-view-btn { min-height: 40px; padding: 6px 16px; border: 0; border-radius: 5px; background: transparent; color: var(--steel); font: 700 14px var(--font-body); cursor: pointer; }
+.pll-view-btn.active { background: var(--ink); color: #fff; }
+.pll-view-btn:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(226,116,10,.35); }
+.pll-filters { display: grid; grid-template-columns: minmax(220px, 1.4fr) minmax(200px, 1.2fr) repeat(3, minmax(140px, 1fr)); gap: 12px; align-items: end; }
+.pll-filters .pl-flt select, .pll-filters .pl-flt input { width: 100%; min-width: 0; }
+@media (max-width: 900px) { .pll-filters { grid-template-columns: 1fr 1fr; } .pll-filters .pll-flt-party { grid-column: 1 / -1; } }
+@media (max-width: 560px) { .pll-filters { grid-template-columns: 1fr; } }
+.pll-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
+.pll-stat { padding: 16px 18px; background: #fff; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 1px 2px rgba(27,36,51,.04); }
+.pll-stat-l { font-size: 12px; font-weight: 700; color: var(--steel); margin-bottom: 5px; }
+.pll-stat-v { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--ink); }
+.pll-stat-s { margin-top: 4px; font-size: 12px; color: var(--steel); }
+.pll-stat.pll-dark { background: var(--ink); border-color: var(--ink); }
+.pll-stat.pll-dark .pll-stat-l, .pll-stat.pll-dark .pll-stat-s { color: #F3D9B8; }
+.pll-stat.pll-dark .pll-stat-v { color: #fff; }
+.pll-cr { color: #9A3412; font-weight: 700; }
+.pll-dr { color: #1D4ED8; font-weight: 700; }
+.pll-table tr.pll-open td { background: #FDF0E0; }
+.pll-table tfoot td { background: #FFE2C2; border-top: 1.5px solid var(--hazard); font-weight: 800; }
+.pll-pill { display: inline-block; margin-left: 6px; padding: 2px 9px; border-radius: 999px; background: #F1ECE2; color: var(--ink); font-size: 11.5px; font-weight: 700; }
+.pll-foot { margin: 12px 4px 2px; font-size: 13px; line-height: 1.5; color: var(--steel); }
+.pll-type { display: flex; flex-wrap: wrap; }
+.pll-type-btn { flex: 1 1 0; min-height: 44px; padding: 8px 10px; border: 1px solid #CFC8BA; background: #fff; color: var(--ink); font: 700 13.5px var(--font-body); cursor: pointer; }
+.pll-type-btn:first-child { border-radius: 6px 0 0 6px; } .pll-type-btn:last-child { border-radius: 0 6px 6px 0; }
+.pll-type-btn.active { background: #FDF0E0; border-color: var(--hazard); box-shadow: inset 0 0 0 1px var(--hazard); }
+.pll-help { display: block; margin-top: 6px; font-size: 12.5px; color: var(--steel); line-height: 1.45; }
+.pll-after { margin: 4px 0 12px; padding: 12px 14px; border-radius: 8px; background: #FDF0E0; font-size: 14px; line-height: 1.5; }
+body:not(.can-payments-add) .pll-head-actions .perm-payments-add { display: none !important; }
+@media (max-width: 900px) { .pll-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) {
+  .pll-cards { gap: 10px; } .pll-stat { padding: 12px; } .pll-stat-v { font-size: 17px; }
+  .pll-type-btn { font-size: 12.5px; padding: 8px 4px; }
+}

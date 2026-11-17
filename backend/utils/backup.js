@@ -19,6 +19,7 @@ const SHEETS = [
   { name: 'Progress pictures',   table: 'progress_photos' },
   { name: 'Purchases',           table: 'purchases' },
   { name: 'Payments',            table: 'payment_lines' },
+  { name: 'Opening balances',    table: 'payment_openings' },
   { name: 'Old weekly-monthly',  table: 'payments' },                 // the earlier employee payments: still in the database, no longer shown in the app
   { name: 'Renewals',            table: 'renewals' },
   { name: 'Renewal documents',   table: 'renewal_files' },

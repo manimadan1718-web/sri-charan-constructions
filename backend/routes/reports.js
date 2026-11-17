@@ -153,6 +153,17 @@ router.post('/payments', requirePerm('payments.view'), (req, res) => {
   return serveTableReport(req, res, { format: body.format, filePrefix: kind === 'all' ? 'payments-cumulative' : `payments-${kind}`, category: 'payment', load: () => reportData.paymentsReport(kind, pf.filters) });
 });
 
+// ── POST /api/reports/pay-ledger  (people who may see payments) — { format, party?, kind?: 'company'|'outside'|'all', from?, to?, site? } ──
+// With a party: that party's Tally-style statement (Opening, Dr / Cr, Closing). Without one: every party's Opening / Dr / Cr / Closing.
+router.post('/pay-ledger', requirePerm('payments.view'), (req, res) => {
+  const body = req.body || {}, P = require('../utils/payments');
+  const kind = body.kind === undefined || body.kind === '' ? 'all' : body.kind;
+  if (kind !== 'all' && !P.KINDS.includes(kind)) return res.status(400).json({ error: 'Choose Company Payments, Outside Rental Payments or both.' });
+  const pf = P.parseFilters(body); if (pf.error) return res.status(400).json({ error: pf.error });
+  const party = P.clean(body.party, 120);
+  return serveTableReport(req, res, { format: body.format, filePrefix: party ? 'party-ledger' : 'party-ledger-all', category: 'payment', load: () => reportData.ledgerReport({ party, kind, filters: pf.filters }) });
+});
+
 // ── POST /api/reports/inventory  (Admin) — { type: 'vehicles' | 'sites' | 'operators', format } ──
 router.post('/inventory', requirePerm('inventory.manage'), (req, res) => {
   const { type, format } = req.body || {};

@@ -339,4 +339,62 @@ async function paymentsReport(kind, filters = {}) {
   return { title: 'Cumulative Payments Report', sheet: 'Cumulative', columns: PAY_COLUMNS, rows, subtitle: `Company + Outside Rental  ·  ${c.overall.count} line${c.overall.count === 1 ? '' : 's'}  ·  ${note}`, realRows: lines.length };
 }
 
-module.exports = { paymentsReport, inventoryReport, usersReport, logsReport, summaryReport, rangeText, INVENTORY, MAX_LOG_ROWS_XLSX, MAX_LOG_ROWS_PDF, activityLabel, changesText, deviceLabel };
+/* ── Party Ledger (Tally style): one party's statement, or every party's Opening / Dr / Cr / Closing ───────────── */
+const led = require('./payLedger');
+const LEDGER_COLUMNS = [
+  { key: 'date', header: 'Date', width: 12, weight: 9 },
+  { key: 'particulars', header: 'Particulars', width: 44, weight: 28, wrap: true },
+  { key: 'site', header: 'Site', width: 18, weight: 12, wrap: true },
+  { key: 'paid_by', header: 'Paid By', width: 18, weight: 12, wrap: true },
+  { key: 'dr', header: 'Dr (Paid)', width: 16, weight: 12, align: 'right', numFmt: '#,##0.00', fmt: v => (v === '' || v == null ? '' : pay.money(v)) },
+  { key: 'cr', header: 'Cr (Payable)', width: 16, weight: 12, align: 'right', numFmt: '#,##0.00', fmt: v => (v === '' || v == null ? '' : pay.money(v)) },
+  { key: 'balance', header: 'Balance', width: 18, weight: 13, align: 'right' },
+];
+const PARTIES_COLUMNS = [
+  { key: 'n', header: 'Sl No', width: 7, weight: 5, align: 'right' },
+  { key: 'name', header: 'Party', width: 34, weight: 24, bold: true, wrap: true },
+  { key: 'kind', header: 'Type', width: 20, weight: 13, wrap: true },
+  { key: 'opening', header: 'Opening Balance', width: 20, weight: 14, align: 'right' },
+  { key: 'dr', header: 'Dr (Paid)', width: 16, weight: 12, align: 'right', numFmt: '#,##0.00', fmt: pay.money },
+  { key: 'cr', header: 'Cr (Payable)', width: 16, weight: 12, align: 'right', numFmt: '#,##0.00', fmt: pay.money },
+  { key: 'closing', header: 'Closing Balance', width: 20, weight: 14, align: 'right' },
+];
+const KIND_SHORT = { company: 'Company', outside: 'Outside Rental' };
+const nz = v => (v ? v : '');
+
+async function ledgerReport({ party, kind = 'all', filters = {} }) {
+  let lines, openings = [];
+  try {
+    const r = await fetchAll(() => supabase.from('payment_lines').select('*').order('created_at', { ascending: true }).order('id', { ascending: true }), 20000);
+    if (r.error) throw r.error;
+    lines = pay.sortRows(r.data.map(p => ({ ...p, pay_date: p.pay_date ? String(p.pay_date).slice(0, 10) : String(p.created_at || '').slice(0, 10), payable: Number(p.payable) || 0, paid: Number(p.paid) || 0, paid_by: p.paid_by || '', party_key: pay.keyOf(p.party_name) })));
+  } catch (e) {
+    if (pay.isMissingPayments(e)) throw Object.assign(new Error('payment_lines missing'), { status: 503, userMessage: pay.PAYMENTS_SETUP_MESSAGE });
+    throw e;
+  }
+  try {
+    const r = await fetchAll(() => supabase.from('payment_openings').select('*').order('as_on', { ascending: true }).order('id', { ascending: true }), 20000);
+    if (r.error) throw r.error;
+    openings = r.data || [];
+  } catch (e) { if (!led.isMissingOpenings(e)) throw e; }
+
+  const span = `${filters.from ? `From ${pay.dmy(filters.from)}` : 'From the beginning'}  ·  ${filters.to ? `To ${pay.dmy(filters.to)}` : 'To today'}${filters.site ? `  ·  Site: ${filters.site === pay.NO_PAID_BY ? '(not entered)' : filters.site}` : ''}  ·  ${kind === 'all' ? 'Company + Outside Rental' : pay.KIND_LABEL[kind]}`;
+  const note = 'Cr = payable to the party (we owe)  ·  Dr = paid to the party  ·  balance shown as Cr when we still owe, Dr when paid in advance  ·  amounts in rupees';
+
+  if (party) {
+    const L = led.partyLedger({ lines, openings, party, kind, from: filters.from, to: filters.to, site: filters.site });
+    const rows = [];
+    rows.push({ date: filters.from ? pay.dmy(filters.from) : '', particulars: 'Opening Balance (brought forward)', dr: L.opening.side === 'dr' ? L.opening.amount : '', cr: L.opening.side === 'cr' && L.opening.amount ? L.opening.amount : '', balance: led.sidedText(L.opening), _kind: 'subhead' });
+    L.rows.forEach(r => rows.push({ date: pay.dmy(r.date), particulars: r.particulars, site: r.site, paid_by: r.paid_by, dr: nz(r.dr), cr: nz(r.cr), balance: led.sidedText({ amount: r.balance, side: r.balance_side }) }));
+    rows.push({ date: filters.to ? pay.dmy(filters.to) : '', particulars: 'Closing Balance (carried forward)', dr: L.closing.side === 'cr' && L.closing.amount ? L.closing.amount : '', cr: L.closing.side === 'dr' ? L.closing.amount : '', balance: led.sidedText(L.closing), _kind: 'subhead' });
+    rows.push({ particulars: 'TOTAL', dr: L.totals.dr, cr: L.totals.cr, balance: '', _kind: 'total' });
+    return { title: `Party Ledger — ${L.party}`, sheet: 'Party Ledger', columns: LEDGER_COLUMNS, rows, subtitle: `${L.party}  ·  ${span}  ·  ${note}`, realRows: L.rows.length };
+  }
+
+  const A = led.allParties({ lines, openings, kind, from: filters.from, to: filters.to, site: filters.site });
+  const rows = A.parties.map((p, i) => ({ n: i + 1, name: p.party_name, kind: p.kinds.map(k => KIND_SHORT[k]).join(' + '), opening: led.sidedText(p.opening), dr: p.dr, cr: p.cr, closing: led.sidedText(p.closing) }));
+  if (rows.length) rows.push({ n: '', name: `TOTAL (${A.totals.parties} part${A.totals.parties === 1 ? 'y' : 'ies'})`, kind: '', opening: led.sidedText(A.totals.opening), dr: A.totals.dr, cr: A.totals.cr, closing: led.sidedText(A.totals.closing), _kind: 'total' });
+  return { title: 'Party Ledger — All Parties', sheet: 'All Parties', columns: PARTIES_COLUMNS, rows, subtitle: `All parties  ·  ${span}  ·  ${note}`, realRows: A.parties.length };
+}
+
+module.exports = { ledgerReport, paymentsReport, inventoryReport, usersReport, logsReport, summaryReport, rangeText, INVENTORY, MAX_LOG_ROWS_XLSX, MAX_LOG_ROWS_PDF, activityLabel, changesText, deviceLabel };

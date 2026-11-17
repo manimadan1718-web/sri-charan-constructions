@@ -302,6 +302,10 @@ const Reports = {
   payments(body) {
     return apiFetch('/reports/payments', { method: 'POST', body: JSON.stringify(body), asBlob: true });
   },
+  // Payments → Party Ledger: { format, party?, kind?, from?, to?, site? }  (a party = that party's statement; none = every party)
+  payLedger(body) {
+    return apiFetch('/reports/pay-ledger', { method: 'POST', body: JSON.stringify(body), asBlob: true });
+  },
 };
 
 // ── The full backup (Admin) — everything as one Excel file ─────────────────────
@@ -433,6 +437,11 @@ const Payments = {
   create(payload) { return apiFetch('/payments', { method: 'POST', body: JSON.stringify(payload) }); },
   update(id, payload) { return apiFetch(`/payments/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(payload) }); },
   remove(id, reason) { return apiFetch(`/payments/${encodeURIComponent(id)}`, { method: 'DELETE', body: JSON.stringify({ reason }) }); },
+  // Party Ledger (Dr / Cr). params = { party, kind, from, to, site }
+  ledger(params = {}) { return apiFetch('/payments/ledger' + payQuery(params)); },                                          // one party: Opening, entries, Closing
+  ledgerParties(params = {}) { return apiFetch('/payments/ledger/parties' + payQuery(params)); },                        // every party: Opening, Dr, Cr, Closing
+  addOpening(payload) { return apiFetch('/payments/openings', { method: 'POST', body: JSON.stringify(payload) }); },       // { kind, party_name, as_on, side: 'cr'|'dr', amount, note }
+  removeOpening(id, reason) { return apiFetch(`/payments/openings/${encodeURIComponent(id)}`, { method: 'DELETE', body: JSON.stringify({ reason }) }); },
 };
 const payQuery = o => { const q = Object.entries(o).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&'); return q ? '?' + q : ''; };
 

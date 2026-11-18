@@ -1,6 +1,6 @@
 /**
  * The signed-in person's own account.
- *   POST /api/account/change-pin   { current_pin, new_pin }   — anyone signed in may change THEIR OWN PIN
+ *   POST /api/account/change-pin   { new_pin }   — anyone signed in may change THEIR OWN PIN
  * The PIN is never written to the Activity Log (only the fact that it was changed).
  */
 const express = require('express');
@@ -22,16 +22,14 @@ router.use(requireAuth);
 router.post('/change-pin', limiter, async (req, res) => {
   try {
     const b = req.body || {};
-    const current = typeof b.current_pin === 'string' ? b.current_pin : '';
     const next = typeof b.new_pin === 'string' ? b.new_pin : '';
-    if (!current) return res.status(400).json({ error: 'Enter your current PIN.' });
     if (!validatePin(next)) return res.status(400).json({ error: PIN_RULE });
-    if (next === current) return res.status(400).json({ error: 'The new PIN must be different from your current PIN.' });
 
     const { data: users, error } = await supabase.from('users').select('id, pin');
     if (error) throw error;
     const me = (users || []).find(u => String(u.id) === String(req.user.id));
-    if (!me || !(await matchesPin(current, me.pin))) return res.status(400).json({ error: 'Your current PIN is not correct.' });
+    if (!me) return res.status(404).json({ error: 'Your account was not found.' });
+    if (await matchesPin(next, me.pin)) return res.status(400).json({ error: 'The new PIN must be different from your current PIN.' });
     for (const u of users) {
       // eslint-disable-next-line no-await-in-loop
       if (String(u.id) !== String(me.id) && await matchesPin(next, u.pin)) return res.status(409).json({ error: 'That PIN is already in use. Please choose a different one.' });

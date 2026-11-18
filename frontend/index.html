@@ -1475,6 +1475,8 @@
     <div class="gd-top">
       <h2 id="gd-heading">Learn Guide</h2>
       <input type="search" id="gd-search" placeholder="Search the guide…" aria-label="Search the guide" autocomplete="off">
+      <button type="button" class="btn btn-outline btn-sm" id="gd-pdf">Download PDF</button>
+      <button type="button" class="btn btn-outline btn-sm" id="gd-word">Download Word</button>
       <button type="button" class="btn btn-outline btn-sm" id="gd-close">Close</button>
     </div>
     <div class="gd-layout">
@@ -1491,7 +1493,6 @@
   <div class="modal-card modal-small" role="dialog" aria-modal="true" aria-labelledby="pin-title">
     <div class="card-header"><div class="card-title"><span id="pin-title">Change PIN</span></div><button type="button" class="btn btn-outline btn-sm" onclick="closeChangePin()">Close</button></div>
     <div class="form-grid one-col">
-      <div class="form-group"><label for="pin-cur">Current PIN *</label><input type="password" id="pin-cur" maxlength="10" autocomplete="current-password" inputmode="text"></div>
       <div class="form-group"><label for="pin-new">New PIN *</label><input type="password" id="pin-new" maxlength="10" autocomplete="new-password" inputmode="text"><small class="pll-help">4 to 10 characters, no spaces. Nobody else may use the same PIN.</small></div>
       <div class="form-group"><label for="pin-new2">Type the new PIN again *</label><input type="password" id="pin-new2" maxlength="10" autocomplete="new-password" inputmode="text"></div>
       <label class="pin-show"><input type="checkbox" id="pin-show"> Show the PINs</label>
@@ -1505,6 +1506,7 @@
   <div class="modal-card modal-small" role="dialog" aria-modal="true" aria-labelledby="fb-title">
     <div class="card-header"><div class="card-title"><span id="fb-title">Send feedback</span></div><button type="button" class="btn btn-outline btn-sm" onclick="closeFeedback()">Close</button></div>
     <div class="form-grid one-col">
+      <div class="form-group"><label id="fb-rate-label">How would you rate the app? <small>(optional)</small></label><div class="fb-stars" id="fb-stars" role="radiogroup" aria-labelledby="fb-rate-label"><button type="button" role="radio" aria-checked="false" data-star="1" aria-label="1 star">&#9733;</button><button type="button" role="radio" aria-checked="false" data-star="2" aria-label="2 stars">&#9733;</button><button type="button" role="radio" aria-checked="false" data-star="3" aria-label="3 stars">&#9733;</button><button type="button" role="radio" aria-checked="false" data-star="4" aria-label="4 stars">&#9733;</button><button type="button" role="radio" aria-checked="false" data-star="5" aria-label="5 stars">&#9733;</button><span class="fb-star-text" id="fb-star-text">Tap a star</span></div></div>
       <div class="form-group"><label for="fb-kind">What are you sending? *</label><select id="fb-kind"><option value="suggestion">Suggestion &mdash; an idea to make the app better</option><option value="problem">Problem &mdash; something is not working</option><option value="question">Question &mdash; I need help</option></select></div>
       <div class="form-group"><label for="fb-msg">Your message *</label><textarea id="fb-msg" rows="6" maxlength="1500" placeholder="Tell us what you were doing and what you would like."></textarea><small class="pll-help" id="fb-count">0 / 1500</small></div>
     </div>

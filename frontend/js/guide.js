@@ -23,11 +23,12 @@ const GUIDE = [
   { id: 'account', title: 'Your menu: PIN, Feedback, Guide', perms: null, blocks: [
     { t: 'steps', title: 'Change your own PIN', v: [
       'Click your name at the top right and choose <b>Change PIN</b>.',
-      'Type your <b>current PIN</b>, then the <b>new PIN</b> twice.',
+      'Type the <b>new PIN</b> twice. You do not need to type the old one.',
       'A PIN has 4 to 10 characters, no spaces, and nobody else may use the same one.',
       'Press <b>Change PIN</b>. Use the new PIN the next time you sign in.'] },
     { t: 'steps', title: 'Send feedback', v: [
       'Click your name and choose <b>Feedback</b>.',
+      'Tap the <b>stars</b> (1 to 5) to rate the app. This is optional.',
       'Choose <b>Suggestion</b>, <b>Problem</b> or <b>Question</b> and write what you want to say.',
       'Press <b>Send</b>. The Admin reads it. Please do not write PINs or passwords in it.'] },
     { t: 'note', v: 'Forgot your PIN? Ask the Admin. The Admin opens <b>Users</b>, edits your name, types a new PIN and saves.' },
@@ -162,6 +163,30 @@ const GUIDE = [
   ] },
 ];
 
+/* ── download the guide as PDF or Word (all the sections the person may use, in order) ── */
+function guideFullHtml() {
+  return guideVisible().map(s => `<section class="gdx-sec"><h2>${gEsc(s.title)}</h2>${s.blocks.map(guideBlock).join('')}</section>`).join('');
+}
+function guideWho() { const u = Auth.currentUser(); return u ? `${u.name || ''}${u.role ? ' (' + u.role + ')' : ''}` : ''; }
+function guideDownloadWord() {
+  const css = 'body{font-family:Calibri,Arial,sans-serif;font-size:11pt;line-height:1.45}h1{font-size:22pt}h2{font-size:16pt;margin-top:22pt;border-bottom:1px solid #999}h4,.gd-h4{font-size:12pt;margin:12pt 0 4pt}table{border-collapse:collapse;width:100%;margin:6pt 0}th,td{border:1px solid #999;padding:4pt 6pt;text-align:left;font-size:10pt}th{background:#eee}.gd-ex-title{font-weight:bold;margin-top:10pt}.gd-box{border:1px solid #ccc;padding:6pt;margin:8pt 0}';
+  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>Learn Guide</title><style>${css}</style></head><body><h1>Sri Charan Constructions &mdash; Learn Guide</h1><p>Prepared for ${gEsc(guideWho())} on ${gEsc(new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }))}</p>${guideFullHtml()}</body></html>`;
+  const url = URL.createObjectURL(new Blob(['\ufeff', html], { type: 'application/msword' }));
+  const a = document.createElement('a'); a.href = url; a.download = 'Sri-Charan-Learn-Guide.doc'; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  if (typeof showToast === 'function') showToast('The guide is downloading as a Word file.');
+}
+function guideDownloadPdf() {
+  let box = document.getElementById('gd-print'); if (box) box.remove();
+  box = document.createElement('div'); box.id = 'gd-print';
+  box.innerHTML = `<h1>Sri Charan Constructions &mdash; Learn Guide</h1><p class="gdx-who">Prepared for ${gEsc(guideWho())} on ${gEsc(new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }))}</p>${guideFullHtml()}`;
+  document.body.appendChild(box); document.body.classList.add('gd-printing');
+  const done = () => { document.body.classList.remove('gd-printing'); box.remove(); window.removeEventListener('afterprint', done); };
+  window.addEventListener('afterprint', done);
+  if (typeof showToast === 'function') showToast('In the print box, choose "Save as PDF" as the printer.');
+  setTimeout(() => window.print(), 400);
+}
+
 /* ── the viewer ─────────────────────────────────────────────────────────────── */
 const GUIDE_UI = { current: 'start', q: '' };
 const gEsc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -215,6 +240,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (ev.target === overlay || ev.target.closest('#gd-close')) { closeGuide(); return; }
     const b = ev.target.closest('[data-gd]'); if (b) { GUIDE_UI.current = b.dataset.gd; renderGuide(); }
   });
+  document.getElementById('gd-pdf').addEventListener('click', guideDownloadPdf);
+  document.getElementById('gd-word').addEventListener('click', guideDownloadWord);
   document.getElementById('gd-select').addEventListener('change', ev => { GUIDE_UI.current = ev.target.value; renderGuide(); });
   document.getElementById('gd-search').addEventListener('input', ev => { GUIDE_UI.q = ev.target.value; renderGuide(); });
   document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && overlay.classList.contains('open')) closeGuide(); });

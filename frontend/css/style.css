@@ -2514,3 +2514,22 @@ body.gd-open { overflow: hidden; }
 .fb-text { margin: 8px 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; }
 .fb-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .fb-empty { padding: 18px 6px; color: var(--steel); }
+
+/* ── guide download (PDF / Word), feedback stars ──────────────────────────────────────────────── */
+.gd-top .btn { white-space: nowrap; }
+#gd-print { display: none; }
+.fb-stars { display: flex; align-items: center; gap: 2px; }
+.fb-stars button { width: 44px; height: 44px; border: 0; background: transparent; font-size: 30px; line-height: 1; color: #CFC8BA; cursor: pointer; border-radius: 8px; }
+.fb-stars button.on { color: #E2740A; }
+.fb-stars button:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(226,116,10,.35); }
+.fb-star-text { margin-left: 8px; font-size: 13.5px; color: var(--steel); font-weight: 600; }
+.fb-rated { color: #E2740A; letter-spacing: 1px; font-size: 14px; }
+@media print {
+  body.gd-printing > *:not(#gd-print) { display: none !important; }
+  body.gd-printing { background: #fff !important; overflow: visible !important; }
+  body.gd-printing #gd-print { display: block; padding: 0; color: #111; font-size: 11pt; line-height: 1.5; }
+  #gd-print h1 { font-size: 22pt; margin: 0 0 4pt; }
+  #gd-print .gdx-who { color: #555; margin-bottom: 12pt; }
+  #gd-print h2 { font-size: 16pt; margin: 18pt 0 8pt; padding-bottom: 3pt; border-bottom: 2px solid #E2740A; break-after: avoid; }
+  #gd-print .gd-example, #gd-print .gd-box, #gd-print li { break-inside: avoid; }
+}

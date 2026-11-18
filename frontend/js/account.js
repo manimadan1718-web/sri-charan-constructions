@@ -3,10 +3,10 @@
    Loaded after app.js and api.js (uses apiFetch, Auth, can, showToast, esc, askConfirm).
    ═══════════════════════════════════════════════════════════════════════════════ */
 const Account = {
-  changePin(current_pin, new_pin) { return apiFetch('/account/change-pin', { method: 'POST', body: JSON.stringify({ current_pin, new_pin }) }); },
+  changePin(new_pin) { return apiFetch('/account/change-pin', { method: 'POST', body: JSON.stringify({ new_pin }) }); },
 };
 const Feedback = {
-  send(kind, message, page) { return apiFetch('/feedback', { method: 'POST', body: JSON.stringify({ kind, message, page }) }); },
+  send(kind, message, page, rating) { return apiFetch('/feedback', { method: 'POST', body: JSON.stringify({ kind, message, page, rating }) }); },
   list() { return apiFetch('/feedback'); },
   mark(id, status) { return apiFetch(`/feedback/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify({ status }) }); },
   remove(id) { return apiFetch(`/feedback/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
@@ -56,26 +56,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
 /* ── Change PIN ── */
 function openChangePin() {
-  ['pin-cur', 'pin-new', 'pin-new2'].forEach(id => { umEl(id).value = ''; umEl(id).type = 'password'; });
+  ['pin-new', 'pin-new2'].forEach(id => { umEl(id).value = ''; umEl(id).type = 'password'; });
   umEl('pin-show').checked = false; umEl('pin-err').textContent = '';
-  umEl('pin-overlay').classList.add('open'); setTimeout(() => umEl('pin-cur').focus(), 50);
+  umEl('pin-overlay').classList.add('open'); setTimeout(() => umEl('pin-new').focus(), 50);
 }
 function closeChangePin() { umEl('pin-overlay').classList.remove('open'); }
 async function saveChangePin() {
-  const cur = umEl('pin-cur').value, n1 = umEl('pin-new').value, n2 = umEl('pin-new2').value, err = umEl('pin-err'), btn = umEl('pin-save');
+  const n1 = umEl('pin-new').value, n2 = umEl('pin-new2').value, err = umEl('pin-err'), btn = umEl('pin-save');
   err.textContent = '';
-  if (!cur) { err.textContent = 'Enter your current PIN.'; umEl('pin-cur').focus(); return; }
   if (!/^\S{4,10}$/.test(n1)) { err.textContent = 'The new PIN must be 4 to 10 characters with no spaces.'; umEl('pin-new').focus(); return; }
-  if (n1 === cur) { err.textContent = 'The new PIN must be different from your current PIN.'; return; }
   if (n1 !== n2) { err.textContent = 'The two new PINs are not the same.'; umEl('pin-new2').focus(); return; }
   btn.disabled = true;
-  try { await Account.changePin(cur, n1); closeChangePin(); showToast('Your PIN has been changed. Use the new PIN next time you sign in.'); }
+  try { await Account.changePin(n1); closeChangePin(); showToast('Your PIN has been changed. Use the new PIN next time you sign in.'); }
   catch (e) { err.textContent = e.message || 'Your PIN could not be changed.'; }
   finally { btn.disabled = false; }
 }
 
 /* ── Feedback (everyone) ── */
+const FB_STAR_WORDS = ['Tap a star', 'Poor', 'Fair', 'Good', 'Very good', 'Excellent'];
+let fbRating = 0;
+function fbSetRating(n) {
+  fbRating = n;
+  document.querySelectorAll('#fb-stars [data-star]').forEach(b => { const on = +b.dataset.star <= n; b.classList.toggle('on', on); b.setAttribute('aria-checked', +b.dataset.star === n ? 'true' : 'false'); });
+  umEl('fb-star-text').textContent = FB_STAR_WORDS[n];
+}
 function openFeedback() {
+  fbSetRating(0);
   umEl('fb-kind').value = 'suggestion'; umEl('fb-msg').value = ''; umEl('fb-err').textContent = ''; fbCount();
   umEl('fb-overlay').classList.add('open'); setTimeout(() => umEl('fb-msg').focus(), 50);
 }
@@ -87,7 +93,7 @@ async function sendFeedback() {
   if (msg.length < 5) { err.textContent = 'Please write a little more (at least 5 characters).'; umEl('fb-msg').focus(); return; }
   const tab = document.querySelector('.tab.active'), page = tab ? (tab.textContent || '').trim().slice(0, 60) : '';
   btn.disabled = true;
-  try { await Feedback.send(kind, msg, page); closeFeedback(); showToast('Thank you. Your feedback has been sent to the Admin.'); }
+  try { await Feedback.send(kind, msg, page, fbRating || null); closeFeedback(); showToast('Thank you. Your feedback has been sent to the Admin.'); }
   catch (e) { err.textContent = e.message || 'Your feedback could not be sent.'; }
   finally { btn.disabled = false; }
 }
@@ -104,7 +110,7 @@ async function loadInbox() {
     if (r.setup_required) { list.innerHTML = '<p class="fb-empty">Feedback needs a one-time database update. Run run-in-supabase-16-feedback.sql in Supabase, then reload this page.</p>'; sub.textContent = ''; return; }
     sub.textContent = r.data.length ? `${r.data.length} message${r.data.length === 1 ? '' : 's'} · ${r.unread} new` : '';
     list.innerHTML = r.data.length ? r.data.map(f => `<article class="fb-item${f.status === 'new' ? ' fb-new' : ''}" data-id="${esc(f.id)}">
-        <div class="fb-meta"><span class="fb-kind fb-${esc(f.kind)}">${esc(FB_KIND[f.kind] || f.kind)}</span><strong>${esc(f.user_name || 'Someone')}</strong><span>${esc(f.user_role || '')}</span><span>${esc(new Date(f.created_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }))}</span>${f.page ? `<span>on ${esc(f.page)}</span>` : ''}</div>
+        <div class="fb-meta"><span class="fb-kind fb-${esc(f.kind)}">${esc(FB_KIND[f.kind] || f.kind)}</span>${f.rating ? `<span class="fb-rated" title="${esc(f.rating)} out of 5">${'&#9733;'.repeat(f.rating)}${'&#9734;'.repeat(5 - f.rating)}</span>` : ''}<strong>${esc(f.user_name || 'Someone')}</strong><span>${esc(f.user_role || '')}</span><span>${esc(new Date(f.created_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }))}</span>${f.page ? `<span>on ${esc(f.page)}</span>` : ''}</div>
         <p class="fb-text">${esc(f.message)}</p>
         <div class="fb-actions"><button type="button" class="btn btn-outline btn-sm" data-fb="${f.status === 'new' ? 'read' : 'new'}">${f.status === 'new' ? 'Mark as read' : 'Mark as new'}</button><button type="button" class="btn btn-outline btn-sm" data-fb="del">Delete</button></div>
       </article>`).join('') : '<p class="fb-empty">No feedback yet.</p>';
@@ -122,8 +128,9 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) { showToast(e.message || 'Could not do that.', true); }
   });
   umEl('fb-msg').addEventListener('input', fbCount);
+  umEl('fb-stars').addEventListener('click', ev => { const b = ev.target.closest('[data-star]'); if (b) fbSetRating(+b.dataset.star === fbRating ? 0 : +b.dataset.star); });
   ['pin-overlay', 'fb-overlay', 'inbox-overlay'].forEach(id => umEl(id).addEventListener('mousedown', ev => { if (ev.target === umEl(id)) { if (id === 'pin-overlay') closeChangePin(); else if (id === 'fb-overlay') { if (!umEl('fb-msg').value.trim()) closeFeedback(); } else closeInbox(); } }));
-  umEl('pin-show').addEventListener('change', ev => { ['pin-cur', 'pin-new', 'pin-new2'].forEach(i => { umEl(i).type = ev.target.checked ? 'text' : 'password'; }); });
-  ['pin-cur', 'pin-new', 'pin-new2'].forEach(i => umEl(i).addEventListener('keydown', ev => { if (ev.key === 'Enter') saveChangePin(); }));
+  umEl('pin-show').addEventListener('change', ev => { ['pin-new', 'pin-new2'].forEach(i => { umEl(i).type = ev.target.checked ? 'text' : 'password'; }); });
+  ['pin-new', 'pin-new2'].forEach(i => umEl(i).addEventListener('keydown', ev => { if (ev.key === 'Enter') saveChangePin(); }));
   document.addEventListener('keydown', ev => { if (ev.key !== 'Escape') return; ['pin-overlay', 'fb-overlay', 'inbox-overlay'].forEach(id => { if (umEl(id).classList.contains('open')) { if (id === 'pin-overlay') closeChangePin(); else if (id === 'fb-overlay') closeFeedback(); else closeInbox(); } }); });
 });

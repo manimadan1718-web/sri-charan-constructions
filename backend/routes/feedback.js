@@ -30,8 +30,14 @@ router.post('/', limiter, async (req, res) => {
     const message = String(b.message == null ? '' : b.message).replace(/\r\n/g, '\n').trim();
     if (message.length < MIN_LEN) return res.status(400).json({ error: 'Please write a little more (at least 5 characters).' });
     if (message.length > MAX_LEN) return res.status(400).json({ error: `Please keep it under ${MAX_LEN} characters.` });
+    const r = Number(b.rating);
+    const rating = Number.isInteger(r) && r >= 1 && r <= 5 ? r : null;
     const row = { user_id: String(req.user.id), user_name: req.user.name, user_role: req.user.role, kind, message, page: clean(b.page, 60), status: 'new' };
-    const { data, error } = await supabase.from('feedback').insert(row).select('*').maybeSingle();
+    if (rating) row.rating = rating;
+    let { data, error } = await supabase.from('feedback').insert(row).select('*').maybeSingle();
+    if (error && rating && /rating/i.test(String(error.message || ''))) {        // run-in-supabase-17 not run yet: still save the message
+      delete row.rating; ({ data, error } = await supabase.from('feedback').insert(row).select('*').maybeSingle());
+    }
     if (error) { if (isMissing(error)) return res.status(503).json({ error: SETUP_MESSAGE, setup_required: true }); throw error; }
     await logActivity(req, { category: 'system', action: 'feedback_sent', entityType: 'feedback', entityId: data && data.id ? String(data.id) : null, entityLabel: `${req.user.name} sent a ${kind}` });
     res.status(201).json({ success: true });

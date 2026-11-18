@@ -172,111 +172,137 @@ async function deletePllOpening(id) {
   try { await Payments.removeOpening(id, reason); showToast('Opening balance deleted.'); loadPlLedgerView(); } catch (e) { showToast(e.message || 'Could not delete it.', true); }
 }
 
-/* ── the "Add entry" pop-up: a Bill (Cr), a Payment (Dr) or an Opening Balance ─────────── */
+/* ── the "Add entry" pop-up: any number of lines — a Bill (Cr), a Payment (Dr) or an Opening Balance — saved together ──────── */
+const PLL_TYPES = [['cr', 'Bill / Payable (Cr)'], ['dr', 'Payment made (Dr)'], ['ocr', 'Opening Balance — Cr (we owe)'], ['odr', 'Opening Balance — Dr (paid in advance)']];
+const pllIsOpen = ty => ty === 'ocr' || ty === 'odr';
+const PLL_MAX_LINES = 60;
+PLL.lines = []; PLL.paidBy = [];
+
 function buildPllEntryModal() {
   document.getElementById('pll-entry-body').innerHTML = `
-    <div class="form-group"><label>What are you recording?</label>
-      <div class="pll-type" role="group" aria-label="Entry type">
-        <button type="button" class="pll-type-btn active" data-pll-type="cr">Bill / Payable (Cr)</button>
-        <button type="button" class="pll-type-btn" data-pll-type="dr">Payment made (Dr)</button>
-        <button type="button" class="pll-type-btn" data-pll-type="open">Opening Balance</button>
-      </div>
-      <small class="pll-help" id="pll-type-help"></small>
-    </div>
-    <div class="form-grid">
+    <div class="form-grid pll-top">
       <div class="form-group"><label for="pll-e-kind">Who we are paying *</label><select id="pll-e-kind"><option value="company">Company Payments</option><option value="outside">Outside Rental Payments</option></select></div>
-      <div class="form-group"><label for="pll-e-date" id="pll-e-date-l">Date *</label><input type="date" id="pll-e-date"></div>
-      <div class="form-group" id="pll-e-site-g"><label for="pll-e-site">Site</label><select id="pll-e-site"></select></div>
-      <div class="form-group"><label for="pll-e-party">Party *</label><input type="text" id="pll-e-party" maxlength="120" list="pll-e-parties" autocomplete="off"><datalist id="pll-e-parties"></datalist><small class="pll-help" id="pll-e-cur"></small></div>
-      <div class="form-group" id="pll-e-item-g"><label for="pll-e-item">Item</label><input type="text" id="pll-e-item" maxlength="120" autocomplete="off"></div>
-      <div class="form-group"><label for="pll-e-amount">Amount (&#8377;) *</label><input type="number" id="pll-e-amount" min="0" step="0.01" inputmode="decimal"></div>
-      <div class="form-group" id="pll-e-side-g"><label for="pll-e-side">Opening balance is *</label><select id="pll-e-side"><option value="cr">Cr — we owe the party</option><option value="dr">Dr — we paid in advance</option></select></div>
-      <div class="form-group" id="pll-e-paidby-g"><label for="pll-e-paidby">Paid by</label><input type="text" id="pll-e-paidby" maxlength="120" list="pll-e-paidbys" autocomplete="off" placeholder="Who made the payment"><datalist id="pll-e-paidbys"></datalist></div>
     </div>
-    <div class="form-group"><label for="pll-e-desc" id="pll-e-desc-l">Description</label><textarea id="pll-e-desc" maxlength="300" rows="2"></textarea></div>
+    <p class="pll-help">Add as many lines as you need, then save them all together. Cr adds to what we owe the party (a bill). Dr is a payment made. An Opening Balance is an amount already owed or paid in advance before you started using the app.</p>
+    <div id="pll-lines"></div>
+    <button type="button" class="btn btn-outline" id="pll-add-line">+ Add Entry</button>
     <div class="pll-after" id="pll-e-after" hidden></div>
     <div class="form-error" id="pll-e-error" role="alert"></div>
-    <div class="btn-group"><button type="button" class="btn btn-primary" id="pll-e-save">Save entry</button><button type="button" class="btn btn-outline" id="pll-e-cancel">Cancel</button></div>`;
+    <div class="btn-group"><button type="button" class="btn btn-primary" id="pll-e-save">Save entries</button><button type="button" class="btn btn-outline" id="pll-e-cancel">Cancel</button></div>
+    <datalist id="pll-e-parties"></datalist><datalist id="pll-e-paidbys"></datalist>`;
   const root = document.getElementById('pll-entry-overlay');
+  root.addEventListener('mousedown', ev => { PLL.downOnBackdrop = ev.target === root; });
   root.addEventListener('click', ev => {
-    if (ev.target === root || ev.target.closest('#pll-e-cancel') || ev.target.closest('#pll-e-close')) { closePllEntry(); return; }
-    const tb = ev.target.closest('[data-pll-type]'); if (tb) { setPllType(tb.dataset.pllType); return; }
+    if ((ev.target === root && PLL.downOnBackdrop && !PLL.lines.some(pllLineFilled)) || ev.target.closest('#pll-e-cancel') || ev.target.closest('#pll-e-close')) { closePllEntry(); return; }
+    if (ev.target.closest('#pll-add-line')) { pllAddLine(); return; }
+    const rm = ev.target.closest('[data-pll-rm]'); if (rm) { pllRemoveLine(Number(rm.dataset.pllRm)); return; }
     if (ev.target.closest('#pll-e-save')) savePllEntry();
   });
-  root.addEventListener('input', ev => { if (ev.target.id === 'pll-e-party') pllLookupBalance(); pllAfter(); });
-  root.addEventListener('change', ev => { if (ev.target.id === 'pll-e-party' || ev.target.id === 'pll-e-kind') pllLookupBalance(); pllAfter(); });
+  root.addEventListener('input', ev => { const f = ev.target.dataset && ev.target.dataset.pllF; if (!f) return; const i = Number(ev.target.closest('[data-pll-line]').dataset.pllLine); PLL.lines[i][f] = ev.target.value; pllAfter(); });
+  root.addEventListener('change', ev => {
+    const f = ev.target.dataset && ev.target.dataset.pllF; if (!f) return;
+    const i = Number(ev.target.closest('[data-pll-line]').dataset.pllLine); PLL.lines[i][f] = ev.target.value;
+    if (f === 'type') pllRenderLines(); pllAfter();
+  });
 }
-const PLL_HELP = {
-  cr: 'Cr adds to what we owe the party (a bill, or an amount that has become payable).',
-  dr: 'Dr is a payment made to the party; it reduces what we owe.',
-  open: 'The amount already owed (Cr) or paid in advance (Dr) before you started using the app. It is carried forward into the ledger.',
-};
-function setPllType(t) {
-  PLL.type = t;
-  document.querySelectorAll('[data-pll-type]').forEach(b => b.classList.toggle('active', b.dataset.pllType === t));
-  document.getElementById('pll-type-help').textContent = PLL_HELP[t];
-  const open = t === 'open';
-  document.getElementById('pll-e-date-l').textContent = open ? 'As on date *' : 'Date *';
-  document.getElementById('pll-e-site-g').hidden = open; document.getElementById('pll-e-item-g').hidden = open;
-  document.getElementById('pll-e-side-g').hidden = !open; document.getElementById('pll-e-paidby-g').hidden = t !== 'dr';
-  document.getElementById('pll-e-desc-l').textContent = open ? 'Note' : 'Description';
-  document.getElementById('pll-e-item').placeholder = t === 'dr' ? 'Payment' : 'Bill';
-  pllAfter();
+const pllLineFilled = l => !!(String(l.party || '').trim() || String(l.amount || '').trim() || String(l.item || '').trim());
+const pllNewLine = prev => ({ type: prev ? prev.type : 'cr', date: prev ? prev.date : today(), site: prev ? prev.site : '', party: prev ? prev.party : '', item: '', amount: '', paidby: '', desc: '' });
+
+function pllRenderLines() {
+  const el = document.getElementById('pll-lines'); if (!el) return;
+  el.innerHTML = PLL.lines.map((l, i) => {
+    const open = pllIsOpen(l.type), dr = l.type === 'dr';
+    const siteOpts = plSiteOptions(l.site || '');
+    return `<div class="pll-line" data-pll-line="${i}">
+      <div class="pll-line-head"><strong>Line ${i + 1}</strong>${PLL.lines.length > 1 ? `<button type="button" class="btn btn-outline btn-sm" data-pll-rm="${i}" aria-label="Remove line ${i + 1}">Remove</button>` : ''}</div>
+      <div class="form-grid">
+        <div class="form-group span-2"><label>What are you recording? *</label><select data-pll-f="type" aria-label="Line ${i + 1} type">${PLL_TYPES.map(([v, n]) => `<option value="${v}"${v === l.type ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select></div>
+        <div class="form-group"><label>${open ? 'As on date' : 'Date'} *</label><input type="date" data-pll-f="date" value="${esc(l.date)}"></div>
+        <div class="form-group"><label>Party *</label><input type="text" data-pll-f="party" maxlength="120" list="pll-e-parties" autocomplete="off" value="${esc(l.party)}"></div>
+        ${open ? '' : `<div class="form-group"><label>Site</label><select data-pll-f="site">${siteOpts}</select></div>
+        <div class="form-group"><label>Item</label><input type="text" data-pll-f="item" maxlength="120" autocomplete="off" placeholder="${dr ? 'Payment' : 'Bill'}" value="${esc(l.item)}"></div>`}
+        <div class="form-group"><label>Amount (&#8377;) *</label><input type="number" data-pll-f="amount" min="0" step="0.01" inputmode="decimal" value="${esc(l.amount)}"></div>
+        ${dr ? `<div class="form-group"><label>Paid by</label><input type="text" data-pll-f="paidby" maxlength="120" list="pll-e-paidbys" autocomplete="off" placeholder="Who made the payment" value="${esc(l.paidby)}"></div>` : ''}
+        <div class="form-group${open ? ' span-2' : ' full'}"><label>${open ? 'Note' : 'Description'}</label><input type="text" data-pll-f="desc" maxlength="300" autocomplete="off" value="${esc(l.desc)}"></div>
+      </div></div>`;
+  }).join('');
+  const add = document.getElementById('pll-add-line'); if (add) add.disabled = PLL.lines.length >= PLL_MAX_LINES;
 }
+function pllAddLine() {
+  if (PLL.lines.length >= PLL_MAX_LINES) { document.getElementById('pll-e-error').textContent = `You can save up to ${PLL_MAX_LINES} lines at a time.`; return; }
+  PLL.lines.push(pllNewLine(PLL.lines[PLL.lines.length - 1]));       // a new line starts like the one above (same type, date, site and party), so a run of bills is quick
+  pllRenderLines(); pllAfter();
+  const last = document.querySelector('#pll-lines .pll-line:last-child [data-pll-f="item"], #pll-lines .pll-line:last-child [data-pll-f="amount"]'); if (last) { last.focus(); last.scrollIntoView({ block: 'nearest' }); }
+}
+function pllRemoveLine(i) { if (PLL.lines.length <= 1) return; PLL.lines.splice(i, 1); pllRenderLines(); pllAfter(); }
+function pllAfter() {
+  const box = document.getElementById('pll-e-after'); if (!box) return;
+  let cr = 0, dr = 0, n = 0;
+  for (const l of PLL.lines) { const a = Number(l.amount) || 0; if (a <= 0) continue; n++; if (l.type === 'cr' || l.type === 'ocr') cr += a; else dr += a; }
+  if (!n) { box.hidden = true; return; }
+  box.hidden = false;
+  box.innerHTML = `<strong>${n} line${n === 1 ? '' : 's'} ready</strong><br>Cr (payable) <b class="pll-cr">&#8377;${num2(cr)}</b> &nbsp;·&nbsp; Dr (paid) <b class="pll-dr">&#8377;${num2(dr)}</b>`;
+}
+
 function openPllEntry() {
   const names = (PLL.options.parties || []).map(p => p.name);
   document.getElementById('pll-e-parties').innerHTML = names.map(n => `<option value="${esc(n)}"></option>`).join('');
-  document.getElementById('pll-e-site').innerHTML = plSiteOptions('');
   document.getElementById('pll-e-kind').value = PLL.kind === 'outside' ? 'outside' : 'company';
-  document.getElementById('pll-e-date').value = today();
-  ['pll-e-party', 'pll-e-item', 'pll-e-amount', 'pll-e-paidby', 'pll-e-desc'].forEach(id => { document.getElementById(id).value = ''; });
-  document.getElementById('pll-e-party').value = PLL.view === 'party' ? PLL.party : '';
-  document.getElementById('pll-e-side').value = 'cr'; document.getElementById('pll-e-error').textContent = '';
-  PLL.entryHint = null; setPllType('cr'); pllLookupBalance();
+  document.getElementById('pll-e-error').textContent = '';
+  const first = pllNewLine(null); if (PLL.view === 'party') first.party = PLL.party;
+  PLL.lines = [first]; pllRenderLines(); pllAfter();
   Payments.names().then(r => { document.getElementById('pll-e-paidbys').innerHTML = (r.paid_by || []).map(n => `<option value="${esc(n)}"></option>`).join(''); }).catch(() => {});
   document.getElementById('pll-entry-overlay').classList.add('open');
-  setTimeout(() => document.getElementById('pll-e-party').focus(), 60);
+  setTimeout(() => { const f = document.querySelector('#pll-lines [data-pll-f="party"]'); if (f) f.focus(); }, 60);
 }
 function closePllEntry() { document.getElementById('pll-entry-overlay').classList.remove('open'); }
 
-/** Shows the party's balance as it stands today (every entry, no date limits) so you see what the new entry changes. */
-function pllLookupBalance() {
-  const name = document.getElementById('pll-e-party').value.trim(), cur = document.getElementById('pll-e-cur'), my = ++PLL.entryLook || (PLL.entryLook = 1);
-  PLL.entryLook = my;
-  if (!name || !(PLL.options.parties || []).some(p => p.name.toLowerCase() === name.toLowerCase())) { PLL.entryHint = null; cur.textContent = name ? 'A new party — it will be created when you save.' : ''; pllAfter(); return; }
-  Payments.ledger({ party: name }).then(r => { if (PLL.entryLook !== my) return; PLL.entryHint = r.data.closing; cur.textContent = `Current balance: ₹${pllSided(r.data.closing)}`; pllAfter(); }).catch(() => { cur.textContent = ''; });
-}
-function pllAfter() {
-  const box = document.getElementById('pll-e-after'), amt = Number(document.getElementById('pll-e-amount').value) || 0, name = document.getElementById('pll-e-party').value.trim();
-  if (!box) return;
-  if (!name || !amt) { box.hidden = true; return; }
-  const cur = PLL.entryHint ? (PLL.entryHint.side === 'cr' ? 1 : -1) * PLL.entryHint.amount : 0;
-  const side = PLL.type === 'open' ? document.getElementById('pll-e-side').value : PLL.type;
-  const next = r2(cur + (side === 'cr' ? amt : -amt));
-  box.hidden = false; box.innerHTML = `<strong>After saving</strong><br>Closing balance for ${esc(name)} becomes <b>₹${pllSided({ amount: Math.abs(next), side: next < -0.004 ? 'dr' : 'cr' })}</b>${PLL.type === 'open' ? ' <small>(if this opening balance is dated before your other entries)</small>' : ''}`;
+/** Checks every line; returns a message naming the line that needs fixing, or null. */
+function pllCheckLines() {
+  for (let i = 0; i < PLL.lines.length; i++) {
+    const l = PLL.lines[i], n = `Line ${i + 1}: `;
+    if (!String(l.party || '').trim()) return n + 'enter the party name.';
+    if (!(Number(l.amount) > 0)) return n + 'enter an amount above 0.';
+    if (!l.date) return n + 'choose the date.';
+  }
+  return null;
 }
 
 async function savePllEntry() {
-  const g = id => document.getElementById(id).value.trim(), err = document.getElementById('pll-e-error'), btn = document.getElementById('pll-e-save');
+  const err = document.getElementById('pll-e-error'), btn = document.getElementById('pll-e-save');
   err.textContent = '';
-  const party = g('pll-e-party'), amount = g('pll-e-amount'), date = g('pll-e-date'), kind = g('pll-e-kind');
-  if (!party) { err.textContent = 'Enter the party name.'; return; }
-  if (!(Number(amount) > 0)) { err.textContent = 'Enter an amount above 0.'; return; }
-  if (!date) { err.textContent = 'Choose the date.'; return; }
-  btn.disabled = true;
-  try {
-    if (PLL.type === 'open') await Payments.addOpening({ kind, party_name: party, as_on: date, side: g('pll-e-side'), amount, note: g('pll-e-desc') });
+  const used = PLL.lines.filter(pllLineFilled);
+  if (!used.length) { err.textContent = 'Enter at least one line.'; return; }
+  PLL.lines = used;                                   // an untouched blank line is simply ignored
+  const bad = pllCheckLines(); if (bad) { pllRenderLines(); err.textContent = bad; return; }
+  const kind = document.getElementById('pll-e-kind').value;
+  const t = s => String(s || '').trim();
+  const lineItems = [], openings = [];
+  PLL.lines.forEach(l => {
+    if (pllIsOpen(l.type)) openings.push({ l, body: { kind, party_name: t(l.party), as_on: l.date, side: l.type === 'ocr' ? 'cr' : 'dr', amount: l.amount, note: t(l.desc) } });
     else {
-      const line = { pay_date: date, party_name: party, item: g('pll-e-item') || (PLL.type === 'cr' ? 'Bill' : 'Payment'), description: g('pll-e-desc'), site: g('pll-e-site'), paid_by: PLL.type === 'dr' ? g('pll-e-paidby') : '' };
-      line[PLL.type === 'cr' ? 'payable' : 'paid'] = amount;
-      await Payments.create({ kind, items: [line] });
+      const x = { pay_date: l.date, party_name: t(l.party), item: t(l.item) || (l.type === 'cr' ? 'Bill' : 'Payment'), description: t(l.desc), site: l.site || '', paid_by: l.type === 'dr' ? t(l.paidby) : '' };
+      x[l.type === 'cr' ? 'payable' : 'paid'] = l.amount;
+      lineItems.push({ l, body: x });
     }
-    closePllEntry(); showToast('Entry saved.');
-    PLL.party = PLL.view === 'party' ? (PLL.party || party) : PLL.party;
+  });
+  btn.disabled = true;
+  let saved = 0;
+  try {
+    if (lineItems.length) {
+      await Payments.create({ kind, items: lineItems.map(x => x.body) });       // all the bills / payments together, or none
+      saved += lineItems.length; PLL.lines = PLL.lines.filter(l => !lineItems.some(x => x.l === l));
+    }
+    for (const o of openings) { await Payments.addOpening(o.body); saved++; PLL.lines = PLL.lines.filter(l => l !== o.l); }
+    closePllEntry(); showToast(saved === 1 ? 'Entry saved.' : `${saved} entries saved.`);
+    if (PLL.view === 'party' && !PLL.party) PLL.party = t(used[0].party);
     if (PL.rows) { PL.rows.company = null; PL.rows.outside = null; }
     loadPlLedgerView();
-  } catch (e) { err.textContent = e.message || 'The entry could not be saved.'; }
-  finally { btn.disabled = false; }
+  } catch (e) {
+    // whatever was saved before the problem is already out of the list; what is left still needs saving
+    if (saved) { pllRenderLines(); pllAfter(); loadPlLedgerView(); err.textContent = `${saved} line${saved === 1 ? ' was' : 's were'} saved. The rest were not: ${e.message || 'please try again.'}`; }
+    else err.textContent = e.message || 'The entries could not be saved.';
+  } finally { btn.disabled = false; }
 }
 
 /** Called by app.js when Excel / PDF is chosen in the ledger's Export menu. */

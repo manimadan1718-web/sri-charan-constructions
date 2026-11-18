@@ -2420,3 +2420,27 @@ body:not(.can-payments-add) .pll-head-actions .perm-payments-add { display: none
   .pll-cards { gap: 10px; } .pll-stat { padding: 12px; } .pll-stat-v { font-size: 17px; }
   .pll-type-btn { font-size: 12.5px; padding: 8px 4px; }
 }
+
+/* ── multi-line entry: the ledger pop-up and Data Entry's "+ Add Entry" list ───────────────── */
+.pll-modal { max-width: 940px; width: 100%; }
+.pll-modal .pll-top { grid-template-columns: minmax(0, 320px); margin-bottom: 6px; }
+.pll-modal .pll-help { margin: 4px 0 14px; font-size: 13px; line-height: 1.5; color: var(--steel); }
+.pll-modal > #pll-entry-body { max-height: calc(100vh - 150px); overflow-y: auto; padding-right: 2px; }
+.pll-line { margin: 0 0 14px; padding: 14px 16px 6px; background: #fff; border: 1px solid var(--line); border-left: 4px solid var(--hazard); border-radius: 8px; }
+.pll-line-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.pll-line .form-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.pll-line .form-group.span-2 { grid-column: span 2; }
+.pll-line .form-group.full { grid-column: 1 / -1; }
+#pll-add-line { margin: 2px 0 14px; }
+@media (max-width: 760px) { .pll-line .form-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 480px) { .pll-line .form-grid { grid-template-columns: 1fr; } .pll-line .form-group.span-2 { grid-column: auto; } }
+.eq-card { margin: 18px 0 4px; padding: 14px 16px; background: #FDF0E0; border: 1px solid #F0D2AC; border-left: 4px solid var(--hazard); border-radius: 8px; }
+.eq-head { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.eq-sum { font-size: 13px; color: var(--steel); font-weight: 600; }
+.eq-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.eq-item { display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: #fff; border: 1px solid var(--line); border-radius: 6px; }
+.eq-n { flex: none; width: 26px; height: 26px; border-radius: 50%; background: var(--ink); color: #fff; font-size: 13px; font-weight: 700; display: grid; place-items: center; }
+.eq-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 13.5px; }
+.eq-body span { color: var(--steel); overflow-wrap: anywhere; }
+.eq-hint { margin-top: 10px; }
+#add-entry-btn, #save-entry-btn { min-height: 44px; }

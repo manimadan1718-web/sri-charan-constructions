@@ -192,9 +192,15 @@
       <p class="photo-err" id="pg-err" role="alert"></p>
     </div>
 
-    <div class="btn-group">
-      <button class="btn btn-primary" onclick="saveEntry()">Save Entry</button>
+    <div class="eq-card" id="eq-card" hidden>
+      <div class="eq-head"><strong id="eq-title">Entries ready to save</strong><span class="eq-sum" id="eq-sum"></span></div>
+      <ol class="eq-list" id="eq-list"></ol>
     </div>
+    <div class="btn-group">
+      <button type="button" class="btn btn-outline" id="add-entry-btn" onclick="addEntryToList()">+ Add Entry</button>
+      <button type="button" class="btn btn-primary" id="save-entry-btn" onclick="saveEntry()">Save Entry</button>
+    </div>
+    <p class="form-hint eq-hint">To enter more vehicles for the same day and site, press <strong>+ Add Entry</strong> after each one, then <strong>Save</strong> once.</p>
   </div>
 
   <div class="card day-bp" id="day-breakup-card">
@@ -1458,7 +1464,7 @@
 
 <!-- ═══════════════ EDIT PAYMENT (Admin) ═══════════════ -->
 <div class="modal-overlay" id="pll-entry-overlay">
-  <div class="modal-card modal-small" role="dialog" aria-modal="true" aria-labelledby="pll-entry-title">
+  <div class="modal-card pll-modal" role="dialog" aria-modal="true" aria-labelledby="pll-entry-title">
     <div class="card-header">
       <div class="card-title"><span id="pll-entry-title">Add ledger entry</span></div>
       <button type="button" class="btn btn-outline btn-sm" id="pll-e-close">Close</button>
@@ -1569,6 +1575,7 @@
 <script src="/js/api.js"></script>
 <script src="/js/app.js"></script>
 <script src="/js/payledger.js"></script>
+<script src="/js/entryqueue.js"></script>
 <script src="/js/pwa.js"></script>
 </body>
 </html>

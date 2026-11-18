@@ -7,7 +7,7 @@
  *     The cache is only a fallback for when the network fails.
  *   • Bump VERSION whenever you change the list below, so old caches are cleaned up.
  */
-const VERSION = 'v26';
+const VERSION = 'v27';
 const SHELL   = `scc-shell-${VERSION}`;
 const RUNTIME = `scc-runtime-${VERSION}`;
 
@@ -19,6 +19,7 @@ const PRECACHE = [
   '/js/api.js',
   '/js/app.js',
   '/js/payledger.js',
+  '/js/entryqueue.js',
   '/js/i18n.js',
   '/js/i18n-data.js',
   '/fonts/ibm-plex-sans-latin-wght-normal.woff2',     // the offline page's font

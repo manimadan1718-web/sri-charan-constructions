@@ -1810,6 +1810,8 @@ const SPECIAL_ACTIONS = {
   document_printed:    { label: 'Document printed',    cls: 'pill-sky'  },
   progress_deleted:    { label: 'Progress picture deleted', cls: 'pill-red' },
   backup_downloaded:   { label: 'Full backup downloaded', cls: 'pill-sky' },
+  pin_changed:         { label: 'PIN changed',            cls: 'pill-orange' },
+  feedback_sent:       { label: 'Feedback sent',          cls: 'pill-sky' },
   diesel_stock_added:   { label: 'Diesel stock added', cls: 'pill-green' },
   diesel_stock_updated: { label: 'Diesel stock changed', cls: 'pill-orange' },
   diesel_stock_deleted: { label: 'Diesel stock deleted', cls: 'pill-red' },

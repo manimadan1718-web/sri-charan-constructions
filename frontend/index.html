@@ -35,7 +35,14 @@
   <nav class="crumbs" id="crumbs" aria-label="You are here"><span class="crumb-root">Home</span><span class="crumb-sep" aria-hidden="true">/</span><strong id="crumb-page"></strong></nav>
   <div class="header-right">
     <span class="header-date" id="header-date"></span>
-    <span class="header-user" id="header-user"></span>
+    <div class="um-wrap">
+      <span class="header-user" id="header-user"></span>
+      <div class="um-menu" id="um-menu" role="menu" aria-label="Your account" hidden>
+        <button type="button" role="menuitem" data-um="guide"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5"/><path d="M9 8h6M9 12h6"/></svg><span>Learn Guide</span></button>
+        <button type="button" role="menuitem" data-um="feedback"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Feedback</span></button>
+        <button type="button" role="menuitem" data-um="pin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span>Change PIN</span></button>
+        <button type="button" role="menuitem" data-um="inbox" id="um-inbox" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.7 4H7.3a2 2 0 0 0-1.8 1.1z"/></svg><span>Feedback inbox</span><b class="um-badge" id="um-inbox-n" hidden></b></button>
+      </div>
     <button class="btn btn-outline btn-sm logout-btn" onclick="confirmLogout()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>Logout</button>
   </div>
 <div class="bell-wrap" id="bell-wrap" hidden>
@@ -1463,6 +1470,57 @@
 </div>
 
 <!-- ═══════════════ EDIT PAYMENT (Admin) ═══════════════ -->
+<div class="modal-overlay gd-overlay" id="guide-overlay">
+  <div class="gd-card" role="dialog" aria-modal="true" aria-labelledby="gd-heading">
+    <div class="gd-top">
+      <h2 id="gd-heading">Learn Guide</h2>
+      <input type="search" id="gd-search" placeholder="Search the guide…" aria-label="Search the guide" autocomplete="off">
+      <button type="button" class="btn btn-outline btn-sm" id="gd-close">Close</button>
+    </div>
+    <div class="gd-layout">
+      <nav class="gd-side" aria-label="Guide sections"><div id="gd-nav"></div></nav>
+      <div class="gd-main" id="gd-main">
+        <select id="gd-select" class="gd-select" aria-label="Choose a section"></select>
+        <div id="gd-body" class="gd-body"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="pin-overlay">
+  <div class="modal-card modal-small" role="dialog" aria-modal="true" aria-labelledby="pin-title">
+    <div class="card-header"><div class="card-title"><span id="pin-title">Change PIN</span></div><button type="button" class="btn btn-outline btn-sm" onclick="closeChangePin()">Close</button></div>
+    <div class="form-grid one-col">
+      <div class="form-group"><label for="pin-cur">Current PIN *</label><input type="password" id="pin-cur" maxlength="10" autocomplete="current-password" inputmode="text"></div>
+      <div class="form-group"><label for="pin-new">New PIN *</label><input type="password" id="pin-new" maxlength="10" autocomplete="new-password" inputmode="text"><small class="pll-help">4 to 10 characters, no spaces. Nobody else may use the same PIN.</small></div>
+      <div class="form-group"><label for="pin-new2">Type the new PIN again *</label><input type="password" id="pin-new2" maxlength="10" autocomplete="new-password" inputmode="text"></div>
+      <label class="pin-show"><input type="checkbox" id="pin-show"> Show the PINs</label>
+    </div>
+    <div class="form-error" id="pin-err" role="alert"></div>
+    <div class="btn-group"><button type="button" class="btn btn-primary" id="pin-save" onclick="saveChangePin()">Change PIN</button><button type="button" class="btn btn-outline" onclick="closeChangePin()">Cancel</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="fb-overlay">
+  <div class="modal-card modal-small" role="dialog" aria-modal="true" aria-labelledby="fb-title">
+    <div class="card-header"><div class="card-title"><span id="fb-title">Send feedback</span></div><button type="button" class="btn btn-outline btn-sm" onclick="closeFeedback()">Close</button></div>
+    <div class="form-grid one-col">
+      <div class="form-group"><label for="fb-kind">What are you sending? *</label><select id="fb-kind"><option value="suggestion">Suggestion &mdash; an idea to make the app better</option><option value="problem">Problem &mdash; something is not working</option><option value="question">Question &mdash; I need help</option></select></div>
+      <div class="form-group"><label for="fb-msg">Your message *</label><textarea id="fb-msg" rows="6" maxlength="1500" placeholder="Tell us what you were doing and what you would like."></textarea><small class="pll-help" id="fb-count">0 / 1500</small></div>
+    </div>
+    <p class="pll-help">The Admin reads your message. Please do not write PINs or passwords here.</p>
+    <div class="form-error" id="fb-err" role="alert"></div>
+    <div class="btn-group"><button type="button" class="btn btn-primary" id="fb-send" onclick="sendFeedback()">Send</button><button type="button" class="btn btn-outline" onclick="closeFeedback()">Cancel</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="inbox-overlay">
+  <div class="modal-card pll-modal" role="dialog" aria-modal="true" aria-labelledby="inbox-title">
+    <div class="card-header"><div class="card-title"><span id="inbox-title">Feedback inbox</span> <small class="fb-sub" id="inbox-sub"></small></div><button type="button" class="btn btn-outline btn-sm" onclick="closeInbox()">Close</button></div>
+    <div id="inbox-list" class="fb-list" aria-live="polite"></div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="pll-entry-overlay">
   <div class="modal-card pll-modal" role="dialog" aria-modal="true" aria-labelledby="pll-entry-title">
     <div class="card-header">
@@ -1547,6 +1605,12 @@
   </div>
   <nav class="mm-nav" id="mm-nav" aria-label="Sections"></nav>
   <div class="mm-foot">
+    <div class="mm-account" id="mm-account">
+      <button type="button" class="btn btn-outline" data-um="guide">Learn Guide</button>
+      <button type="button" class="btn btn-outline" data-um="feedback">Feedback</button>
+      <button type="button" class="btn btn-outline" data-um="pin">Change PIN</button>
+      <button type="button" class="btn btn-outline" data-um="inbox" id="mm-inbox" hidden>Feedback inbox</button>
+    </div>
     <button type="button" class="btn btn-outline" onclick="confirmLogout()">Log out</button>
     <footer class="site-footer">
       <span>&copy; <span data-year>2026</span> Sri Charan Constructions</span>
@@ -1576,6 +1640,8 @@
 <script src="/js/app.js"></script>
 <script src="/js/payledger.js"></script>
 <script src="/js/entryqueue.js"></script>
+<script src="/js/guide.js"></script>
+<script src="/js/account.js"></script>
 <script src="/js/pwa.js"></script>
 </body>
 </html>

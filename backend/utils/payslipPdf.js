@@ -16,10 +16,15 @@ async function build(lines, month, cfg) {
     let y = 40;
     if (cfg.slip.logo) { try { doc.image(path.join(__dirname, '../../frontend/img/logo.png'), 40, y - 2, { width: 38 }); } catch { /* optional */ } }
     doc.font('Helvetica-Bold').fontSize(16).fillColor(HAZ).text(pdfText(cfg.company_name.toUpperCase()), cfg.slip.logo ? 88 : 40, y, { lineBreak: false });
-    if (cfg.slip.address_on && cfg.slip.address) doc.font('Helvetica').fontSize(8.5).fillColor(STEEL).text(pdfText(cfg.slip.address), cfg.slip.logo ? 88 : 40, y + 20, { width: 320 });
+    let hdrH = 52; const tx = cfg.slip.logo ? 88 : 40;
+    if (cfg.slip.address_on && cfg.slip.address) {
+      doc.font('Helvetica').fontSize(8.5); const ah = doc.heightOfString(pdfText(cfg.slip.address), { width: 330 });
+      doc.fillColor(STEEL).text(pdfText(cfg.slip.address), tx, y + 20, { width: 330 }); hdrH = Math.max(hdrH, 24 + ah + 4);
+    }
+    if (cfg.slip.gstin) { doc.font('Helvetica-Bold').fontSize(8.5).fillColor(INK).text('GSTIN: ' + pdfText(cfg.slip.gstin), tx, y + hdrH - 2, { width: 330, lineBreak: false }); hdrH += 12; }
     doc.font('Helvetica-Bold').fontSize(13).fillColor(INK).text('PAY SLIP', 40, y, { width: W, align: 'right' });
     doc.font('Helvetica').fontSize(10).fillColor(STEEL).text(P.monthName(month), 40, y + 17, { width: W, align: 'right' });
-    y += 52; doc.moveTo(40, y).lineTo(40 + W, y).lineWidth(1.5).strokeColor(HAZ).stroke(); y += 12;
+    y += hdrH; doc.moveTo(40, y).lineTo(40 + W, y).lineWidth(1.5).strokeColor(HAZ).stroke(); y += 12;
     const kv = (x, yy, k, v, w) => { doc.font('Helvetica').fontSize(8).fillColor(STEEL).text(k, x, yy, { width: w, lineBreak: false }); doc.font('Helvetica-Bold').fontSize(9.5).fillColor(INK).text(pdfText(v || '-'), x, yy + 10, { width: w, lineBreak: false, ellipsis: true }); };
     const cw = W / 3;
     kv(40, y, 'Employee', l.name, cw - 8); kv(40 + cw, y, 'Employee ID', l.emp_code, cw - 8); kv(40 + 2 * cw, y, 'Designation', l.designation, cw - 8); y += 30;

@@ -2650,3 +2650,26 @@ body.pr-open { overflow: hidden; }
 .pr-adj input[type=text], .pr-adj input:not([type]) { flex: 1 1 150px; }
 .pr-chk input { width: auto; }
 @media (max-width: 760px) { .pr-filters input, .pr-filters select { flex: 1 1 100%; } }
+
+/* ── Payroll round 2: loans, holidays, share, pay slip preview — marker: payroll-ui-2 ── */
+.pr-chip.share { background: #E3EEFB; color: #1D4ED8; } .pr-chip.info { background: #E3EEFB; color: #1D4ED8; }
+.pr-wa { background: #1FA855 !important; border: 1px solid #1FA855 !important; color: #fff !important; display: inline-flex; align-items: center; gap: 7px; font-weight: 600; }
+.pr-wa:hover { background: #178a45 !important; }
+.c-hol { background: #EDE7F6 !important; color: #5B3FA0 !important; }
+.pr-tabs { margin-bottom: 14px; } .pr-rowact { white-space: nowrap; text-align: right; }
+.pr-steps3 { list-style: none; padding: 0; margin: 0 0 12px; display: flex; flex-direction: column; gap: 10px; counter-reset: s; }
+.pr-steps3 li { counter-increment: s; display: grid; grid-template-columns: 28px 1fr; gap: 0 12px; } .pr-steps3 li::before { content: counter(s); grid-row: span 2; width: 28px; height: 28px; border-radius: 50%; background: #1B2433; color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 13px; } .pr-steps3 small { color: #5B6678; font-size: 13px; }
+.pr-wamsg { background: #E7F5EC; border: 1px solid #CFE8D8; border-radius: 8px; padding: 12px 14px; font-size: 14px; line-height: 1.5; margin-bottom: 12px; } .pr-wamsg small { display: block; font-weight: 700; color: #1F7A4D; letter-spacing: .05em; margin-bottom: 3px; font-size: 11px; }
+.pr-slipbg { background: #E9ECF1; padding: 16px; border-radius: 8px; overflow: auto; margin-bottom: 14px; }
+.pr-slip { background: #fff; border: 1px solid #C9CFDA; box-shadow: 0 4px 16px rgba(17,24,32,.1); padding: 24px 28px; display: flex; flex-direction: column; gap: 14px; max-width: 760px; margin: 0 auto; box-sizing: border-box; }
+.pr-slip-h { display: flex; gap: 14px; align-items: flex-start; padding-bottom: 12px; border-bottom: 2px solid #E2740A; margin-bottom: 0; }
+.pr-slip-logo { width: 48px; height: 48px; border-radius: 50%; flex: none; object-fit: cover; }
+.pr-slip-co { flex: 1 1 auto; min-width: 0; } .pr-slip-co b { display: block; color: #9A3412; font-size: 19px; letter-spacing: .02em; margin: 0; }
+.pr-slip-co small { display: block; color: #5B6678; font-size: 12px; line-height: 1.45; margin-top: 3px; } .pr-slip-co small strong { color: #1B2433; }
+.pr-slip-ti { flex: none; text-align: right; white-space: nowrap; } .pr-slip-ti b { display: block; font-size: 19px; } .pr-slip-ti small { color: #5B6678; font-size: 13px; }
+.pr-slip-g { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 16px; margin: 0; } .pr-slip-g small { display: block; color: #5B6678; font-weight: 600; font-size: 11px; letter-spacing: .03em; } .pr-slip-g b { font-size: 13.5px; overflow-wrap: anywhere; }
+.pr-slip-two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.pr-slip-t { width: 100%; border-collapse: collapse; font-size: 13px; } .pr-slip-t th { background: #1B2433; color: #fff; padding: 8px 10px; text-align: left; font-size: 11.5px; letter-spacing: .04em; } .pr-slip-t td { padding: 7px 10px; border-bottom: 1px solid #E3E7EE; } .pr-slip-t .r { text-align: right; font-variant-numeric: tabular-nums; } .pr-slip-t tfoot td { background: #F3F5F9; font-weight: 700; }
+.pr-slip-net { display: flex; justify-content: space-between; align-items: center; gap: 12px; background: #1B2433; color: #fff; border-radius: 4px; padding: 12px 16px; margin: 0; } .pr-slip-net small { display: block; color: #C5CCD8; font-weight: 700; letter-spacing: .04em; font-size: 11.5px; } .pr-slip-net span { font-size: 12.5px; color: #E3E7EE; } .pr-slip-net b { font-size: 25px; white-space: nowrap; }
+.pr-slip-f { text-align: center; font-style: italic; color: #5B6678; font-size: 11.5px; margin: 0; }
+@media (max-width: 760px) { .pr-slip { padding: 16px 14px; } .pr-slip-g { grid-template-columns: 1fr 1fr; } .pr-slip-two { grid-template-columns: 1fr; } .pr-slip-net b { font-size: 20px; } .pr-rowact { white-space: normal; text-align: left; } .pr-slipbg { padding: 8px; } }

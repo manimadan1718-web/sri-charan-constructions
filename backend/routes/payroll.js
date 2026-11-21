@@ -82,16 +82,22 @@ async function linesOf(month) {
 const inMonth = (e, month) => String(e.joined_on).slice(0, 10) <= P.dayOf(month, P.daysInMonth(month)) && (!e.left_on || String(e.left_on).slice(0, 10) >= P.dayOf(month, 1));
 
 /** The payroll of a month: while open it is worked out now; once finalised the saved figures are shown. */
+async function loansOf() {
+  const { data, error } = await supabase.from('payroll_loans').select('*').limit(5000);
+  if (error) { if (isSetup(error)) return []; throw error; }       // before SQL 20 is run there are simply no loans
+  return (data || []).map(l => ({ ...l, amount: Number(l.amount), emi: Number(l.emi) }));
+}
 async function payrollOf(month) {
-  const [cfg, mrow, emps, att, lines] = await Promise.all([getConfig(), monthRow(month), allEmployees(), attendanceOf(month), linesOf(month)]);
+  const [cfg, mrow, emps, att, lines, loans] = await Promise.all([getConfig(), monthRow(month), allEmployees(), attendanceOf(month), linesOf(month), loansOf()]);
   const recs = recsByEmp(att), byEmp = {}; lines.forEach(l => { byEmp[l.employee_id] = l; });
   const frozen = mrow.status === 'finalised' || mrow.status === 'paid';
   const out = [];
   for (const e of emps) {
     const l = byEmp[e.id];
-    if (frozen) { if (l && l.data) out.push({ ...l.data, payslip_at: l.payslip_at || null }); continue; }
+    if (frozen) { if (l && l.data) out.push({ ...l.data, payslip_at: l.payslip_at || null, shared_at: l.shared_at || null }); continue; }
     if (!inMonth(e, month)) continue;
-    out.push({ ...P.computeLine(e, month, recs[e.id] || {}, l && l.adjustments, cfg), payslip_at: l && l.payslip_at || null });
+    const auto = loans.filter(x => x.employee_id === e.id).map(x => ({ kind: 'deduction', label: `${x.kind === 'loan' ? 'Loan' : 'Advance'} instalment`, amount: P.loanInstalment(x, month), auto: true })).filter(a => a.amount > 0);
+    out.push({ ...P.computeLine(e, month, recs[e.id] || {}, ((l && l.adjustments) || []).concat(auto), cfg), payslip_at: l && l.payslip_at || null, shared_at: l && l.shared_at || null });
   }
   return { cfg, month: mrow, lines: out, totals: P.totals(out) };
 }
@@ -170,7 +176,7 @@ router.get('/attendance', requirePerm('payroll.view'), async (req, res) => {
       const s = P.paidSummary(e, month, recs[e.id] || {}, cfg);
       return { id: e.id, emp_code: e.emp_code, name: e.name, designation: e.designation, site: e.site, joined_on: String(e.joined_on).slice(0, 10), left_on: e.left_on, days: recs[e.id] || {}, summary: s };
     });
-    res.json({ success: true, month, days: P.daysInMonth(month), weekly_off: cfg.weekly_off, locked: !!mrow.attendance_locked, status: mrow.status, rows });
+    res.json({ success: true, month, days: P.daysInMonth(month), weekly_off: cfg.weekly_off, holidays: cfg.holidays.filter(h => h.date.slice(0, 7) === month), locked: !!mrow.attendance_locked, status: mrow.status, rows });
   } catch (e) { fail(res, e, 'GET /payroll/attendance'); }
 });
 async function writeAttendance(req, items, month) {
@@ -251,7 +257,7 @@ router.put('/months/:month/adjustments', requirePerm('payroll.run'), async (req,
     const id = req.body.employee_id; if (!ID_RE.test(String(id))) return bad(res, 'Unknown employee.');
     const list = Array.isArray(req.body.adjustments) ? req.body.adjustments : []; if (list.length > 20) return bad(res, 'Too many lines.');
     const adj = [];
-    for (const a of list) {
+    for (const a of list.filter(x => !(x && x.auto))) {
       if (!['earning', 'deduction'].includes(a.kind)) return bad(res, 'Choose earning or deduction.');
       const amt = Number(a.amount); if (!Number.isFinite(amt) || amt <= 0 || amt > 10000000) return bad(res, 'Each amount must be more than 0.');
       const label = P.clean(a.label, 60); if (!label) return bad(res, 'Give every line a name (for example Advance).');
@@ -264,25 +270,30 @@ router.put('/months/:month/adjustments', requirePerm('payroll.run'), async (req,
     res.json({ success: true, ...(await payrollOf(month)) });
   } catch (e) { fail(res, e, 'PUT adjustments'); }
 });
-const FLOW = { draft: ['reviewed'], reviewed: ['finalised', 'draft'], finalised: ['paid', 'draft'], paid: [] };
+const FLOW = { draft: ['reviewed'], reviewed: ['finalised', 'draft'], finalised: ['paid', 'draft'], paid: ['draft'] };
+const PAY_MODES = { bank: 'Bank transfer', upi: 'UPI', cash: 'Cash', cheque: 'Cheque' };
 router.post('/months/:month/status', requirePerm('payroll.run'), async (req, res) => {
   try {
     const month = monthOf(req, res); if (!month) return;
     const to = String(req.body.to || ''), cur = await monthRow(month), now = new Date().toISOString();
     if (!(FLOW[cur.status] || []).includes(to)) return bad(res, `A ${cur.status} payroll cannot be moved to ${to}.`, 409);
     let reason = null;
-    if (to === 'draft') { reason = cleanReason(req.body.reason); const re = reasonError(reason); if (re) return bad(res, re); if (cur.status === 'paid') return bad(res, 'A paid payroll cannot be reopened.', 409); }
+    if (to === 'draft') { reason = cleanReason(req.body.reason); const re = reasonError(reason); if (re) return bad(res, re); if (cur.status === 'paid' && !hasPerm(req, 'payroll.config')) return bad(res, 'Only the Admin can reopen a month that is already paid.', 403); }
     await ensureMonth(month);
     const patch = { status: to, updated_at: now };
     if (to === 'finalised') {
       const pr = await payrollOf(month);
       if (!pr.lines.length) return bad(res, 'There are no employees in this month.');
-      for (const l of pr.lines) { const { error } = await supabase.from('payroll_lines').upsert({ month, employee_id: l.employee_id, data: l, adjustments: l.adjustments }, { onConflict: 'month,employee_id' }); if (error) throw error; }
+      for (const l of pr.lines) { const { error } = await supabase.from('payroll_lines').upsert({ month, employee_id: l.employee_id, data: l, adjustments: l.adjustments.filter(a => !a.auto) }, { onConflict: 'month,employee_id' }); if (error) throw error; }
       Object.assign(patch, { attendance_locked: true, finalised_by_name: who(req), finalised_at: now });
     } else if (to === 'draft') {
-      const { error } = await supabase.from('payroll_lines').update({ data: null, payslip_at: null }).eq('month', month); if (error) throw error;
-      Object.assign(patch, { finalised_by_name: null, finalised_at: null });
-    } else if (to === 'paid') Object.assign(patch, { paid_by_name: who(req), paid_at: now });
+      const { error } = await supabase.from('payroll_lines').update({ data: null, payslip_at: null, shared_at: null }).eq('month', month); if (error) throw error;
+      Object.assign(patch, { attendance_locked: false, finalised_by_name: null, finalised_at: null, paid_by_name: null, paid_at: null, paid_on: null, pay_mode: null, pay_ref: null, pay_remarks: null });
+    } else if (to === 'paid') {
+      const paid_on = String(req.body.paid_on || P.todayIST()).trim(); if (!P.validDay(paid_on)) return bad(res, 'Choose the date paid.');
+      const pay_mode = String(req.body.pay_mode || 'bank'); if (!PAY_MODES[pay_mode]) return bad(res, 'Choose how it was paid.');
+      Object.assign(patch, { paid_by_name: who(req), paid_at: now, paid_on, pay_mode, pay_ref: P.clean(req.body.pay_ref, 40), pay_remarks: P.clean(req.body.pay_remarks, 120) });
+    }
     const { error } = await supabase.from('payroll_months').update(patch).eq('month', month); if (error) throw error;
     await logActivity(req, { category: 'payroll', action: 'payroll_' + (to === 'draft' ? 'reopened' : to), entityType: 'payroll', entityLabel: `Payroll ${P.monthName(month)}`, reason });
     res.json({ success: true, ...(await payrollOf(month)) });
@@ -347,6 +358,133 @@ router.get('/payslips/:month/:id.pdf', requirePerm('payroll.payslips'), async (r
     res.setHeader('Content-Disposition', `attachment; filename="${req.params.id === 'all' ? `PaySlips-${month}` : `PaySlip-${lines[0].emp_code}-${month}`}.pdf"`);
     res.send(pdf);
   } catch (e) { fail(res, e, 'GET payslip pdf'); }
+});
+
+/* ── month controls (Admin: payroll.config) ── */
+router.get('/months', requirePerm('payroll.config'), async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('payroll_months').select('*').limit(500); if (error) throw error;
+    const by = {}; (data || []).forEach(m => { by[m.month] = m; });
+    const out = []; let m = P.todayIST().slice(0, 7);
+    for (let i = 0; i < 14; i++) { const r = by[m] || { month: m, status: 'draft', attendance_locked: false }; out.push({ month: m, status: r.status || 'draft', attendance_locked: !!r.attendance_locked, finalised_by_name: r.finalised_by_name || null, finalised_at: r.finalised_at || null, paid_at: r.paid_at || null, paid_on: r.paid_on || null }); m = P.prevMonth(m); }
+    res.json({ success: true, months: out });
+  } catch (e) { fail(res, e, 'GET /payroll/months'); }
+});
+
+/* ── advances and loans ── */
+router.get('/loans', requirePerm('payroll.run'), async (req, res) => {
+  try {
+    const [loans, emps, mrows] = await Promise.all([loansOf(), allEmployees(), supabase.from('payroll_months').select('month,status').limit(500)]);
+    const done = new Set(((mrows.data) || []).filter(x => x.status === 'finalised' || x.status === 'paid').map(x => x.month));
+    const name = {}; emps.forEach(e => { name[e.id] = e.name; });
+    const cur = P.todayIST().slice(0, 7);
+    const out = loans.sort((a, b) => (a.given_on < b.given_on ? 1 : -1)).map(l => {
+      const ms = P.loanMonths(l), paid = ms.filter(x => done.has(x)), paidAmt = paid.reduce((t, x) => t + P.loanInstalment(l, x), 0);
+      const next = l.status === 'closed' ? null : ms.find(x => !done.has(x)) || null;
+      const balance = l.status === 'closed' ? 0 : Math.max(0, l.amount - paidAmt);
+      return { id: l.id, employee_id: l.employee_id, employee: name[l.employee_id] || '', kind: l.kind, amount: l.amount, emi: l.emi, instalments: l.instalments, given_on: String(l.given_on).slice(0, 10), first_month: l.first_month, paid_count: paid.length, balance, next_month: next, this_month: l.status === 'active' ? P.loanInstalment(l, cur) : 0, status: l.status === 'closed' || balance === 0 ? 'closed' : 'active', note: l.note, closed_reason: l.closed_reason || null };
+    });
+    res.json({ success: true, loans: out, outstanding: out.reduce((t, l) => t + l.balance, 0), this_month: out.reduce((t, l) => t + l.this_month, 0), employees: emps.filter(e => e.status === 'active').map(e => ({ id: e.id, name: e.name, emp_code: e.emp_code })) });
+  } catch (e) { fail(res, e, 'GET /payroll/loans'); }
+});
+router.post('/loans', requirePerm('payroll.run'), async (req, res) => {
+  try {
+    const p = P.parseLoan(req.body); if (p.error) return bad(res, p.error);
+    const id = req.body.employee_id; if (!ID_RE.test(String(id))) return bad(res, 'Choose the employee.');
+    const { data: emp } = await supabase.from('payroll_employees').select('id,name').eq('id', id).maybeSingle(); if (!emp) return bad(res, 'Employee not found.', 404);
+    const frozen = (await monthRow(p.fields.first_month)).status; if (frozen === 'finalised' || frozen === 'paid') return bad(res, `${P.monthName(p.fields.first_month)} is already finalised. Choose a later first deduction month.`);
+    const { data, error } = await supabase.from('payroll_loans').insert({ ...p.fields, employee_id: id, created_by_name: who(req) }).select().single(); if (error) throw error;
+    await logActivity(req, { category: 'payroll', action: 'loan_added', entityType: 'payroll_loan', entityId: data.id, entityLabel: `${emp.name} ${p.fields.kind} ${p.fields.amount} in ${p.fields.instalments}` });
+    res.status(201).json({ success: true, loan: data });
+  } catch (e) { fail(res, e, 'POST /payroll/loans'); }
+});
+router.post('/loans/:id/close', requirePerm('payroll.run'), async (req, res) => {
+  try {
+    if (!ID_RE.test(req.params.id)) return bad(res, 'Unknown entry.', 404);
+    const reason = cleanReason(req.body.reason), rerr = reasonError(reason); if (rerr) return bad(res, rerr);
+    const { error } = await supabase.from('payroll_loans').update({ status: 'closed', closed_reason: reason }).eq('id', req.params.id); if (error) throw error;
+    await logActivity(req, { category: 'payroll', action: 'loan_closed', entityType: 'payroll_loan', entityId: req.params.id, entityLabel: 'Advance / loan closed', reason });
+    res.json({ success: true });
+  } catch (e) { fail(res, e, 'POST loan close'); }
+});
+
+/* ── bank transfer file (CSV) ── */
+const csv = v => { const s = String(v == null ? '' : v).replace(/[\r\n]+/g, ' '); return /^[=+\-@]/.test(s) ? `"'${s.replace(/"/g, '""')}"` : /[",]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+router.get('/months/:month/bank-file', requirePerm('payroll.run'), async (req, res) => {
+  try {
+    const month = monthOf(req, res); if (!month) return;
+    const pr = await payrollOf(month);
+    if (!(pr.month.status === 'finalised' || pr.month.status === 'paid')) return bad(res, 'Finalise the payroll first.', 409);
+    const ok = pr.lines.filter(l => l.bank_account && l.net > 0);
+    const text = ['Beneficiary name,Account number,IFSC,Amount,Narration'].concat(ok.map(l => [l.name, l.bank_account, l.ifsc, l.net, `Salary ${P.monthName(month)}`].map(csv).join(','))).join('\r\n') + '\r\n';
+    await logActivity(req, { category: 'payroll', action: 'payroll_exported', entityType: 'payroll', entityLabel: `Bank file ${P.monthName(month)} (${ok.length})` });
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8'); res.setHeader('Content-Disposition', `attachment; filename="Bank-transfer-${month}.csv"`);
+    res.setHeader('X-Skipped', String(pr.lines.length - ok.length)); res.send('﻿' + text);
+  } catch (e) { fail(res, e, 'GET bank-file'); }
+});
+
+/* ── pay slip shared on WhatsApp ── */
+router.post('/payslips/:month/:id/shared', requirePerm('payroll.payslips'), async (req, res) => {
+  try {
+    const month = monthOf(req, res); if (!month) return; if (!ID_RE.test(req.params.id)) return bad(res, 'Unknown employee.', 404);
+    const { data: ln } = await supabase.from('payroll_lines').select('data').eq('month', month).eq('employee_id', req.params.id).maybeSingle();
+    if (!ln || !ln.data) return bad(res, 'This pay slip is not ready.', 409);
+    const { error } = await supabase.from('payroll_lines').update({ shared_at: new Date().toISOString(), payslip_at: new Date().toISOString() }).eq('month', month).eq('employee_id', req.params.id); if (error) throw error;
+    await logActivity(req, { category: 'payroll', action: 'payslip_shared', entityType: 'payroll', entityLabel: `Pay slip ${ln.data.name} ${P.monthName(month)} shared on WhatsApp` });
+    res.json({ success: true });
+  } catch (e) { fail(res, e, 'POST shared'); }
+});
+
+/* ── attendance Excel: export and import ── */
+const EXCEL = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+router.get('/attendance/export', requirePerm('payroll.view'), async (req, res) => {
+  try {
+    const month = monthOf(req, res); if (!month) return;
+    const [cfg, emps, att] = await Promise.all([getConfig(), allEmployees(), attendanceOf(month)]);
+    const recs = recsByEmp(att), dim = P.daysInMonth(month), blank = req.query.blank === '1';
+    const columns = [{ key: 'code', header: 'Emp ID', width: 9, weight: 9 }, { key: 'name', header: 'Name', width: 24, weight: 24 }];
+    for (let d = 1; d <= dim; d++) columns.push({ key: 'd' + d, header: String(d), width: 5, weight: 5, align: 'center' });
+    const rows = emps.filter(e => inMonth(e, month)).map(e => { const r = { code: e.emp_code, name: e.name }; for (let d = 1; d <= dim; d++) { const k = recs[e.id] && recs[e.id][P.dayOf(month, d)]; r['d' + d] = blank ? '' : (k ? k.s : ''); } return r; });
+    const buf = await buildTableXlsx({ sheetName: 'Attendance', title: `Attendance ${P.monthName(month)}`, columns, rows, meta: { user: who(req) || '', subtitle: 'P present · A absent · H half day · L paid leave · W weekly off. Fill the day boxes and import this file again.' } });
+    res.setHeader('Content-Type', EXCEL); res.setHeader('Content-Disposition', `attachment; filename="Attendance-${month}${blank ? '-template' : ''}.xlsx"`); res.send(Buffer.from(buf));
+  } catch (e) { fail(res, e, 'GET attendance/export'); }
+});
+router.post('/attendance/import', requirePerm('payroll.attendance'), async (req, res) => {
+  try {
+    const month = String(req.body.month || ''); if (!P.validMonth(month)) return bad(res, 'Choose a valid month.');
+    if (!(await guardOpen(req, res, month))) return;
+    let buf; try { buf = Buffer.from(String(req.body.file || ''), 'base64'); } catch { buf = null; }
+    if (!buf || buf.length < 100 || buf.slice(0, 2).toString() !== 'PK') return bad(res, 'Choose an Excel (.xlsx) file.');
+    const ExcelJS = require('../utils/reports').lib('exceljs'), wb = new ExcelJS.Workbook();
+    try { await wb.xlsx.load(buf); } catch { return bad(res, 'That file could not be read as an Excel workbook.'); }
+    const ws = wb.worksheets[0]; if (!ws) return bad(res, 'The workbook is empty.');
+    let hr = 0, idCol = 0; const dayCol = {};
+    ws.eachRow((row, n) => { if (hr) return; row.eachCell((c, ci) => { if (String(c.value).trim().toLowerCase() === 'emp id') { hr = n; idCol = ci; } }); });
+    if (!hr) return bad(res, 'The file has no "Emp ID" column. Download the template and fill that.');
+    ws.getRow(hr).eachCell((c, ci) => { const d = Number(c.value); if (Number.isInteger(d) && d >= 1 && d <= P.daysInMonth(month)) dayCol[d] = ci; });
+    if (!Object.keys(dayCol).length) return bad(res, 'The day columns (1, 2, 3 …) were not found.');
+    const emps = await allEmployees(), byCode = {}; emps.forEach(e => { byCode[String(e.emp_code).toUpperCase()] = e; });
+    const recs = recsByEmp(await attendanceOf(month)), items = [], problems = []; let same = 0;
+    ws.eachRow((row, n) => {
+      if (n <= hr) return;
+      const code = String(row.getCell(idCol).value == null ? '' : row.getCell(idCol).value).trim().toUpperCase(); if (!code) return;
+      const e = byCode[code]; if (!e) { problems.push(`Row ${n}: no employee with ID ${code}.`); return; }
+      for (const d of Object.keys(dayCol)) {
+        const raw = row.getCell(dayCol[d]).value; const v = String(raw == null ? '' : (raw.result !== undefined ? raw.result : raw)).trim().toUpperCase(); if (!v) continue;
+        const date = P.dayOf(month, d);
+        if (!P.STATUSES.includes(v)) { problems.push(`${e.name}, day ${d}: "${v}" is not P, A, H, L or W.`); continue; }
+        if (date < String(e.joined_on).slice(0, 10) || (e.left_on && date > String(e.left_on).slice(0, 10))) { problems.push(`${e.name}, day ${d}: not employed on that day.`); continue; }
+        const old = recs[e.id] && recs[e.id][date];
+        if (old && old.s === v) { same++; continue; }
+        items.push({ employee_id: e.id, date, status: v, ot_hours: old ? old.ot : 0, note: old ? old.note : '' });
+      }
+    });
+    if (req.body.apply && items.length) {
+      for (let i = 0; i < items.length; i += 500) await writeAttendance(req, items.slice(i, i + 500), month);
+      await logActivity(req, { category: 'payroll', action: 'attendance_saved', entityType: 'payroll', entityLabel: `Attendance ${P.monthName(month)} imported from Excel (${items.length} change${items.length === 1 ? '' : 's'})` });
+    }
+    res.json({ success: true, applied: !!req.body.apply, changes: items.length, unchanged: same, problems: problems.slice(0, 40), problem_count: problems.length });
+  } catch (e) { if (e.user) return bad(res, e.message); fail(res, e, 'POST attendance/import'); }
 });
 
 module.exports = router;

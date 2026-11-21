@@ -30,6 +30,11 @@ const SHEETS = [
   { name: 'People',              table: 'users', drop: ['pin'] },     // never the PIN
   { name: 'Archive',             table: 'archive_items', drop: ['snapshot'] },
   { name: 'Reminder settings',   table: 'app_settings' },
+  { name: 'Payroll employees',   table: 'payroll_employees' },
+  { name: 'Payroll attendance',  table: 'payroll_attendance' },
+  { name: 'Payroll months',      table: 'payroll_months', order: 'month' },
+  { name: 'Payroll lines',       table: 'payroll_lines' },
+  { name: 'Payroll loans',       table: 'payroll_loans' },
   { name: 'Activity log',        table: 'activity_logs', newestFirst: true, max: MAX_LOG_ROWS },
 ];
 
@@ -50,7 +55,7 @@ async function readAll() {
     // eslint-disable-next-line no-await-in-loop
     const r = await fetchAll(() => {
       const q = supabase.from(sh.table).select('*');
-      return sh.newestFirst ? q.order('created_at', { ascending: false }).order('id', { ascending: false }) : q.order('id', { ascending: true });
+      return sh.newestFirst ? q.order('created_at', { ascending: false }).order('id', { ascending: false }) : q.order(sh.order || 'id', { ascending: true });
     }, sh.max || MAX_ROWS).catch(error => ({ data: null, error }));
     if (r.error) {
       if (isMissingTable(r.error, sh.table)) { out.push({ ...sh, rows: [], missing: true }); continue; }

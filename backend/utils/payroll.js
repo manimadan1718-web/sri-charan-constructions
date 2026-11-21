@@ -31,7 +31,8 @@ const DEFAULT_CONFIG = {
   esi: { on: true, employee_pct: 0.75, employer_pct: 3.25, gross_limit: 21000 },
   pt:  { on: true, slabs: [{ upto: 21000, amount: 0 }, { upto: null, amount: 200 }] },
   attendance: { half_value: 0.5, ot_on: true, ot_multiplier: 1.5, hours_per_day: 8, lock_day: 3 },
-  slip: { logo: true, address_on: true, words_on: true, address: '', footer: 'This is a computer-generated pay slip and does not need a signature.' },
+  holidays: [],                                              // [{ date: 'YYYY-MM-DD', name }]  paid for everyone
+  slip: { logo: true, address_on: true, words_on: true, address: '', gstin: '', footer: 'This is a computer-generated pay slip and does not need a signature.' },
 };
 const STATUSES = ['P', 'A', 'H', 'L', 'W'];
 const STATUS_TEXT = { P: 'Present', A: 'Absent', H: 'Half day', L: 'Paid leave', W: 'Weekly off' };
@@ -97,7 +98,17 @@ function parseConfig(b, base = DEFAULT_CONFIG) {
       const a = b.attendance || {};
       c.attendance = { half_value: num(a.half_value, 0, 1, 'A half day'), ot_on: flag(a.ot_on, 'Overtime'), ot_multiplier: num(a.ot_multiplier, 1, 5, 'The overtime multiplier'), hours_per_day: num(a.hours_per_day, 4, 24, 'Hours per day'), lock_day: Math.round(num(a.lock_day, 1, 28, 'The lock day')) };
     }
-    if (b.slip !== undefined) { const s = b.slip || {}; c.slip = { logo: flag(s.logo, 'Logo'), address_on: flag(s.address_on, 'Address'), words_on: flag(s.words_on, 'Salary in words'), address: clean(s.address, 200), footer: clean(s.footer, 160) }; }
+    if (b.slip !== undefined) { const s = b.slip || {}; c.slip = { logo: flag(s.logo, 'Logo'), address_on: flag(s.address_on, 'Address'), words_on: flag(s.words_on, 'Salary in words'), address: clean(s.address, 400), gstin: s.gstin === undefined ? (base.slip && base.slip.gstin) || '' : clean(s.gstin, 20).toUpperCase(), footer: clean(s.footer, 160) }; }
+    if (b.holidays !== undefined) {
+      if (!Array.isArray(b.holidays) || b.holidays.length > 120) throw new Error('Keep up to 120 holidays.');
+      const seen = new Set();
+      c.holidays = b.holidays.map(h => {
+        const date = String((h && h.date) || '').trim(); if (!validDay(date)) throw new Error('A holiday has no valid date.');
+        if (seen.has(date)) throw new Error(`${dmy(date)} is listed twice.`); seen.add(date);
+        const name = clean(h.name, 60); if (!name) throw new Error(`Give the holiday on ${dmy(date)} a name.`);
+        return { date, name };
+      }).sort((a, b2) => (a.date < b2.date ? -1 : 1));
+    }
     return { config: c };
   } catch (e) { return { error: e.message }; }
 }
@@ -117,7 +128,8 @@ const ptFor = (gross, cfg) => { for (const s of cfg.pt.slabs) if (s.upto === nul
 
 /** What the month's attendance means for one person. recs = { 'YYYY-MM-DD': { s, ot } } */
 function paidSummary(emp, month, recs, cfg) {
-  const dim = daysInMonth(month), out = { present: 0, absent: 0, half: 0, leave: 0, weekly_off: 0, unmarked: 0, outside: 0, ot_hours: 0 };
+  const dim = daysInMonth(month), out = { present: 0, absent: 0, half: 0, leave: 0, weekly_off: 0, holiday: 0, unmarked: 0, outside: 0, ot_hours: 0 };
+  const hol = new Set((cfg.holidays || []).map(h => h.date));
   let lop = 0;
   for (let d = 1; d <= dim; d++) {
     const date = dayOf(month, d);
@@ -126,7 +138,8 @@ function paidSummary(emp, month, recs, cfg) {
     if (r) {
       out.ot_hours += Number(r.ot) || 0;
       if (r.s === 'P') out.present++; else if (r.s === 'A') { out.absent++; lop += 1; } else if (r.s === 'H') { out.half++; lop += 1 - cfg.attendance.half_value; } else if (r.s === 'L') out.leave++; else if (r.s === 'W') out.weekly_off++;
-    } else if (cfg.weekly_off.includes(weekday(date))) out.weekly_off++;
+    } else if (hol.has(date)) out.holiday++;
+    else if (cfg.weekly_off.includes(weekday(date))) out.weekly_off++;
     else { out.unmarked++; lop += 1; }
   }
   const salary_days = cfg.salary_days === 'fixed' ? cfg.fixed_days : dim;
@@ -153,11 +166,11 @@ function computeLine(emp, month, recs, adj, cfg) {
   if (total_earnings - total_deductions < 0) flags.push('Deductions are more than the pay');
   return {
     employee_id: emp.id, emp_code: emp.emp_code, name: emp.name, designation: emp.designation, site: emp.site || '', joined_on: emp.joined_on ? String(emp.joined_on).slice(0, 10) : null,
-    bank_name: emp.bank_name || '', bank_account: emp.bank_account || '', ifsc: emp.ifsc || '', pan: emp.pan || '', uan: emp.uan || '', esi_no: emp.esi_no || '',
+    phone: emp.phone || '', bank_name: emp.bank_name || '', bank_account: emp.bank_account || '', ifsc: emp.ifsc || '', pan: emp.pan || '', uan: emp.uan || '', esi_no: emp.esi_no || '',
     monthly_ctc: ctc, structure: b.template,
     full: { basic: b.basic, hra: b.hra, special: b.special, pf_employer: b.pf_employer, gross: b.gross },
     ...s, basic, hra, special, gross, ot_pay, other_earnings, pf, esi, pt, other_deductions, total_earnings, total_deductions, net: total_earnings - total_deductions,
-    adjustments: lines.map(a => ({ kind: a.kind, label: clean(a.label, 60), amount: r0(a.amount) })), flags,
+    adjustments: lines.map(a => ({ kind: a.kind, label: clean(a.label, 60), amount: r0(a.amount), ...(a.auto ? { auto: true } : {}) })), flags,
   };
 }
 const totals = lines => ({
@@ -192,6 +205,29 @@ function parseEmployee(b, cfg) {
 }
 const nextCode = list => 'E' + String(list.reduce((m, e) => Math.max(m, parseInt(String(e.emp_code || '').replace(/\D/g, ''), 10) || 0), 0) + 1).padStart(3, '0');
 
+/* ── advances and loans: the EMI of a month ── */
+const emiOf = (amount, n) => r0(Number(amount) / n);
+/** The instalment a loan takes in a month (0 if none). First instalment month = loan.first_month. */
+function loanInstalment(loan, month) {
+  if (loan.status === 'closed' || !loan.first_month || month < loan.first_month) return 0;
+  let m = loan.first_month, i = 0;
+  while (m < month && i < loan.instalments) { m = nextMonth(m); i++; }
+  if (m !== month || i >= loan.instalments) return 0;
+  const emi = emiOf(loan.amount, loan.instalments);
+  return i === loan.instalments - 1 ? Math.max(0, r0(loan.amount) - emi * (loan.instalments - 1)) : emi;
+}
+const loanMonths = loan => { const out = []; let m = loan.first_month; for (let i = 0; i < loan.instalments; i++) { out.push(m); m = nextMonth(m); } return out; };
+function parseLoan(b) {
+  b = b || {};
+  try {
+    if (!['advance', 'loan'].includes(b.kind)) throw new Error('Choose Advance or Loan.');
+    const amount = r0(num(typeof b.amount === 'string' ? b.amount.replace(/,/g, '') : b.amount, 100, 10000000, 'The amount'));
+    const instalments = Math.round(num(b.instalments, 1, 60, 'The number of instalments'));
+    const given_on = String(b.given_on || '').trim(); if (!validDay(given_on)) throw new Error('Choose the date given.');
+    const first_month = String(b.first_month || '').trim(); if (!validMonth(first_month)) throw new Error('Choose the first deduction month.');
+    return { fields: { kind: b.kind, amount, instalments, given_on, first_month, emi: emiOf(amount, instalments), note: clean(b.note, 120) } };
+  } catch (e) { return { error: e.message }; }
+}
 /** Amounts in words, Indian style: "Rupees Twenty Two Thousand Four Hundred Ninety Six only". */
 function rupeesInWords(n) {
   n = Math.round(Math.abs(Number(n) || 0));
@@ -206,4 +242,4 @@ function rupeesInWords(n) {
   return `Rupees ${out.join(' ')} only`;
 }
 module.exports = { DEFAULT_CONFIG, STATUSES, STATUS_TEXT, clean, r0, r2, validMonth, validDay, daysInMonth, dayOf, weekday, todayIST, monthName, dmy, prevMonth, nextMonth,
-  parseConfig, fullConfig, templateOf, breakup, ptFor, paidSummary, computeLine, totals, parseEmployee, nextCode, rupeesInWords };
+  loanInstalment, loanMonths, parseLoan, emiOf, parseConfig, fullConfig, templateOf, breakup, ptFor, paidSummary, computeLine, totals, parseEmployee, nextCode, rupeesInWords };

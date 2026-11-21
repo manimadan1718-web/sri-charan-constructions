@@ -2,7 +2,7 @@
    Screens: Overview · Attendance · Employee Onboarding · Monthly Payroll · Pay Slips · Payroll Configuration.
    Everything is calculated on the server; the screen only shows it (except the live "breakup" preview while onboarding). */
 const PR = { open: false, view: 'overview', month: '', meta: null, cfg: null, emps: null, att: null, pay: null, slips: null, ov: null, site: '', q: '', day: '', mode: '', wiz: null, busy: false };
-const PR_NAV = [['overview', 'Overview', null], ['attendance', 'Attendance', 1], ['employees', 'Employee Onboarding', 2], ['payroll', 'Monthly Payroll', 3], ['payslips', 'Pay Slips', 4], ['config', 'Payroll Configuration', 5]];
+const PR_NAV = [['overview', 'Overview', null], ['attendance', 'Attendance', 1], ['employees', 'Employee Onboarding', 2], ['payroll', 'Monthly Payroll', 3], ['payslips', 'Pay Slips', 4], ['reports', 'Reports', 5], ['config', 'Payroll Configuration', 6]];
 const prCan = k => PR.meta && PR.meta.can && PR.meta.can[k];
 const prInr = n => '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN');
 const prNum = n => Math.round(Number(n) || 0).toLocaleString('en-IN');
@@ -58,17 +58,17 @@ async function openPayroll() {
 }
 function closePayroll(fromPop) {
   if (!PR.open) return;
-  PR.open = false; document.body.classList.remove('pr-open'); prQ('pr-root').hidden = true; prQ('pr-pop').hidden = true; prModalClose();
+  PR.open = false; document.body.classList.remove('pr-open'); prQ('pr-root').hidden = true; prQ('pr-pop').hidden = true; prModalClose(); prBadge();
   if (!fromPop) { try { if (history.state && history.state.pr) history.back(); } catch { /* ignore */ } }
 }
 function prRenderNav() {
-  const ok = { overview: true, attendance: true, employees: true, payroll: prCan('run'), payslips: can('payroll.payslips'), config: prCan('config') };
+  const ok = { overview: true, attendance: true, employees: true, payroll: prCan('run'), payslips: can('payroll.payslips'), reports: prCan('run'), config: prCan('config') };
   prQ('pr-nav').innerHTML = PR_NAV.filter(n => ok[n[0]]).map(([k, label, n]) => `<button type="button" data-v="${k}" class="${PR.view === k ? 'on' : ''}">${n ? `<i>${n}</i>` : '<i class="h">⌂</i>'}<span>${label}</span></button>`).join('');
 }
 async function prGo(v) {
   PR.view = v; prRenderNav(); prQ('pr-pop').hidden = true;
   const main = prQ('pr-main'); main.innerHTML = '<div class="pr-empty">Loading…</div>'; main.scrollTop = 0;
-  try { await ({ overview: prOverview, attendance: prAttendance, employees: prEmployees, payroll: prPayroll, payslips: prPayslips, config: prConfig }[v] || prOverview)(); }
+  try { await ({ overview: prOverview, attendance: prAttendance, employees: prEmployees, payroll: prPayroll, payslips: prPayslips, reports: prReports, config: prConfig }[v] || prOverview)(); }
   catch (e) { main.innerHTML = `<div class="pr-empty pr-bad">${esc(prErr(e))}</div>`; }
 }
 const prMonthBar = (extra = '') => `<div class="pr-mbar"><button type="button" class="pr-ib" data-mshift="-1" aria-label="Previous month">‹</button><strong id="pr-mname">${prMonthName(PR.month)}</strong><button type="button" class="pr-ib" data-mshift="1" aria-label="Next month">›</button><input type="month" id="pr-month" value="${PR.month}" aria-label="Choose month">${extra}</div>`;
@@ -86,7 +86,7 @@ function prSetup(e) { return e && e.data && e.data.setup_required ? `<div class=
 /* ───────────── 0. Overview ───────────── */
 async function prOverview() {
   const main = prQ('pr-main');
-  let o; try { o = await Payroll.overview(PR.month); } catch (e) { main.innerHTML = prSetup(e) || `<div class="pr-empty pr-bad">${esc(prErr(e))}</div>`; return; }
+  let o; try { o = await Payroll.overview(PR.month); try { o.reminders = (await Payroll.reminders()).items; } catch { o.reminders = []; } } catch (e) { main.innerHTML = prSetup(e) || `<div class="pr-empty pr-bad">${esc(prErr(e))}</div>`; return; }
   PR.ov = o;
   const st = o.status, step = (n, label, done, view, sub) => `<button type="button" class="pr-step ${done ? 'done' : ''}" data-go="${view}"><i>${done ? '✓' : n}</i><b>${label}</b><small>${sub}</small></button>`;
   const t = o.totals;
@@ -101,9 +101,10 @@ async function prOverview() {
       <div class="pr-stat"><small>Employees this month</small><b>${o.employees}</b></div>
       ${t ? `<div class="pr-stat"><small>Gross pay</small><b>${prInr(t.gross)}</b></div><div class="pr-stat"><small>Deductions</small><b>${prInr(t.deductions)}</b></div><div class="pr-stat hl"><small>Net payable</small><b>${prInr(t.net)}</b></div>` : '<div class="pr-stat"><small>Salary figures</small><b>—</b></div>'}
     </div>
+    ${prRemindersHtml(o.reminders)}
     <div class="card pr-card"><div class="pr-ct">Needs attention</div>${o.attention.length ? o.attention.map(a => `<div class="pr-att"><b>${esc(a.text)}</b><span>${esc(a.names.join(', '))}${a.names.length < 1 ? '' : ''}</span></div>`).join('') : '<p class="pr-muted">Nothing needs attention.</p>'}</div>
     ${o.employees ? '' : `<div class="pr-warn">No employees yet. Start with <b>Employee Onboarding</b> to add people and their monthly CTC.</div>`}`;
-  prWireMonth(); main.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => prGo(b.dataset.go)));
+  prWireMonth(); main.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => { const r = (o.reminders || [])[+b.dataset.rem]; if (r && b.dataset.rem !== undefined) PR.month = r.month; prGo(b.dataset.go); }));
 }
 
 /* ───────────── 1. Attendance ───────────── */
@@ -225,17 +226,20 @@ async function prEmployees() {
   const miss = e => [!e.bank_account && 'Bank', e.pf_applicable && !e.uan && 'UAN', !e.phone && 'Phone'].filter(Boolean);
   main.innerHTML = prHead('Employee onboarding', `${d.employees.filter(e => e.status === 'active').length} active employees`, prCan('employees') ? '<button type="button" class="btn btn-primary btn-sm" id="pr-addemp">+ Add employee</button>' : '') +
     `<div class="pr-filters"><input type="search" id="pr-eq" placeholder="Search name, ID, designation or site" value="${esc(f)}"><select id="pr-es"><option value="active" ${st === 'active' ? 'selected' : ''}>Active</option><option value="left" ${st === 'left' ? 'selected' : ''}>Left</option><option value="all" ${st === 'all' ? 'selected' : ''}>All</option></select></div>` +
-    (list.length ? `<div class="table-wrap"><table class="pr-table"><thead><tr><th>ID</th><th>Name</th><th>Designation</th><th>Site</th><th>Joined</th>${show ? '<th class="r">Monthly CTC</th>' : ''}<th>Profile</th><th></th></tr></thead><tbody>${list.map(e => { const m = miss(e); return `<tr><td data-label="ID">${esc(e.emp_code)}</td><td data-label="Name"><b>${esc(e.name)}</b>${e.status === 'left' ? ' <span class="pr-chip off">Left</span>' : ''}</td><td data-label="Designation">${esc(e.designation)}</td><td data-label="Site">${esc(e.site) || '–'}</td><td data-label="Joined">${fmtDate(String(e.joined_on).slice(0, 10))}</td>${show ? `<td class="r" data-label="Monthly CTC">${prInr(e.monthly_ctc)}</td>` : ''}<td data-label="Profile">${m.length ? `<span class="pr-chip warn">Missing: ${m.join(', ')}</span>` : '<span class="pr-chip ok">Complete</span>'}</td><td>${prCan('employees') ? `<button type="button" class="btn btn-outline btn-sm" data-edit="${e.id}">Edit</button>` : ''}</td></tr>`; }).join('')}</tbody></table></div>` : '<div class="pr-empty">No employees yet.</div>');
+    (list.length ? `<div class="table-wrap"><table class="pr-table"><thead><tr><th>ID</th><th>Name</th><th>Designation</th><th>Site</th><th>Joined</th>${show ? '<th class="r">Monthly CTC</th>' : ''}<th>Profile</th><th></th></tr></thead><tbody>${list.map(e => { const m = miss(e); return `<tr><td data-label="ID">${esc(e.emp_code)}</td><td data-label="Name"><b>${esc(e.name)}</b>${e.status === 'left' ? ' <span class="pr-chip off">Left</span>' : ''}</td><td data-label="Designation">${esc(e.designation)}</td><td data-label="Site">${esc(e.site) || '–'}</td><td data-label="Joined">${fmtDate(String(e.joined_on).slice(0, 10))}</td>${show ? `<td class="r" data-label="Monthly CTC">${prInr(e.monthly_ctc)}</td>` : ''}<td data-label="Profile">${m.length ? `<span class="pr-chip warn">Missing: ${m.join(', ')}</span>` : '<span class="pr-chip ok">Complete</span>'}</td><td>${prCan('employees') ? `<button type="button" class="btn btn-outline btn-sm" data-edit="${e.id}">Edit</button> <button type="button" class="btn btn-outline btn-sm" data-docs="${e.id}">Documents</button>${e.status === 'active' ? ` <button type="button" class="btn btn-outline btn-sm" data-rev="${e.id}">Revise salary</button> <button type="button" class="btn btn-outline btn-sm" data-exit="${e.id}">Exit</button>` : ''}` : ''}</td></tr>`; }).join('')}</tbody></table></div>` : '<div class="pr-empty">No employees yet.</div>');
   const q = prQ('pr-eq'); q.addEventListener('input', () => { PR.fq = q.value; clearTimeout(q._t); q._t = setTimeout(prEmployees, 250); });
   prQ('pr-es').addEventListener('change', e => { PR.fs = e.target.value; prEmployees(); });
   const ad = prQ('pr-addemp'); if (ad) ad.addEventListener('click', () => prWizard(null));
   main.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => prWizard(PR.emps.find(e => e.id === b.dataset.edit))));
+  main.querySelectorAll('[data-docs]').forEach(b => b.addEventListener('click', () => prDocs(PR.emps.find(e => e.id === b.dataset.docs))));
+  main.querySelectorAll('[data-rev]').forEach(b => b.addEventListener('click', () => prRevise(PR.emps.find(e => e.id === b.dataset.rev))));
+  main.querySelectorAll('[data-exit]').forEach(b => b.addEventListener('click', () => prExit(PR.emps.find(e => e.id === b.dataset.exit))));
 }
 const PR_STEPS = ['Personal', 'Job', 'Salary (CTC)', 'Bank & statutory', 'Review'];
 function prWizard(emp) {
   const e = emp || {};
   PR.wiz = { id: emp && emp.id, step: 0, f: { name: e.name || '', phone: e.phone || '', address: e.address || '', emergency_name: e.emergency_name || '', emergency_phone: e.emergency_phone || '', designation: e.designation || '', site: e.site || '', joined_on: e.joined_on ? String(e.joined_on).slice(0, 10) : today(), left_on: e.left_on ? String(e.left_on).slice(0, 10) : '', emp_code: e.emp_code || '', notes: e.notes || '',
-    monthly_ctc: e.monthly_ctc || '', structure: e.structure || PR.cfg.templates[0].key, pf_applicable: e.pf_applicable !== false, esi_applicable: e.esi_applicable !== false, pt_applicable: e.pt_applicable !== false,
+    monthly_ctc: e.monthly_ctc || '', tds_monthly: e.tds_monthly || '', structure: e.structure || PR.cfg.templates[0].key, pf_applicable: e.pf_applicable !== false, esi_applicable: e.esi_applicable !== false, pt_applicable: e.pt_applicable !== false,
     bank_name: e.bank_name || '', bank_account: e.bank_account || '', ifsc: e.ifsc || '', pan: e.pan || '', uan: e.uan || '', esi_no: e.esi_no || '' } };
   prWizRender();
 }
@@ -246,7 +250,7 @@ function prWizRender() {
   let body = '';
   if (s === 0) body = `<div class="form-grid">${prWizField('Full name', 'pw-name', f.name, { req: 1 })}${prWizField('Phone', 'pw-phone', f.phone, { type: 'tel', attrs: 'inputmode="numeric" maxlength="15"' })}${prWizField('Address', 'pw-address', f.address, { type: 'area', full: 1 })}${prWizField('Emergency contact', 'pw-emergency_name', f.emergency_name)}${prWizField('Emergency phone', 'pw-emergency_phone', f.emergency_phone, { type: 'tel', attrs: 'inputmode="numeric" maxlength="15"' })}</div>`;
   if (s === 1) body = `<div class="form-grid">${prWizField('Designation', 'pw-designation', f.designation, { req: 1, help: 'For example Site Supervisor, Operator, Accountant.' })}${prWizField('Site', 'pw-site', f.site, { type: 'select', opts: [['', 'Not fixed']].concat(sites.map(x => [x, x])).concat(f.site && !sites.includes(f.site) ? [[f.site, f.site]] : []) })}${prWizField('Date of joining', 'pw-joined_on', f.joined_on, { type: 'date', req: 1 })}${w.id ? prWizField('Last working day', 'pw-left_on', f.left_on, { type: 'date', help: 'Fill only when the person has left. Salary is paid up to this day.' }) : ''}${prWizField('Employee ID', 'pw-emp_code', f.emp_code, { help: w.id ? 'Cannot be changed.' : `Leave empty to use ${PR.nextCode}.`, attrs: w.id ? 'disabled' : 'maxlength="12"' })}${prWizField('Notes', 'pw-notes', f.notes, { full: 1 })}</div>`;
-  if (s === 2) body = `<div class="pr-two"><div><div class="form-grid one-col">${prWizField('Monthly CTC (₹)', 'pw-monthly_ctc', f.monthly_ctc, { req: 1, type: 'number', attrs: 'min="0" step="100" inputmode="numeric"', help: 'Cost to company per month, before any deduction. Salary is calculated from this.' })}${prWizField('Salary structure', 'pw-structure', f.structure, { type: 'select', opts: PR.cfg.templates.map(t => [t.key, `${t.name} (Basic ${t.basic_pct}% · HRA ${t.hra_pct}% of Basic)`]) })}</div>
+  if (s === 2) body = `<div class="pr-two"><div><div class="form-grid one-col">${prWizField('Monthly CTC (₹)', 'pw-monthly_ctc', f.monthly_ctc, { req: 1, type: 'number', attrs: 'min="0" step="100" inputmode="numeric"' + (w.id ? ' disabled' : ''), help: w.id ? 'To change the salary use <b>Revise salary</b> on the employee list. It keeps the history and works out arrears.' : 'Cost to company per month, before any deduction. Salary is calculated from this.' })}${prWizField('Salary structure', 'pw-structure', f.structure, { type: 'select', opts: PR.cfg.templates.map(t => [t.key, `${t.name} (Basic ${t.basic_pct}% · HRA ${t.hra_pct}% of Basic)`]), attrs: w.id ? 'disabled' : '' })}${prWizField('Income tax (TDS) per month (₹)', 'pw-tds_monthly', f.tds_monthly, { type: 'number', attrs: 'min="0" step="1" inputmode="numeric"', help: 'Optional. The amount your accountant says to deduct every month. Leave empty for none.' })}</div>
     <label class="pr-chk"><input type="checkbox" id="pw-pf_applicable" ${f.pf_applicable ? 'checked' : ''}> Provident fund (PF) applies</label><label class="pr-chk"><input type="checkbox" id="pw-esi_applicable" ${f.esi_applicable ? 'checked' : ''}> ESI applies (when gross is within the limit)</label><label class="pr-chk"><input type="checkbox" id="pw-pt_applicable" ${f.pt_applicable ? 'checked' : ''}> Professional tax applies</label></div><div class="pr-break" id="pr-break"></div></div>`;
   if (s === 3) body = `<div class="form-grid">${prWizField('Bank name', 'pw-bank_name', f.bank_name)}${prWizField('Account number', 'pw-bank_account', f.bank_account, { attrs: 'inputmode="numeric" maxlength="20"' })}${prWizField('IFSC', 'pw-ifsc', f.ifsc, { attrs: 'maxlength="11" style="text-transform:uppercase"' })}${prWizField('PAN', 'pw-pan', f.pan, { attrs: 'maxlength="10" style="text-transform:uppercase"' })}${prWizField('UAN (PF)', 'pw-uan', f.uan, { attrs: 'inputmode="numeric" maxlength="12"' })}${prWizField('ESI number', 'pw-esi_no', f.esi_no, { attrs: 'inputmode="numeric" maxlength="17"' })}</div><p class="pr-muted">These can be added later, but a salary cannot be paid by bank transfer without the account number.</p>`;
   if (s === 4) { const b = prBreakup(+f.monthly_ctc || 0, f.structure, { pf: f.pf_applicable, esi: f.esi_applicable, pt: f.pt_applicable }); body = `<dl class="pr-review"><dt>Name</dt><dd>${esc(f.name)}</dd><dt>Designation</dt><dd>${esc(f.designation)}${f.site ? ' · ' + esc(f.site) : ''}</dd><dt>Joined</dt><dd>${fmtDate(f.joined_on)}${f.left_on ? ' · left ' + fmtDate(f.left_on) : ''}</dd><dt>Monthly CTC</dt><dd><b>${prInr(f.monthly_ctc)}</b> · estimated take-home ${prInr(b.take)}</dd><dt>Bank</dt><dd>${f.bank_account ? esc(f.bank_name) + ' ' + esc(f.bank_account) : '<span class="pr-chip warn">Not added</span>'}</dd></dl>${w.id ? '<div class="form-group"><label>Why are you changing this? (needed for changes)</label><small class="pll-help">You will be asked for a reason when you save.</small></div>' : ''}`; }
@@ -258,11 +262,11 @@ function prWizRender() {
     bx.innerHTML = `<h4>Monthly breakup (full month)</h4><table><tr><td>Basic</td><td>${prInr(b.basic)}</td></tr><tr><td>House rent allowance</td><td>${prInr(b.hra)}</td></tr><tr><td>Special allowance</td><td>${prInr(b.special)}</td></tr><tr class="t"><td>Gross pay</td><td>${prInr(b.gross)}</td></tr><tr class="m"><td>Employer PF (part of CTC)</td><td>${prInr(b.pfE)}</td></tr><tr class="m"><td>Employee PF</td><td>− ${prInr(b.pf)}</td></tr><tr class="m"><td>ESI</td><td>− ${prInr(b.esi)}</td></tr><tr class="m"><td>Professional tax</td><td>− ${prInr(b.pt)}</td></tr><tr class="t hl"><td>Estimated take-home</td><td>${prInr(b.take)}</td></tr></table><p class="pr-muted">Shown for a month with full attendance. Real pay follows the attendance.</p>`; };
   if (s === 2) { upd(); prQ('pr-root').querySelectorAll('#pr-modal input,#pr-modal select').forEach(el => el.addEventListener('input', upd)); }
   const err = m => { prQ('pw-err').textContent = m; };
-  const need = () => { prWizCollect(); const f = w.f; if (s === 0 && f.name.trim().length < 2) return 'Enter the employee\'s name.'; if (s === 1) { if (!f.designation.trim()) return 'Enter the designation.'; if (!f.joined_on) return 'Choose the date of joining.'; } if (s === 2 && !(+f.monthly_ctc >= 1000)) return 'Enter the monthly CTC (at least ₹1,000).'; return ''; };
+  const need = () => { prWizCollect(); const f = w.f; if (s === 0 && f.name.trim().length < 2) return 'Enter the employee\'s name.'; if (s === 1) { if (!f.designation.trim()) return 'Enter the designation.'; if (!f.joined_on) return 'Choose the date of joining.'; } if (s === 2 && !w.id && !(+f.monthly_ctc >= 1000)) return 'Enter the monthly CTC (at least ₹1,000).'; return ''; };
   const nx = prQ('pw-next'); if (nx) nx.onclick = () => { const m = need(); if (m) return err(m); w.step++; prWizRender(); };
   const bk = prQ('pw-back'); if (bk) bk.onclick = () => { prWizCollect(); w.step--; prWizRender(); };
   const sv = prQ('pw-save'); if (sv) sv.onclick = async () => {
-    const body = { ...w.f, monthly_ctc: Number(w.f.monthly_ctc) }; if (!body.emp_code) delete body.emp_code;
+    const body = { ...w.f, monthly_ctc: Number(w.f.monthly_ctc), tds_monthly: Number(w.f.tds_monthly) || 0 }; if (!body.emp_code) delete body.emp_code;
     try {
       if (w.id) { const reason = await askReason({ title: 'Save changes to this employee', intro: 'Salary and bank changes are recorded in the Activity Log. Say why you are changing them.', confirmLabel: 'Save changes' }); if (!reason) return; body.reason = reason; await Payroll.editEmployee(w.id, body); }
       else await Payroll.addEmployee(body);
@@ -339,8 +343,8 @@ function prDrawer(id, editable) {
   const adj = (l.adjustments || []).filter(a => !a.auto).map(a => ({ ...a })), autoAdj = (l.adjustments || []).filter(a => a.auto);
   const draw = () => {
     prModal(`<div class="card-header"><div class="card-title">${esc(l.name)} <small class="pr-muted">${esc(l.emp_code)}</small></div><button type="button" class="btn btn-outline btn-sm" id="pd-x">Close</button></div>
-      <div class="pr-two"><div><h4>Attendance</h4><table class="pr-kv">${row('Days in month', l.days_in_month)}${row('Present', l.present)}${row('Absent', l.absent)}${row('Half days', l.half)}${row('Paid leave', l.leave)}${row('Weekly off', l.weekly_off)}${row('Not marked', l.unmarked, l.unmarked ? 'bad' : '')}${l.outside ? row('Before joining / after leaving', l.outside) : ''}${row('Paid days', `<b>${l.paid_days} of ${l.salary_days}</b>`, 't')}</table></div>
-      <div><h4>Salary</h4><table class="pr-kv">${row('Monthly CTC', prInr(l.monthly_ctc))}${row('Basic', prInr(l.basic) + `<small> of ${prNum(l.full.basic)}</small>`)}${row('HRA', prInr(l.hra) + `<small> of ${prNum(l.full.hra)}</small>`)}${row('Special allowance', prInr(l.special) + `<small> of ${prNum(l.full.special)}</small>`)}${l.ot_pay ? row(`Overtime (${l.ot_hours} h)`, prInr(l.ot_pay)) : ''}${adj.filter(a => a.kind === 'earning').map(a => row(esc(a.label), prInr(a.amount))).join('')}${row('Total earnings', prInr(l.total_earnings), 't')}${row('PF', '− ' + prInr(l.pf))}${row('ESI', '− ' + prInr(l.esi))}${row('Professional tax', '− ' + prInr(l.pt))}${adj.filter(a => a.kind === 'deduction').map(a => row(esc(a.label), '− ' + prInr(a.amount))).join('')}${autoAdj.map(a => row(esc(a.label) + ' <small>(automatic)</small>', '− ' + prInr(a.amount))).join('')}${row('Net pay', prInr(l.net), 't hl')}</table></div></div>
+      <div class="pr-two"><div><h4>Attendance</h4><table class="pr-kv">${row('Days in month', l.days_in_month)}${row('Present', l.present)}${row('Absent', l.absent)}${row('Half days', l.half)}${row('Paid leave', l.leave + (l.leave_balance != null ? `<small> · ${l.leave_balance} left this year</small>` : ''))}${l.leave_unpaid ? row('Leave beyond balance (unpaid)', l.leave_unpaid, 'bad') : ''}${row('Weekly off', l.weekly_off)}${row('Not marked', l.unmarked, l.unmarked ? 'bad' : '')}${l.outside ? row('Before joining / after leaving', l.outside) : ''}${row('Paid days', `<b>${l.paid_days} of ${l.salary_days}</b>`, 't')}</table></div>
+      <div><h4>Salary</h4><table class="pr-kv">${row('Monthly CTC', prInr(l.monthly_ctc))}${row('Basic', prInr(l.basic) + `<small> of ${prNum(l.full.basic)}</small>`)}${row('HRA', prInr(l.hra) + `<small> of ${prNum(l.full.hra)}</small>`)}${row('Special allowance', prInr(l.special) + `<small> of ${prNum(l.full.special)}</small>`)}${l.ot_pay ? row(`Overtime (${l.ot_hours} h)`, prInr(l.ot_pay)) : ''}${adj.filter(a => a.kind === 'earning').map(a => row(esc(a.label), prInr(a.amount))).join('')}${row('Total earnings', prInr(l.total_earnings), 't')}${row('PF', '− ' + prInr(l.pf))}${row('ESI', '− ' + prInr(l.esi))}${row('Professional tax', '− ' + prInr(l.pt))}${l.tds ? row('Income tax (TDS)', '− ' + prInr(l.tds)) : ''}${adj.filter(a => a.kind === 'deduction').map(a => row(esc(a.label), '− ' + prInr(a.amount))).join('')}${autoAdj.map(a => row(esc(a.label) + ' <small>(automatic)</small>', '− ' + prInr(a.amount))).join('')}${row('Net pay', prInr(l.net), 't hl')}</table></div></div>
       ${editable ? `<h4>Bonus, overtime or deduction</h4><div id="pd-adj">${adj.map((a, i) => `<div class="pr-adj"><select data-k="${i}"><option value="earning" ${a.kind === 'earning' ? 'selected' : ''}>Earning</option><option value="deduction" ${a.kind === 'deduction' ? 'selected' : ''}>Deduction</option></select><input data-n="${i}" value="${esc(a.label)}" placeholder="Name (e.g. Advance)" maxlength="60"><input data-a="${i}" type="number" min="1" value="${a.amount}" inputmode="numeric"><button type="button" class="btn btn-outline btn-sm" data-rm="${i}">Remove</button></div>`).join('')}</div><div class="btn-group"><button type="button" class="btn btn-outline btn-sm" id="pd-add">+ Add line</button><button type="button" class="btn btn-primary btn-sm" id="pd-save">Save and recalculate</button></div>` : ''}
       <div class="form-error" id="pd-err" role="alert"></div>`, true);
     prQ('pd-x').onclick = prModalClose;
@@ -402,7 +406,7 @@ async function prShare(l) {
 }
 function prSlipPreview(l) {
   const sl = PR.cfg.slip, earn = [['Basic', l.basic], ['House rent allowance', l.hra], ['Special allowance', l.special]]; if (l.ot_pay) earn.push([`Overtime (${l.ot_hours} h)`, l.ot_pay]); (l.adjustments || []).filter(a => a.kind === 'earning').forEach(a => earn.push([a.label, a.amount]));
-  const ded = []; if (l.pf) ded.push(['Provident fund (PF)', l.pf]); if (l.esi) ded.push(['ESI', l.esi]); if (l.pt) ded.push(['Professional tax', l.pt]); (l.adjustments || []).filter(a => a.kind === 'deduction').forEach(a => ded.push([a.label, a.amount]));
+  const ded = []; if (l.pf) ded.push(['Provident fund (PF)', l.pf]); if (l.esi) ded.push(['ESI', l.esi]); if (l.pt) ded.push(['Professional tax', l.pt]); if (l.tds) ded.push(['Income tax (TDS)', l.tds]); (l.adjustments || []).filter(a => a.kind === 'deduction').forEach(a => ded.push([a.label, a.amount]));
   const n = Math.max(earn.length, ded.length, 1), kv = (k, v) => `<div><small>${k}</small><b>${esc(v) || '–'}</b></div>`;
   const words = typeof prWordsOf === 'function' ? prWordsOf(l.net) : '';
   prModal(`<div class="card-header"><div class="card-title">Pay slip preview</div><button type="button" class="btn btn-outline btn-sm" id="pv-x">Close</button></div><p class="pr-muted">Same layout as the PDF. What you see here is what gets downloaded and shared.</p>
@@ -445,6 +449,7 @@ async function prConfig() {
       <div><h4>ESI</h4>${sw('cf-esion', c.esi.on, 'Switched on')}${inp('cf-esie', c.esi.employee_pct, { l: 'Employee %' })}${inp('cf-esir', c.esi.employer_pct, { l: 'Employer %' })}${inp('cf-esil', c.esi.gross_limit, { l: 'Gross limit (₹)', h: 'ESI applies when the full-month gross is within this.' })}</div>
       <div><h4>Professional tax</h4>${sw('cf-pton', c.pt.on, 'Switched on')}<div id="cf-pt">${c.pt.slabs.map((s, i) => `<div class="pr-adj" data-s="${i}">${s.upto === null ? '<span>Above</span><span></span>' : `<span>Up to ₹</span><input data-f="upto" type="number" value="${s.upto}" ${dis}>`}<span>tax ₹</span><input data-f="amount" type="number" value="${s.amount}" ${dis}></div>`).join('')}</div><small class="pll-help">Slabs depend on your state — set them as your accountant advises.</small></div></div></div>
     <div class="card pr-card"><div class="pr-ct">Attendance and overtime</div><div class="form-grid">${inp('cf-hv', c.attendance.half_value, { l: 'A half day counts as', h: '0.5 = half a day paid.' })}${inp('cf-hd', c.attendance.hours_per_day, { l: 'Working hours in a day' })}${inp('cf-om', c.attendance.ot_multiplier, { l: 'Overtime rate (× hourly pay)', h: 'Hourly pay = CTC ÷ salary days ÷ hours.' })}${inp('cf-ld', c.attendance.lock_day, { l: 'Remind to lock attendance on day' })}</div>${sw('cf-oton', c.attendance.ot_on, 'Pay overtime')}</div>
+    <div class="card pr-card"><div class="pr-ct">Paid leave and gratuity</div><div class="form-grid"><div>${sw('cf-lvon', c.leave.on, 'Track paid leave balance (days beyond the balance become unpaid)')}</div>${inp('cf-lvq', c.leave.quota, { l: 'Paid leave days per year', h: 'January to December. Unused days are not carried forward.' })}<div>${sw('cf-lvenc', c.leave.encash_on_exit, 'Pay unused leave when someone leaves')}${sw('cf-gron', c.gratuity.on, 'Suggest gratuity when someone leaves (5 or more years)')}</div></div></div>
     <div class="card pr-card"><div class="pr-ct">Pay slip template</div><div class="form-grid">${inp('cf-sa', c.slip.address, { t: 'text', l: 'Company address on pay slip', m: 400 })}${inp('cf-sg', c.slip.gstin || '', { t: 'text', l: 'GSTIN', m: 20, h: 'Printed under the address. Leave empty to hide.' })}${inp('cf-sf', c.slip.footer, { t: 'text', l: 'Footer line', m: 160 })}</div>${sw('cf-slogo', c.slip.logo, 'Show logo')}${sw('cf-saon', c.slip.address_on, 'Show address')}${sw('cf-swon', c.slip.words_on, 'Show net pay in words')}</div>
     <div class="form-error" id="cf-err" role="alert"></div>`;
   const drawHol = () => { prQ('cf-hol').innerHTML = PR.hol.length ? PR.hol.map((h, i) => `<div class="pr-adj" data-h="${i}"><input data-f="date" type="date" value="${h.date}" ${dis}><input data-f="name" value="${esc(h.name)}" maxlength="60" placeholder="Holiday name" ${dis}>${ed ? `<button type="button" class="btn btn-outline btn-sm" data-hrm="${i}">Remove</button>` : ''}</div>`).join('') : '<p class="pr-muted">No holidays added.</p>'; };
@@ -464,6 +469,7 @@ async function prConfig() {
       pf: { on: ch('cf-pfon'), employee_pct: v('cf-pfe'), employer_pct: v('cf-pfr'), wage_limit: v('cf-pfl') }, esi: { on: ch('cf-esion'), employee_pct: v('cf-esie'), employer_pct: v('cf-esir'), gross_limit: v('cf-esil') },
       pt: { on: ch('cf-pton'), slabs: [...main.querySelectorAll('[data-s]')].map(el => ({ upto: el.querySelector('[data-f=upto]') ? el.querySelector('[data-f=upto]').value : null, amount: el.querySelector('[data-f=amount]').value })) },
       attendance: { half_value: v('cf-hv'), hours_per_day: v('cf-hd'), ot_multiplier: v('cf-om'), lock_day: v('cf-ld'), ot_on: ch('cf-oton') },
+      leave: { on: ch('cf-lvon'), quota: v('cf-lvq'), encash_on_exit: ch('cf-lvenc') }, gratuity: { on: ch('cf-gron') },
       slip: { logo: ch('cf-slogo'), address_on: ch('cf-saon'), words_on: ch('cf-swon'), address: v('cf-sa'), gstin: v('cf-sg'), footer: v('cf-sf') } };
     try { const r = await Payroll.saveConfig(body); PR.cfg = r.config; PR.meta.config = r.config; showToast('Configuration saved'); prConfig(); } catch (e) { prQ('cf-err').textContent = prErr(e); }
   };
@@ -487,3 +493,85 @@ async function prMonthControls() {
 }
 
 document.addEventListener('click', e => { const b = e.target.closest('[data-pr-open]'); if (b) { e.preventDefault(); openPayroll(); } });
+
+
+/* ───────────── Round 3: reminders, salary revision, exit, documents, reports ───────────── */
+function prRemindersHtml(items) {
+  if (!items || !items.length) return '';
+  return `<div class="card pr-card pr-remind"><div class="pr-ct">Reminders</div>${items.map((r, i) => `<div class="pr-att"><b>${esc(r.text)}</b><button type="button" class="btn btn-primary btn-sm" data-go="${r.view}" data-rem="${i}">Open</button></div>`).join('')}</div>`;
+}
+async function prBadge() {
+  const b = document.querySelectorAll('.pr-switch-badge'); if (!can('payroll.view')) return;
+  try { const r = await Payroll.reminders(); b.forEach(x => { x.textContent = r.count; x.hidden = !r.count; }); } catch { /* badge is optional */ }
+}
+async function prRevise(emp) {
+  let d; try { d = await Payroll.revisions(emp.id); } catch (e) { return showToast(prErr(e), true); }
+  const tpl = PR.cfg.templates, hist = d.revisions;
+  prModal(`<div class="card-header"><div class="card-title">Revise salary · ${esc(emp.name)}</div><button type="button" class="btn btn-outline btn-sm" id="rv-x">Close</button></div>
+    <p class="pr-muted">Current monthly CTC <b>${prInr(d.current.ctc)}</b>. The new salary applies from the date you choose. If that date falls in a month that is already finalised, the difference is added as <b>Arrears</b> to the next open month. Saved pay slips are never changed.</p>
+    <div class="form-grid">${prWizField('New monthly CTC (₹)', 'rv-ctc', '', { req: 1, type: 'number', attrs: 'min="1000" step="100" inputmode="numeric"' })}${prWizField('Effective from', 'rv-date', today().slice(0, 8) + '01', { req: 1, type: 'date', attrs: `min="${d.joined_on}"` })}${prWizField('Salary structure', 'rv-st', d.current.structure, { type: 'select', opts: tpl.map(t => [t.key, t.name]) })}${prWizField('Reason', 'rv-reason', '', { req: 1, help: 'For example Annual increment (at least 10 characters).' })}</div>
+    <div class="form-error" id="rv-err" role="alert"></div><div class="btn-group"><button type="button" class="btn btn-primary" id="rv-save">Save revision</button></div>
+    ${hist.length ? `<h4>History</h4><table class="pr-kv">${hist.map(r => `<tr><td>${fmtDate(r.effective_from)}</td><td>${prInr(r.previous_ctc)} → <b>${prInr(r.monthly_ctc)}</b> <small>${esc(r.reason)}${r.arrears_note ? ' · ' + esc(r.arrears_note) : ''}</small></td></tr>`).join('')}</table>` : ''}`, true);
+  prQ('rv-x').onclick = prModalClose;
+  prQ('rv-save').onclick = async () => {
+    const body = { monthly_ctc: Number(prQ('rv-ctc').value), effective_from: prQ('rv-date').value, structure: prQ('rv-st').value, reason: prQ('rv-reason').value.trim() };
+    if (!(body.monthly_ctc >= 1000)) return (prQ('rv-err').textContent = 'Enter the new monthly CTC.');
+    if (body.reason.length < 10) return (prQ('rv-err').textContent = 'Give a reason of at least 10 characters.');
+    try { const r = await Payroll.addRevision(emp.id, body); prModalClose(); showToast(r.arrears ? `Saved. Arrears ${prInr(r.arrears)} added to ${prMonthName(r.arrears_month)}` : 'Salary revised'); prEmployees(); } catch (e) { prQ('rv-err').textContent = prErr(e); }
+  };
+}
+async function prExit(emp) {
+  const run = async () => {
+    const left = prQ('ex-date').value; if (!left) return;
+    let p; try { p = await Payroll.exitPreview(emp.id, left); } catch (e) { prQ('ex-prev').innerHTML = `<div class="form-error">${esc(prErr(e))}</div>`; return; }
+    PR.exit = p; const g = p.gratuity || {};
+    prQ('ex-prev').innerHTML = `<table class="pr-kv"><tr><td>Last salary month</td><td>${prMonthName(p.month)}</td></tr>
+      <tr><td>Unused paid leave</td><td>${p.leave_days} day${p.leave_days === 1 ? '' : 's'} · <b>${prInr(p.leave_amount)}</b></td></tr>
+      <tr><td>Gratuity</td><td>${g.eligible ? `Eligible (${g.service_years} years) · suggested <b>${prInr(g.amount)}</b>` : '<span class="pr-muted">Not eligible (under 5 years)</span>'}</td></tr>
+      <tr><td>Loan / advance balance</td><td>${p.loan_balance ? `<b>${prInr(p.loan_balance)}</b> is deducted from the final salary` : 'None'}</td></tr></table>
+      ${p.leave_amount ? '<label class="pr-chk"><input type="checkbox" id="ex-enc" checked> Pay the unused leave</label>' : ''}
+      <div class="form-group"><label for="ex-grat">Gratuity to pay (₹)</label><input id="ex-grat" type="number" min="0" value="${g.eligible ? g.amount : 0}" inputmode="numeric"><small class="pll-help">Change or set to 0. Your accountant decides the final figure.</small></div>
+      ${p.frozen ? '<div class="pr-warn">That month is already finalised. Reopen it in Payroll Configuration first.</div>' : ''}`;
+  };
+  prModal(`<div class="card-header"><div class="card-title">Employee exit · ${esc(emp.name)}</div><button type="button" class="btn btn-outline btn-sm" id="ex-x">Close</button></div>
+    <p class="pr-muted">Marks the person as left, pays salary up to the last working day, and adds leave pay, gratuity and loan recovery to the final month.</p>
+    <div class="form-grid">${prWizField('Last working day', 'ex-date', today(), { req: 1, type: 'date', attrs: `min="${String(emp.joined_on).slice(0, 10)}"` })}${prWizField('Reason', 'ex-reason', '', { req: 1, help: 'For example Resigned, notice served (at least 10 characters).' })}</div>
+    <div id="ex-prev"></div><div class="form-error" id="ex-err" role="alert"></div><div class="btn-group"><button type="button" class="btn btn-primary" id="ex-save">Complete exit</button></div>`, true);
+  prQ('ex-x').onclick = prModalClose; prQ('ex-date').addEventListener('change', run); run();
+  prQ('ex-save').onclick = async () => {
+    const reason = prQ('ex-reason').value.trim(); if (reason.length < 10) return (prQ('ex-err').textContent = 'Give a reason of at least 10 characters.');
+    if (!(await askConfirm({ title: 'Complete exit?', message: `${emp.name} will be marked as left on ${fmtDate(prQ('ex-date').value)}.`, yesLabel: 'Complete exit', noLabel: 'Cancel' }))) return;
+    try { await Payroll.exit(emp.id, { left_on: prQ('ex-date').value, reason, encash_leave: !!(prQ('ex-enc') && prQ('ex-enc').checked), gratuity: Number(prQ('ex-grat') ? prQ('ex-grat').value : 0) || 0 }); prModalClose(); showToast('Exit recorded'); prEmployees(); } catch (e) { prQ('ex-err').textContent = prErr(e); }
+  };
+}
+async function prDocs(emp) {
+  const draw = async () => {
+    let d; try { d = await Payroll.empDocs(emp.id); } catch (e) { return showToast(prErr(e), true); }
+    prModal(`<div class="card-header"><div class="card-title">Documents · ${esc(emp.name)}</div><button type="button" class="btn btn-outline btn-sm" id="dc-x">Close</button></div>
+      ${d.docs.length ? `<table class="pr-kv">${d.docs.map(x => `<tr><td><b>${esc(x.doc_type)}</b><br><small>${esc(x.original_filename)} · ${esc(x.size)}</small></td><td><button type="button" class="btn btn-outline btn-sm" data-view="${x.id}">View</button> <button type="button" class="btn btn-outline btn-sm" data-del="${x.id}">Delete</button></td></tr>`).join('')}</table>` : '<p class="pr-muted">No documents yet.</p>'}
+      <h4>Add a document</h4><div class="form-grid"><div class="form-group"><label for="dc-type">Type</label><select id="dc-type">${d.types.map(t => `<option>${esc(t)}</option>`).join('')}</select></div><div class="form-group"><label for="dc-file">File (max ${d.max_mb} MB)</label><input id="dc-file" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx"></div></div>
+      <div class="form-error" id="dc-err" role="alert"></div><div class="btn-group"><button type="button" class="btn btn-primary" id="dc-up">Upload</button></div>`, true);
+    prQ('dc-x').onclick = prModalClose;
+    prQ('dc-up').onclick = async () => { const f = prQ('dc-file').files[0]; if (!f) return (prQ('dc-err').textContent = 'Choose a file.'); try { await Payroll.uploadDoc(emp.id, prQ('dc-type').value, f); showToast('Uploaded'); draw(); } catch (e) { prQ('dc-err').textContent = prErr(e); } };
+    prQ('pr-modal').querySelectorAll('[data-view]').forEach(b => b.onclick = async () => { try { const r = await Payroll.docLink(b.dataset.view); window.open(r.url, '_blank', 'noopener'); } catch (e) { showToast(prErr(e), true); } });
+    prQ('pr-modal').querySelectorAll('[data-del]').forEach(b => b.onclick = async () => { const reason = await askReason({ title: 'Delete document', intro: 'Say why this document is being removed.', confirmLabel: 'Delete' }); if (!reason) return; try { await Payroll.deleteDoc(b.dataset.del, reason); showToast('Deleted'); draw(); } catch (e) { showToast(prErr(e), true); } });
+  };
+  draw();
+}
+async function prReports() {
+  const main = prQ('pr-main'), kind = PR.rk || 'statutory';
+  let r; try { r = await Payroll.report(kind, PR.month); } catch (e) { main.innerHTML = prSetup(e) || `<div class="pr-empty pr-bad">${esc(prErr(e))}</div>`; return; }
+  const t = r.totals, head = kind === 'statutory'
+    ? '<th>ID</th><th>Name</th><th class="r">PF wages</th><th class="r">PF (employee)</th><th class="r">PF (employer)</th><th class="r">ESI (employee)</th><th class="r">ESI (employer)</th><th class="r">Prof. tax</th><th class="r">TDS</th>'
+    : '<th>Site</th><th class="r">Employees</th><th class="r">Gross pay</th><th class="r">Employer PF + ESI</th><th class="r">Total cost</th><th class="r">Net to staff</th>';
+  const body = kind === 'statutory'
+    ? r.rows.map(x => `<tr><td data-label="ID">${esc(x.emp_code)}</td><td data-label="Name">${esc(x.name)}</td><td class="r" data-label="PF wages">${prNum(x.pf_wage)}</td><td class="r" data-label="PF (employee)">${prNum(x.pf_ee)}</td><td class="r" data-label="PF (employer)">${prNum(x.pf_er)}</td><td class="r" data-label="ESI (employee)">${prNum(x.esi_ee)}</td><td class="r" data-label="ESI (employer)">${prNum(x.esi_er)}</td><td class="r" data-label="Prof. tax">${prNum(x.pt)}</td><td class="r" data-label="TDS">${prNum(x.tds)}</td></tr>`).join('') + `<tr class="t"><td></td><td>Total</td><td></td><td class="r">${prNum(t.pf_ee)}</td><td class="r">${prNum(t.pf_er)}</td><td class="r">${prNum(t.esi_ee)}</td><td class="r">${prNum(t.esi_er)}</td><td class="r">${prNum(t.pt)}</td><td class="r">${prNum(t.tds)}</td></tr>`
+    : r.rows.map(x => `<tr><td data-label="Site">${esc(x.site)}</td><td class="r" data-label="Employees">${x.count}</td><td class="r" data-label="Gross pay">${prNum(x.gross)}</td><td class="r" data-label="Employer PF + ESI">${prNum(x.employer)}</td><td class="r" data-label="Total cost">${prNum(x.cost)}</td><td class="r" data-label="Net to staff">${prNum(x.net)}</td></tr>`).join('') + `<tr class="t"><td>Total</td><td class="r">${t.count}</td><td class="r">${prNum(t.gross)}</td><td class="r">${prNum(t.employer)}</td><td class="r">${prNum(t.cost)}</td><td class="r">${prNum(t.net)}</td></tr>`;
+  main.innerHTML = prHead('Reports', 'Figures for the month, ready for your accountant.', '<button type="button" class="btn btn-outline btn-sm" id="rp-x">Export Excel</button>') + prMonthBar() +
+    `<div class="pr-seg" style="margin:8px 0"><button type="button" data-rk="statutory" class="${kind === 'statutory' ? 'on' : ''}">PF, ESI and tax</button><button type="button" data-rk="sites" class="${kind === 'sites' ? 'on' : ''}">Cost by site</button></div>` +
+    (r.status === 'draft' || r.status === 'reviewed' ? prNote('This month is not finalised yet, so figures can still change.') : '') +
+    (r.rows.length ? `<div class="table-wrap"><table class="pr-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>` : '<div class="pr-empty">Nothing to show for this month.</div>');
+  prWireMonth();
+  main.querySelectorAll('[data-rk]').forEach(b => b.addEventListener('click', () => { PR.rk = b.dataset.rk; prReports(); }));
+  prQ('rp-x').addEventListener('click', async () => { try { saveBlob(await Payroll.reportExcel(kind, PR.month), `SCC-Payroll-${kind}-${PR.month}.xlsx`); } catch (e) { showToast(prErr(e), true); } });
+}

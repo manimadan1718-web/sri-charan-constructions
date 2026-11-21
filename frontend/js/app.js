@@ -1827,6 +1827,11 @@ const SPECIAL_ACTIONS = {
   employee_added:      { label: 'Employee added', cls: 'pill-green' },
   employee_edited:     { label: 'Employee edited', cls: 'pill-orange' },
   employee_ctc_changed:{ label: 'Salary (CTC) changed', cls: 'pill-orange' },
+  employee_tds_changed:{ label: 'Employee TDS amount changed', cls: 'pill-orange' },
+  employee_exit:       { label: 'Employee left', cls: 'pill-red' },
+  employee_doc_added:  { label: 'Employee document added', cls: 'pill-blue' },
+  employee_doc_viewed: { label: 'Employee document viewed', cls: 'pill-blue' },
+  employee_doc_deleted:{ label: 'Employee document deleted', cls: 'pill-red' },
   attendance_saved:    { label: 'Attendance saved', cls: 'pill-blue' },
   attendance_locked:   { label: 'Attendance locked', cls: 'pill-blue' },
   attendance_unlocked: { label: 'Attendance unlocked', cls: 'pill-orange' },
@@ -3671,7 +3676,7 @@ function initBell() {
   document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && !document.getElementById('bell-panel').hidden) { toggleBell(false); document.getElementById('bell-btn').focus(); } });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshBell(); });
   updateDeviceNote();
-  refreshBell();
+  refreshBell(); if (typeof prBadge === 'function') { prBadge(); document.addEventListener('visibilitychange', () => { if (!document.hidden) prBadge(); }); }
   BELL.timer = setInterval(refreshBell, 60000);
 }
 

@@ -31,6 +31,8 @@ const DEFAULT_CONFIG = {
   esi: { on: true, employee_pct: 0.75, employer_pct: 3.25, gross_limit: 21000 },
   pt:  { on: true, slabs: [{ upto: 21000, amount: 0 }, { upto: null, amount: 200 }] },
   attendance: { half_value: 0.5, ot_on: true, ot_multiplier: 1.5, hours_per_day: 8, lock_day: 3 },
+  leave: { on: false, quota: 12, encash_on_exit: true },    // paid leave per calendar year; days beyond the balance are unpaid
+  gratuity: { on: true },                                   // offered in the exit dialog for 5+ years of service
   holidays: [],                                              // [{ date: 'YYYY-MM-DD', name }]  paid for everyone
   slip: { logo: true, address_on: true, words_on: true, address: '', gstin: '', footer: 'This is a computer-generated pay slip and does not need a signature.' },
 };
@@ -99,6 +101,8 @@ function parseConfig(b, base = DEFAULT_CONFIG) {
       c.attendance = { half_value: num(a.half_value, 0, 1, 'A half day'), ot_on: flag(a.ot_on, 'Overtime'), ot_multiplier: num(a.ot_multiplier, 1, 5, 'The overtime multiplier'), hours_per_day: num(a.hours_per_day, 4, 24, 'Hours per day'), lock_day: Math.round(num(a.lock_day, 1, 28, 'The lock day')) };
     }
     if (b.slip !== undefined) { const s = b.slip || {}; c.slip = { logo: flag(s.logo, 'Logo'), address_on: flag(s.address_on, 'Address'), words_on: flag(s.words_on, 'Salary in words'), address: clean(s.address, 400), gstin: s.gstin === undefined ? (base.slip && base.slip.gstin) || '' : clean(s.gstin, 20).toUpperCase(), footer: clean(s.footer, 160) }; }
+    if (b.leave !== undefined) { const l = b.leave || {}; c.leave = { on: flag(l.on, 'Leave balance'), quota: num(l.quota, 0, 60, 'Yearly paid leave'), encash_on_exit: flag(l.encash_on_exit, 'Leave encashment') }; }
+    if (b.gratuity !== undefined) c.gratuity = { on: flag((b.gratuity || {}).on, 'Gratuity') };
     if (b.holidays !== undefined) {
       if (!Array.isArray(b.holidays) || b.holidays.length > 120) throw new Error('Keep up to 120 holidays.');
       const seen = new Set();
@@ -126,52 +130,96 @@ function breakup(ctc, emp, cfg) {
 }
 const ptFor = (gross, cfg) => { for (const s of cfg.pt.slabs) if (s.upto === null || gross <= s.upto) return s.amount; return 0; };
 
-/** What the month's attendance means for one person. recs = { 'YYYY-MM-DD': { s, ot } } */
-function paidSummary(emp, month, recs, cfg) {
-  const dim = daysInMonth(month), out = { present: 0, absent: 0, half: 0, leave: 0, weekly_off: 0, holiday: 0, unmarked: 0, outside: 0, ot_hours: 0 };
-  const hol = new Set((cfg.holidays || []).map(h => h.date));
-  let lop = 0;
+/** What the month's attendance means for one person. recs = { 'YYYY-MM-DD': { s, ot } }.  leaveBefore = paid leave already taken this calendar year (before this month). */
+function paidSummary(emp, month, recs, cfg, leaveBefore = 0) {
+  const dim = daysInMonth(month), out = { present: 0, absent: 0, half: 0, leave: 0, leave_unpaid: 0, weekly_off: 0, holiday: 0, unmarked: 0, outside: 0, ot_hours: 0 };
+  const hol = new Set((cfg.holidays || []).map(h => h.date)), lv = cfg.leave || DEFAULT_CONFIG.leave, lopDay = [0];
+  let lop = 0, taken = 0;
   for (let d = 1; d <= dim; d++) {
-    const date = dayOf(month, d);
-    if ((emp.joined_on && date < String(emp.joined_on).slice(0, 10)) || (emp.left_on && date > String(emp.left_on).slice(0, 10))) { out.outside++; lop++; continue; }
-    const r = recs && recs[date];
-    if (r) {
-      out.ot_hours += Number(r.ot) || 0;
-      if (r.s === 'P') out.present++; else if (r.s === 'A') { out.absent++; lop += 1; } else if (r.s === 'H') { out.half++; lop += 1 - cfg.attendance.half_value; } else if (r.s === 'L') out.leave++; else if (r.s === 'W') out.weekly_off++;
-    } else if (hol.has(date)) out.holiday++;
-    else if (cfg.weekly_off.includes(weekday(date))) out.weekly_off++;
-    else { out.unmarked++; lop += 1; }
+    const date = dayOf(month, d); let l = 0;
+    if ((emp.joined_on && date < String(emp.joined_on).slice(0, 10)) || (emp.left_on && date > String(emp.left_on).slice(0, 10))) { out.outside++; l = 1; }
+    else {
+      const r = recs && recs[date];
+      if (r) {
+        out.ot_hours += Number(r.ot) || 0;
+        if (r.s === 'P') out.present++;
+        else if (r.s === 'A') { out.absent++; l = 1; }
+        else if (r.s === 'H') { out.half++; l = 1 - cfg.attendance.half_value; }
+        else if (r.s === 'L') { taken++; if (lv.on && leaveBefore + taken > lv.quota) { out.leave_unpaid++; l = 1; } else out.leave++; }
+        else if (r.s === 'W') out.weekly_off++;
+      } else if (hol.has(date)) out.holiday++;
+      else if (cfg.weekly_off.includes(weekday(date))) out.weekly_off++;
+      else { out.unmarked++; l = 1; }
+    }
+    lop += l; lopDay[d] = l;
   }
   const salary_days = cfg.salary_days === 'fixed' ? cfg.fixed_days : dim;
-  return { ...out, days_in_month: dim, salary_days, lop_days: r2(lop), paid_days: Math.max(0, r2(salary_days - lop)) };
+  const leave_balance = lv.on ? Math.max(0, lv.quota - leaveBefore - taken) : null;
+  return { ...out, leave_taken: taken, leave_balance, days_in_month: dim, salary_days, lop_days: r2(lop), paid_days: Math.max(0, r2(salary_days - lop)), lop_by_day: lopDay };
 }
 
-/** The whole line for one person and month. adj = [{ kind: 'earning' | 'deduction', label, amount }] */
-function computeLine(emp, month, recs, adj, cfg) {
-  const ctc = Number(emp.monthly_ctc) || 0, b = breakup(ctc, emp, cfg), s = paidSummary(emp, month, recs, cfg);
-  const f = s.salary_days ? s.paid_days / s.salary_days : 0;
-  const basic = r0(b.basic * f), hra = r0(b.hra * f), special = r0(b.special * f), gross = basic + hra + special;
+/* ── salary revisions: the CTC and structure that applied on a day ── */
+/** revs = [{ effective_from, monthly_ctc, structure, previous_ctc, previous_structure }]. Before the first revision the person was on its "previous" figures. */
+function rateAt(emp, revs, date) {
+  const list = (revs || []).slice().sort((a, b) => (String(a.effective_from) < String(b.effective_from) ? -1 : 1));
+  let ctc = Number(emp.monthly_ctc) || 0, structure = emp.structure;
+  if (list.length) { ctc = Number(list[0].previous_ctc); structure = list[0].previous_structure || emp.structure; }
+  for (const r of list) if (String(r.effective_from).slice(0, 10) <= date) { ctc = Number(r.monthly_ctc); structure = r.structure || structure; }
+  return { ctc, structure };
+}
+
+/** The whole line for one person and month. adj = [{ kind: 'earning' | 'deduction', label, amount }].  ctx = { revisions, leaveBefore } */
+function computeLine(emp, month, recs, adj, cfg, ctx = {}) {
+  const s = paidSummary(emp, month, recs, cfg, ctx.leaveBefore || 0), dim = s.days_in_month;
+  // split the month where the salary changed; each stretch is paid at its own rate
+  const segs = []; 
+  for (let d = 1; d <= dim; d++) {
+    const r = rateAt(emp, ctx.revisions, dayOf(month, d)), last = segs[segs.length - 1];
+    if (last && last.ctc === r.ctc && last.structure === r.structure) { last.n++; last.lop += s.lop_by_day[d]; } else segs.push({ ctc: r.ctc, structure: r.structure, n: 1, lop: s.lop_by_day[d] });
+  }
+  let basicF = 0, hraF = 0, specialF = 0, b = null;
+  for (const g of segs) {
+    b = breakup(g.ctc, { ...emp, structure: g.structure }, cfg);
+    const share = Math.max(0, g.n / dim - (s.salary_days ? g.lop / s.salary_days : 0));
+    basicF += b.basic * share; hraF += b.hra * share; specialF += b.special * share;
+  }
+  const ctc = segs[segs.length - 1].ctc;                       // b is the breakup at the end of the month
+  const basic = r0(basicF), hra = r0(hraF), special = r0(specialF), gross = basic + hra + special;
   const hourly = s.salary_days ? ctc / s.salary_days / cfg.attendance.hours_per_day : 0;
   const ot_pay = cfg.attendance.ot_on ? r0(s.ot_hours * hourly * cfg.attendance.ot_multiplier) : 0;
   const lines = (Array.isArray(adj) ? adj : []).filter(a => a && Number(a.amount) > 0);
   const other_earnings = lines.filter(a => a.kind === 'earning').reduce((t, a) => t + r0(a.amount), 0);
   const other_deductions = lines.filter(a => a.kind === 'deduction').reduce((t, a) => t + r0(a.amount), 0);
   const pf = cfg.pf.on && emp.pf_applicable ? r0(cfg.pf.employee_pct / 100 * Math.min(basic, cfg.pf.wage_limit)) : 0;
-  const esi = cfg.esi.on && emp.esi_applicable && b.gross <= cfg.esi.gross_limit ? r0(cfg.esi.employee_pct / 100 * (gross + ot_pay + other_earnings)) : 0;
+  const esiOn = cfg.esi.on && emp.esi_applicable && b.gross <= cfg.esi.gross_limit;
+  const esi = esiOn ? r0(cfg.esi.employee_pct / 100 * (gross + ot_pay + other_earnings)) : 0;
+  const pf_employer_paid = cfg.pf.on && emp.pf_applicable ? r0(cfg.pf.employer_pct / 100 * Math.min(basic, cfg.pf.wage_limit)) : 0;
+  const esi_employer = esiOn ? r0(cfg.esi.employer_pct / 100 * (gross + ot_pay + other_earnings)) : 0;
   const pt = cfg.pt.on && emp.pt_applicable ? ptFor(b.gross, cfg) : 0;
-  const total_deductions = pf + esi + pt + other_deductions, total_earnings = gross + ot_pay + other_earnings;
+  const tds = s.paid_days > 0 ? r0(emp.tds_monthly) : 0;
+  const total_deductions = pf + esi + pt + tds + other_deductions, total_earnings = gross + ot_pay + other_earnings;
   const flags = [];
   if (s.unmarked) flags.push(`${s.unmarked} day${s.unmarked === 1 ? '' : 's'} not marked`);
+  if (s.leave_unpaid) flags.push(`${s.leave_unpaid} leave day${s.leave_unpaid === 1 ? '' : 's'} beyond the balance (unpaid)`);
   if (!emp.bank_account) flags.push('Bank details missing');
   if (total_earnings - total_deductions < 0) flags.push('Deductions are more than the pay');
+  const { lop_by_day, ...summary } = s;
   return {
     employee_id: emp.id, emp_code: emp.emp_code, name: emp.name, designation: emp.designation, site: emp.site || '', joined_on: emp.joined_on ? String(emp.joined_on).slice(0, 10) : null,
     phone: emp.phone || '', bank_name: emp.bank_name || '', bank_account: emp.bank_account || '', ifsc: emp.ifsc || '', pan: emp.pan || '', uan: emp.uan || '', esi_no: emp.esi_no || '',
-    monthly_ctc: ctc, structure: b.template,
+    monthly_ctc: ctc, structure: b.template, revised_in_month: segs.length > 1,
     full: { basic: b.basic, hra: b.hra, special: b.special, pf_employer: b.pf_employer, gross: b.gross },
-    ...s, basic, hra, special, gross, ot_pay, other_earnings, pf, esi, pt, other_deductions, total_earnings, total_deductions, net: total_earnings - total_deductions,
+    ...summary, basic, hra, special, gross, ot_pay, other_earnings, pf, esi, pt, tds, pf_employer_paid, esi_employer, other_deductions, total_earnings, total_deductions, net: total_earnings - total_deductions,
     adjustments: lines.map(a => ({ kind: a.kind, label: clean(a.label, 60), amount: r0(a.amount), ...(a.auto ? { auto: true } : {}) })), flags,
   };
+}
+/** Gratuity (Payment of Gratuity Act): 15 days' wages for every completed year, 15/26 x last monthly Basic; only after 5 years. */
+function gratuityEstimate(emp, cfg, leftOn) {
+  const j = new Date(String(emp.joined_on).slice(0, 10) + 'T00:00:00Z'), l = new Date(leftOn + 'T00:00:00Z');
+  let months = (l.getUTCFullYear() - j.getUTCFullYear()) * 12 + (l.getUTCMonth() - j.getUTCMonth()) - (l.getUTCDate() < j.getUTCDate() ? 1 : 0);
+  const years = Math.floor(months / 12), rem = months % 12, counted = years + (rem >= 6 ? 1 : 0);
+  const basic = breakup(Number(emp.monthly_ctc) || 0, emp, cfg).basic;
+  return { service_years: Math.round(months / 12 * 10) / 10, eligible: years >= 5, counted_years: counted, amount: years >= 5 ? r0(basic * 15 / 26 * counted) : 0, basic };
 }
 const totals = lines => ({
   count: lines.length, gross: lines.reduce((t, l) => t + l.total_earnings, 0), deductions: lines.reduce((t, l) => t + l.total_deductions, 0), net: lines.reduce((t, l) => t + l.net, 0),
@@ -198,7 +246,7 @@ function parseEmployee(b, cfg) {
     return { fields: {
       name, designation, site: clean(b.site, 80), phone: digits(b.phone, 10, 15, 'The phone number'), address: clean(b.address, 250), emergency_name: clean(b.emergency_name, 80), emergency_phone: digits(b.emergency_phone, 10, 15, 'The emergency phone number'),
       notes: clean(b.notes, 300), joined_on, left_on, status: left_on || b.status === 'left' ? 'left' : 'active', monthly_ctc, structure,
-      pf_applicable: flag(b.pf_applicable, true), esi_applicable: flag(b.esi_applicable, true), pt_applicable: flag(b.pt_applicable, true),
+      tds_monthly: r2(num(b.tds_monthly === undefined || b.tds_monthly === '' ? 0 : b.tds_monthly, 0, 1000000, 'Income tax (TDS) per month')), pf_applicable: flag(b.pf_applicable, true), esi_applicable: flag(b.esi_applicable, true), pt_applicable: flag(b.pt_applicable, true),
       bank_name: clean(b.bank_name, 80), bank_account: digits(b.bank_account, 6, 20, 'The bank account number'), ifsc, pan, uan: digits(b.uan, 12, 12, 'The UAN'), esi_no: digits(b.esi_no, 10, 17, 'The ESI number'),
     } };
   } catch (e) { return { error: e.message }; }
@@ -242,4 +290,4 @@ function rupeesInWords(n) {
   return `Rupees ${out.join(' ')} only`;
 }
 module.exports = { DEFAULT_CONFIG, STATUSES, STATUS_TEXT, clean, r0, r2, validMonth, validDay, daysInMonth, dayOf, weekday, todayIST, monthName, dmy, prevMonth, nextMonth,
-  loanInstalment, loanMonths, parseLoan, emiOf, parseConfig, fullConfig, templateOf, breakup, ptFor, paidSummary, computeLine, totals, parseEmployee, nextCode, rupeesInWords };
+  loanInstalment, loanMonths, parseLoan, emiOf, rateAt, gratuityEstimate, parseConfig, fullConfig, templateOf, breakup, ptFor, paidSummary, computeLine, totals, parseEmployee, nextCode, rupeesInWords };

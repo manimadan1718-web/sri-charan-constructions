@@ -301,6 +301,17 @@ const Payroll = {
   exportMonth(month) { return apiFetch(`/payroll/months/${month}/export`, { asBlob: true }); },
   payslips(month) { return apiFetch(`/payroll/payslips/${month}`); },
   payslipPdf(month, id) { return apiFetch(`/payroll/payslips/${month}/${encodeURIComponent(id)}.pdf`, { asBlob: true }); },
+  reminders() { return apiFetch('/payroll/reminders'); },
+  revisions(id) { return apiFetch(`/payroll/employees/${encodeURIComponent(id)}/revisions`); },
+  addRevision(id, body) { return apiFetch(`/payroll/employees/${encodeURIComponent(id)}/revisions`, { method: 'POST', body: JSON.stringify(body) }); },
+  exitPreview(id, left_on) { return apiFetch(`/payroll/employees/${encodeURIComponent(id)}/exit-preview?left_on=${encodeURIComponent(left_on)}`); },
+  exit(id, body) { return apiFetch(`/payroll/employees/${encodeURIComponent(id)}/exit`, { method: 'POST', body: JSON.stringify(body) }); },
+  report(kind, month) { return apiFetch(`/payroll/reports/${kind}?month=${encodeURIComponent(month)}`); },
+  reportExcel(kind, month) { return apiFetch(`/payroll/reports/${kind}/export?month=${encodeURIComponent(month)}`, { asBlob: true }); },
+  empDocs(id) { return apiFetch(`/payroll/employees/${encodeURIComponent(id)}/docs`); },
+  uploadDoc(id, type, file) { return apiFetch(`/payroll/employees/${encodeURIComponent(id)}/docs?type=${encodeURIComponent(type)}&filename=${encodeURIComponent(file.name)}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file }); },
+  docLink(docId) { return apiFetch(`/payroll/docs/${encodeURIComponent(docId)}/view-link`); },
+  deleteDoc(docId, reason) { return apiFetch(`/payroll/docs/${encodeURIComponent(docId)}`, { method: 'DELETE', body: JSON.stringify({ reason }) }); },
 };
 
 // ── Reports (Excel / PDF / CSV) ───────────────────────────────────────────────

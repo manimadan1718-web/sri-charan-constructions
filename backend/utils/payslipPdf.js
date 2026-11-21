@@ -38,7 +38,7 @@ async function build(lines, month, cfg) {
     const earn = [['Basic', l.basic], ['House rent allowance', l.hra], ['Special allowance', l.special]];
     if (l.ot_pay) earn.push([`Overtime (${l.ot_hours} h)`, l.ot_pay]);
     (l.adjustments || []).filter(a => a.kind === 'earning').forEach(a => earn.push([a.label, a.amount]));
-    const ded = []; if (l.pf) ded.push(['Provident fund (PF)', l.pf]); if (l.esi) ded.push(['ESI', l.esi]); if (l.pt) ded.push(['Professional tax', l.pt]);
+    const ded = []; if (l.pf) ded.push(['Provident fund (PF)', l.pf]); if (l.esi) ded.push(['ESI', l.esi]); if (l.pt) ded.push(['Professional tax', l.pt]); if (l.tds) ded.push(['Income tax (TDS)', l.tds]);
     (l.adjustments || []).filter(a => a.kind === 'deduction').forEach(a => ded.push([a.label, a.amount]));
     if (!ded.length) ded.push(['No deductions', 0]);
     const n = Math.max(earn.length, ded.length), rowH = 20;

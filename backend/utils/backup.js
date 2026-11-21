@@ -35,6 +35,8 @@ const SHEETS = [
   { name: 'Payroll months',      table: 'payroll_months', order: 'month' },
   { name: 'Payroll lines',       table: 'payroll_lines' },
   { name: 'Payroll loans',       table: 'payroll_loans' },
+  { name: 'Salary revisions',    table: 'payroll_revisions' },
+  { name: 'Employee documents',  table: 'payroll_employee_docs' },
   { name: 'Activity log',        table: 'activity_logs', newestFirst: true, max: MAX_LOG_ROWS },
 ];
 

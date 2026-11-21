@@ -46,6 +46,7 @@ const filesRouter     = require('./routes/files');
 const accountRouter   = require('./routes/account');
 const feedbackRouter  = require('./routes/feedback');
 const vehicleDocsRouter = require('./routes/vehicledocs');
+const payrollRouter = require('./routes/payroll');
 const documentsUtil   = require('./utils/documents');
 const { ensureBucket } = require('./utils/photos');
 const { checkLogsTable } = require('./utils/activity');
@@ -185,6 +186,7 @@ app.use('/api/payments',  paymentsRouter);
 app.use('/api/purchases', purchasesRouter);
 app.use('/api/permissions', permissionsRouter);
 app.use('/api/account',  accountRouter);       // the signed-in person's own PIN change
+app.use('/api/payroll', payrollRouter);   // employees, attendance, monthly payroll and pay slips
 app.use('/api/vehicle-docs', vehicleDocsRouter);   // each vehicle's Insurance / Permit / Tax / FC / PUCC dates and registration date
 app.use('/api/feedback', feedbackRouter);      // suggestions / problems / questions for the Admin
 app.use('/api/files',     filesRouter);        // short-lived "view" links (no sign-in header possible in a new tab)

@@ -52,6 +52,12 @@ const CATALOG = [
   { key: 'backup.download',    group: 'Backup',        label: 'Download a full backup',           desc: 'Save everything in the database as one Excel file (no PINs, and not the photo or PDF files themselves).', adminOnly: true },
   { key: 'users.manage',       group: 'Users',         label: 'Manage Users',                     desc: 'Create, edit and switch off people and reset PINs.', adminOnly: true },
   { key: 'permissions.manage', group: 'Permissions',   label: 'Manage Permissions',               desc: 'Decide what each person can do (this tab).', adminOnly: true },
+  { key: 'payroll.view',      group: 'Payroll', label: 'Open Payroll',            desc: 'Switch to Payroll and see attendance, employees and the overview. Salary figures need the permissions below.' },
+  { key: 'payroll.attendance', group: 'Payroll', label: 'Mark attendance',         desc: 'Mark Present / Absent / Half day / Leave and overtime, and lock a month\'s attendance.', requires: 'payroll.view' },
+  { key: 'payroll.employees',  group: 'Payroll', label: 'Onboard / edit employees', desc: 'Add employees and change their details and monthly CTC (also lets the person see salaries).', requires: 'payroll.view' },
+  { key: 'payroll.run',        group: 'Payroll', label: 'Run monthly payroll',     desc: 'See the calculated salaries, add bonus / deductions, finalise, mark paid or reopen.', requires: 'payroll.view' },
+  { key: 'payroll.payslips',   group: 'Payroll', label: 'Pay slips',               desc: 'Generate and download pay slips.', requires: 'payroll.view' },
+  { key: 'payroll.config',     group: 'Payroll', label: 'Payroll configuration',   desc: 'Change salary structures, PF / ESI / PT rates and attendance rules.', requires: 'payroll.view' },
 ];
 
 const KEYS = CATALOG.map(c => c.key);

@@ -274,6 +274,27 @@ const VehicleDocs = {
   setDate(vehicleId, kind, date, reason) { return apiFetch(`/vehicle-docs/${encodeURIComponent(vehicleId)}/${encodeURIComponent(kind)}`, { method: 'PUT', body: JSON.stringify({ date, reason }) }); },
 };
 
+// ── Payroll ───────────────────────────────────────────────────────────────────
+const Payroll = {
+  meta() { return apiFetch('/payroll/meta'); },
+  saveConfig(body) { return apiFetch('/payroll/config', { method: 'PUT', body: JSON.stringify(body) }); },
+  overview(month) { return apiFetch(`/payroll/overview?month=${encodeURIComponent(month)}`); },
+  employees() { return apiFetch('/payroll/employees'); },
+  addEmployee(body) { return apiFetch('/payroll/employees', { method: 'POST', body: JSON.stringify(body) }); },
+  editEmployee(id, body) { return apiFetch(`/payroll/employees/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(body) }); },
+  attendance(month) { return apiFetch(`/payroll/attendance?month=${encodeURIComponent(month)}`); },
+  saveAttendance(items) { return apiFetch('/payroll/attendance', { method: 'PUT', body: JSON.stringify({ items }) }); },
+  markDay(date, status, site) { return apiFetch('/payroll/attendance/mark-day', { method: 'POST', body: JSON.stringify({ date, status, site }) }); },
+  lock(month) { return apiFetch(`/payroll/months/${month}/lock`, { method: 'POST', body: '{}' }); },
+  unlock(month, reason) { return apiFetch(`/payroll/months/${month}/unlock`, { method: 'POST', body: JSON.stringify({ reason }) }); },
+  month(month) { return apiFetch(`/payroll/months/${month}`); },
+  adjust(month, employee_id, adjustments) { return apiFetch(`/payroll/months/${month}/adjustments`, { method: 'PUT', body: JSON.stringify({ employee_id, adjustments }) }); },
+  setStatus(month, to, reason) { return apiFetch(`/payroll/months/${month}/status`, { method: 'POST', body: JSON.stringify({ to, reason }) }); },
+  exportMonth(month) { return apiFetch(`/payroll/months/${month}/export`, { asBlob: true }); },
+  payslips(month) { return apiFetch(`/payroll/payslips/${month}`); },
+  payslipPdf(month, id) { return apiFetch(`/payroll/payslips/${month}/${encodeURIComponent(id)}.pdf`, { asBlob: true }); },
+};
+
 // ── Reports (Excel / PDF / CSV) ───────────────────────────────────────────────
 const Reports = {
   // ids = the records currently on screen, in order. Resolves with the file (a Blob).

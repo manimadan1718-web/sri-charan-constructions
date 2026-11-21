@@ -22,7 +22,7 @@ const TAB_PERMS = {
 };
 const TAB_ORDER = ['home', 'entry', 'records', 'progress', 'purchases', 'summary', 'documents', 'renewals', 'payments', 'inventory', 'users', 'logs', 'permissions', 'archive'];
 const ALL_PERMS = ['archive.manage', 'backup.download', 'entry.add', 'progress.add', 'progress.view', 'progress.delete', 'renewals.view', 'renewals.add', 'renewals.edit', 'records.view', 'records.export', 'records.edit', 'records.delete', 'purchases.add', 'purchases.view', 'purchases.edit', 'summary.view',
-  'documents.view', 'documents.print', 'documents.upload', 'documents.delete', 'payments.add', 'payments.view', 'payments.edit', 'inventory.manage', 'logs.view', 'logs.delete', 'users.manage', 'permissions.manage'];
+  'documents.view', 'documents.print', 'documents.upload', 'documents.delete', 'payments.add', 'payments.view', 'payments.edit', 'inventory.manage', 'logs.view', 'logs.delete', 'users.manage', 'permissions.manage', 'payroll.view', 'payroll.attendance', 'payroll.employees', 'payroll.run', 'payroll.payslips', 'payroll.config'];
 // Only used when the server has not sent a list (a session that started before permissions existed): the role's defaults.
 const ROLE_FALLBACK = {
   admin: ALL_PERMS,
@@ -1823,6 +1823,20 @@ const SPECIAL_ACTIONS = {
   archive_purged:      { label: 'Deleted permanently', cls: 'pill-red' },
   renewal_added:       { label: 'Renewal added',       cls: 'pill-green' },
   vehicle_reg_set:     { label: 'Registration date set', cls: 'pill-orange' },
+  payroll_config:      { label: 'Payroll settings changed', cls: 'pill-orange' },
+  employee_added:      { label: 'Employee added', cls: 'pill-green' },
+  employee_edited:     { label: 'Employee edited', cls: 'pill-orange' },
+  employee_ctc_changed:{ label: 'Salary (CTC) changed', cls: 'pill-orange' },
+  attendance_saved:    { label: 'Attendance saved', cls: 'pill-blue' },
+  attendance_locked:   { label: 'Attendance locked', cls: 'pill-blue' },
+  attendance_unlocked: { label: 'Attendance unlocked', cls: 'pill-orange' },
+  payroll_adjusted:    { label: 'Payroll line changed', cls: 'pill-orange' },
+  payroll_reviewed:    { label: 'Payroll reviewed', cls: 'pill-blue' },
+  payroll_finalised:   { label: 'Payroll finalised', cls: 'pill-green' },
+  payroll_paid:        { label: 'Payroll paid', cls: 'pill-green' },
+  payroll_reopened:    { label: 'Payroll reopened', cls: 'pill-red' },
+  payroll_exported:    { label: 'Payroll exported', cls: 'pill-blue' },
+  payslip_generated:   { label: 'Pay slip generated', cls: 'pill-blue' },
   renewal_updated:     { label: 'Renewal changed',     cls: 'pill-orange' },
   renewal_deleted:     { label: 'Renewal deleted',     cls: 'pill-red'  },
   renewal_renewed:     { label: 'Marked renewed',      cls: 'pill-green' },

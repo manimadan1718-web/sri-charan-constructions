@@ -4,6 +4,7 @@ const { requireAuth, requirePerm, hasPerm } = require('../middleware/auth');
 const { logActivity } = require('../utils/activity');
 const reports = require('../utils/reports');
 const tableReports = require('../utils/tableReports');
+const vehicleDocs = require('../utils/vehicleDocs');
 const reportData = require('../utils/reportData');
 const lq = require('../utils/logQuery');
 const { summaryRange } = require('./entries');
@@ -169,6 +170,11 @@ router.post('/inventory', requirePerm('inventory.manage'), (req, res) => {
   const { type, format } = req.body || {};
   if (!Object.prototype.hasOwnProperty.call(reportData.INVENTORY, type)) return res.status(400).json({ error: 'Choose Vehicles, Sites or Operators.' });
   return serveTableReport(req, res, { format, filePrefix: type, category: 'inventory', load: () => reportData.inventoryReport(type) });
+});
+
+// ── POST /api/reports/vehicle-docs  (renewals.view) — { format } — every vehicle with its Insurance, Permit, Tax, FC, PUCC dates and registration date ──
+router.post('/vehicle-docs', requirePerm('renewals.view'), (req, res) => {
+  return serveTableReport(req, res, { format: (req.body || {}).format, filePrefix: 'vehicle-documents', category: 'renewal', load: () => vehicleDocs.report() });
 });
 
 // ── POST /api/reports/users  (Admin) — { format } — includes deleted users and who/when for every change ──

@@ -268,6 +268,12 @@ const Progress = {
   },
 };
 
+// ── Vehicle documents (Insurance, Permit, Tax, FC, PUCC, registration date) ───
+const VehicleDocs = {
+  list() { return apiFetch('/vehicle-docs'); },
+  setDate(vehicleId, kind, date, reason) { return apiFetch(`/vehicle-docs/${encodeURIComponent(vehicleId)}/${encodeURIComponent(kind)}`, { method: 'PUT', body: JSON.stringify({ date, reason }) }); },
+};
+
 // ── Reports (Excel / PDF / CSV) ───────────────────────────────────────────────
 const Reports = {
   // ids = the records currently on screen, in order. Resolves with the file (a Blob).
@@ -277,6 +283,10 @@ const Reports = {
   // { type: 'vehicles' | 'sites' | 'operators', format: 'xlsx' | 'pdf' }   (Admin)
   inventory(body) {
     return apiFetch('/reports/inventory', { method: 'POST', body: JSON.stringify(body), asBlob: true });
+  },
+  // { format }   (renewals.view)
+  vehicleDocs(body) {
+    return apiFetch('/reports/vehicle-docs', { method: 'POST', body: JSON.stringify(body), asBlob: true });
   },
   // { format }   (Admin) — includes deleted users
   users(body) {

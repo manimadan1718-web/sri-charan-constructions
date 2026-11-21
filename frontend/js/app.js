@@ -1629,6 +1629,7 @@ async function runTableReport(kind, format, itemEl) {
     if (per.from && per.to && per.from > per.to) { showToast('The "from" date cannot be after the "to" date.', true); return; }
     call = () => Reports.summary({ format, from: per.from || undefined, to: per.to || undefined, site: document.getElementById('sum-site').value || undefined }); name = 'summary';
   }
+  else if (group === 'vehicledocs') { call = () => Reports.vehicleDocs({ format }); name = 'vehicle-documents'; }
   else return;
 
   const menu = itemEl.closest('.rm');
@@ -1821,6 +1822,7 @@ const SPECIAL_ACTIONS = {
   archive_restored:    { label: 'Restored from Archive', cls: 'pill-green' },
   archive_purged:      { label: 'Deleted permanently', cls: 'pill-red' },
   renewal_added:       { label: 'Renewal added',       cls: 'pill-green' },
+  vehicle_reg_set:     { label: 'Registration date set', cls: 'pill-orange' },
   renewal_updated:     { label: 'Renewal changed',     cls: 'pill-orange' },
   renewal_deleted:     { label: 'Renewal deleted',     cls: 'pill-red'  },
   renewal_renewed:     { label: 'Marked renewed',      cls: 'pill-green' },

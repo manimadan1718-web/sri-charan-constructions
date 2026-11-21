@@ -109,6 +109,14 @@ const GUIDE = [
   { id: 'renewals', title: 'Renewals', perms: ['renewals.view'], tab: 'renewals', blocks: [
     { t: 'p', v: 'Never miss insurance, permit, fitness or any other renewal. The app reminds you before the date.' },
     { t: 'steps', title: 'Adding a renewal', v: ['Choose the <b>Type of renewal</b>, the <b>Renewal date</b> (the date it ends or must be renewed), the <b>Amount</b> and <b>Who paid</b>. Add a description.', 'Press <b>Choose documents</b> to attach the policy or receipt.', 'Press <b>Save renewal</b>.'] },
+    { t: 'steps', title: 'Vehicle documents: Insurance, Permit, Tax, FC and PUCC for every vehicle', v: [
+      'In <b>Renewals</b> press the <b>Vehicle documents</b> tab. Every vehicle from Inventory is a row, with its <b>Sl No</b>, <b>Vehicle No</b>, <b>Insurance</b>, <b>Permit</b>, <b>Tax</b>, <b>FC (Fitness Certificate)</b>, <b>PUCC</b> and <b>Registration date</b>.',
+      'Each date is the day the document <b>expires</b>. Press <b>+ Add date</b> in a box, choose the date and press <b>Save date</b>.',
+      'The colour tells you the state: <b>Overdue</b> (red), <b>Due today</b> and <b>Due soon</b> (orange), <b>Valid</b> (green). The cards on top count them.',
+      'When a document is renewed, press its date and choose the <b>new, later</b> expiry date. The app marks the old one as renewed and starts reminding for the new one. These dates also ring the bell like any other renewal.',
+      'A date typed too early by mistake can be corrected by someone who may edit renewals: choose the right date and give a reason.',
+      'Use <b>Vehicle</b> to search, <b>Show</b> to see only <b>Needs attention</b> or <b>Dates not entered</b>, and <b>Export</b> for Excel or PDF.'] },
+    { t: 'example', title: 'Example: three vehicles on 21-11-2026', head: ['Sl No', 'Vehicle No', 'Insurance', 'Permit', 'Tax', 'FC', 'PUCC', 'Registration'], rows: [['1', 'TN01 A 1111', '15-03-2027', '30-06-2027', '31-12-2026', '10-02-2027', '18-11-2026 (overdue)', '12-05-2021'], ['2', 'TN01 B 2222', '02-12-2026 (due soon)', '30-06-2027', '31-12-2026', '25-01-2027', '14-04-2027', '03-08-2022'], ['3', 'TN01 C 3333', '', '', '', '', '', '20-09-2023']], note: 'Vehicle 1: the PUCC expired three days ago, so it is red and the bell reminds you. Vehicle 3 has no dates yet: press + Add date in each box.' },
     { t: 'list', title: 'Reading the list and the bell', v: ['<b>All renewals</b> can be searched and filtered: Show <b>Not yet renewed</b>, <b>Renewed</b> or <b>Everything</b>, Type, From and To dates.', 'The <b>bell</b> at the top shows reminders: <b>Overdue</b>, <b>Due today</b>, <b>Due soon</b> and <b>Upcoming</b>. Press <b>Mark all read</b> to clear it.', 'When a renewal is done, mark it as renewed; add the next one with the new date.'] },
   ] },
   { id: 'payments', title: 'Payments', perms: ['payments.add', 'payments.view'], tab: 'payments', blocks: [

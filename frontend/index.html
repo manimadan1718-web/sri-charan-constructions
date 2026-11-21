@@ -742,6 +742,11 @@
       <p class="pl-sub">Insurance, permits, licences and subscriptions &mdash; with their documents and reminders before they fall due.</p>
     </div>
   </header>
+  <div class="pl-seg" role="tablist" aria-label="Renewals views">
+    <button type="button" class="pl-seg-btn active" role="tab" id="rntab-list" aria-selected="true" aria-controls="rn-pane-list" onclick="showRnPane('list')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>All renewals</button>
+    <button type="button" class="pl-seg-btn" role="tab" id="rntab-vehicles" aria-selected="false" aria-controls="rn-pane-vehicles" onclick="showRnPane('vehicles')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1" y="3" width="15" height="13" rx="1"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>Vehicle documents</button>
+  </div>
+  <div id="rn-pane-list" role="tabpanel" aria-labelledby="rntab-list">
   <div class="rn-cards" id="rn-cards" aria-live="polite"></div>
   <p class="rn-note" id="rn-note"></p>
 
@@ -791,6 +796,35 @@
       </table>
     </div>
     <input type="file" id="rn-rowfile" hidden multiple aria-label="Add documents to this renewal">
+  </div>
+  </div>
+
+  <div id="rn-pane-vehicles" role="tabpanel" aria-labelledby="rntab-vehicles" hidden>
+    <div class="vd-chips" id="vd-chips" aria-live="polite"></div>
+    <div class="card pl-card">
+      <div class="pl-card-head">
+        <div class="pl-card-title"><span class="pl-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1" y="3" width="15" height="13" rx="1"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></span><div><h3>Vehicle documents</h3><p id="vd-count"></p></div></div>
+        <div class="export-menu rm ">
+          <button type="button" class="btn btn-outline btn-sm rm-btn" aria-haspopup="menu" aria-expanded="false"><span class="rm-label">Export</span><span class="caret" aria-hidden="true">&#9662;</span></button>
+          <div class="export-pop" role="menu" aria-label="Choose a report format" hidden>
+            <button type="button" role="menuitem" data-rm-kind="vehicledocs" data-rm-format="xlsx"><span class="fmt fmt-xlsx">XLS</span><span class="fmt-text"><strong>Excel</strong><small>.xlsx &middot; all vehicles and their dates</small></span></button>
+            <button type="button" role="menuitem" data-rm-kind="vehicledocs" data-rm-format="pdf"><span class="fmt fmt-pdf">PDF</span><span class="fmt-text"><strong>PDF</strong><small>.pdf &middot; print-ready</small></span></button>
+          </div>
+        </div>
+      </div>
+      <p class="rn-note" id="vd-note">Each date is the day the document <strong>expires</strong>. Tap a date to change it. A later date counts as renewed and the reminders start again.</p>
+      <div class="pl-filters" role="search" aria-label="Search the vehicle documents">
+        <label class="pl-flt pl-flt-search"><span>Vehicle</span><input type="search" id="vd-q" placeholder="Type a vehicle number&hellip;" autocomplete="off"></label>
+        <label class="pl-flt"><span>Show</span><select id="vd-show"><option value="all">All vehicles</option><option value="attention">Needs attention</option><option value="missing">Dates not entered</option></select></label>
+        <button type="button" class="btn btn-outline btn-sm pl-flt-clear" id="vd-clear">Clear filters</button>
+      </div>
+      <div class="table-wrap pl-wrap">
+        <table class="pl-table vd-table">
+          <thead><tr><th>Sl No</th><th>Vehicle No</th><th>Insurance</th><th>Permit</th><th>Tax</th><th>FC (Fitness Certificate)</th><th>PUCC</th><th>Registration date</th></tr></thead>
+          <tbody id="vd-body"></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1419,6 +1453,21 @@
 </div>
 
 <!-- ═══════════════ MARK AS RENEWED ═══════════════ -->
+<div class="modal-overlay" id="vd-overlay" onclick="if(event.target===this) closeVd()">
+  <div class="modal-card modal-small" role="dialog" aria-modal="true" aria-labelledby="vd-title">
+    <div class="card-header">
+      <div class="card-title"><span id="vd-title">Set date</span></div>
+      <button type="button" class="btn btn-outline btn-sm" onclick="closeVd()">Close</button>
+    </div>
+    <p class="reason-intro" id="vd-intro"></p>
+    <div class="form-grid one-col">
+      <div class="form-group"><label for="vd-date" id="vd-date-label">Valid till *</label><input type="date" id="vd-date"><small class="pll-help" id="vd-hint"></small></div>
+    </div>
+    <div class="form-error" id="vd-err" role="alert"></div>
+    <div class="btn-group"><button type="button" class="btn btn-primary" id="vd-save" onclick="saveVd()">Save date</button><button type="button" class="btn btn-outline" onclick="closeVd()">Cancel</button></div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="rn-renew-overlay" onclick="if(event.target===this) closeRenew()">
   <div class="modal-card modal-small" role="dialog" aria-modal="true" aria-labelledby="rn-renew-title">
     <div class="card-header">
@@ -1645,6 +1694,7 @@
 <script src="/js/entryqueue.js"></script>
 <script src="/js/guide.js"></script>
 <script src="/js/account.js"></script>
+<script src="/js/vehicledocs.js"></script>
 <script src="/js/pwa.js"></script>
 </body>
 </html>

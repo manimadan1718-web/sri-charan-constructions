@@ -243,7 +243,7 @@ router.post('/:id/renew', requirePerm('renewals.add'), async (req, res) => {
     await logActivity(req, { category: 'renewal', action: 'renewal_renewed', entityType: 'renewal', entityId: r.id, entityLabel: label(r), changes: [{ field: 'Status', from: 'Active', to: `Renewed on ${R.dmy(on)}` }] });
     let created = null;
     if (next) {
-      const ins = await supabase.from('renewals').insert({ renewal_type: r.renewal_type, description: r.description || '', amount: r.amount, paid_by: r.paid_by || '', renewal_date: next, status: 'active', created_by_id: String(req.user.id), created_by_name: req.user.name }).select('*').single();
+      const ins = await supabase.from('renewals').insert({ renewal_type: r.renewal_type, description: r.description || '', amount: r.amount, paid_by: r.paid_by || '', renewal_date: next, status: 'active', ...(r.doc_kind ? { vehicle_id: r.vehicle_id, doc_kind: r.doc_kind } : {}), created_by_id: String(req.user.id), created_by_name: req.user.name }).select('*').single();
       if (ins.error) throw ins.error;
       created = ins.data;
       await logActivity(req, { category: 'renewal', action: 'renewal_added', entityType: 'renewal', entityId: created.id, entityLabel: label(created), changes: [{ field: 'Next cycle of', from: null, to: label(r) }] });
